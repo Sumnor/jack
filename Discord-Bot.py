@@ -19,7 +19,7 @@ import re
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
-bot_ky = os.getenv("bot_key")
+bot_key = os.getenv("bot_key")
 API_KEY = os.getenv("API_KEY")
 commandscalled = {"_global": 0}
 
@@ -1324,51 +1324,63 @@ mssg = (
     "Commerce Enhancements: Telecommunications Satellite, International Trade Center\n",
     "Login Bonus: Activity Center\n"
 )
-@bot.tree.command(name="request_project", description="Fetch resources for a project")
-@app_commands.describe(project_name="Name of the project", tech_advancement="Is Technological Advancement active?")
-async def request_project(interaction: Interaction, project_name: str, tech_advancement: bool = False):
+
+
+@bot.tree.command(name="send_message_to_channels", description="Send a message to multiple channels by their IDs")
+@app_commands.describe(channel_ids="Space-separated list of channel IDs (e.g. 1319746766337478680 1357611748462563479)", message="The message to send to the channels")
+async def send_message_to_channels(interaction: discord.Interaction, channel_ids: str, message: str):
     await interaction.response.defer()
-    mats = get_materials(project_name)
-    user_id = str(interaction.user.id)
-    commandscalled[user_id] = commandscalled.get(user_id, 0) + 1
-    try:
-        with open("Alliance.json", "r") as f:
-            data = json.load(f)
-            if user_id not in data:
-                await interaction.followup.send("❌ You are not registered. Use `/register` first.")
-                return
-        own_id = data[user_id]["NationID"]
-    except Exception as e:
-        print(f"Error checking registration: {e}")
-        await interaction.followup.send("🚫 Error checking registration. Please try again later.")
-        return
-    
-    datta = get_resources(own_id)
-    nation_name = datta[0]
-    if mats:
-        # Apply the technological advancement bonus (5% reduction)
-        if tech_advancement:
-            for mat in mats:
-                mats[mat] = mats[mat] * 0.95  # Apply 5% reduction
 
-        # Creating an embed for the result
-        embed = discord.Embed(
-            title=f"***Cost for {project_name.title()}***",
-            color=discord.Color.blue()
+    # Prepare the list of channel IDs by stripping the unwanted characters and handling space separation
+    channel_ids_list = [channel_id.strip().replace("<#", "").replace(">", "") for channel_id in channel_ids.split()]
+
+
+    # Function to check if the user has a specific role (e.g., "Government member")
+    async def is_banker(interaction):
+        return (
+            any(role.name == "Government member" for role in interaction.user.roles)  # Modify this to fit your needs
+            or str(interaction.user.id) == "1148678095176474678"
         )
-        
-        # Display the materials and their amounts
-        embed.description = "\n".join([f"{mat}: {amount:,.0f}" for mat, amount in mats.items()])
-        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-        embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
-        await interaction.followup.send(
-    embed=embed,
-    view=BlueGuy(category="project", data={"nation_name": nation_name, "nation_id": own_id, "project_name": project_name, "materials": mats})
-)
 
-    else:
-        # If project name isn't found in the list of projects
-        await interaction.followup.send("❌ Project not found.")
+    # Check if the user has permission to run the command
+    if not await is_banker(interaction):
+        await interaction.followup.send("You don't have the rights, lil bro.")
+        return
+
+    sent_count = 0
+    failed_count = 0
+
+    # Iterate through each channel ID provided in the list
+    for channel_id in channel_ids_list:
+        channel_found = False
+
+        # Iterate over the guild's text channels and match by ID
+        for channel in interaction.guild.text_channels:
+            # Debug: Print the channels the bot is checking agains
+
+            # Check if the channel ID matches
+            if str(channel.id) == channel_id:
+                channel_found = True
+
+                # Check if the bot has permission to send messages in this channel
+                if channel.permissions_for(interaction.guild.me).send_messages:
+                    try:
+                        # Send the message to the channel
+                        await channel.send(message)
+                        sent_count += 1
+                    except discord.Forbidden:
+                        failed_count += 1
+                    except discord.HTTPException:
+                        failed_count += 1
+                    break  # Stop once the message is sent to the correct channel
+        if not channel_found:
+            failed_count += 1
+
+    # Send a summary of the result
+    await interaction.followup.send(
+        f"✅ Sent message to {sent_count} channels.\n"
+        f"❌ Failed to send message to {failed_count} channels or channel not found."
+    )
 
 
 
