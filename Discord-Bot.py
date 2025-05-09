@@ -1273,7 +1273,7 @@ async def help(interaction: discord.Interaction):
     gov_mssg = discord.Embed(
         title="## List of the commands (including the government once): ##",
         color=discord.Color.purple(),
-        description=gov_mssg
+        description=gov_msg
     )
 
     norm_msg = (
@@ -1302,7 +1302,7 @@ async def help(interaction: discord.Interaction):
     norm_mssg = discord.Embed(
         title="## List of the commands: ##",
         color=discord.Color.blue(),
-        description=norm_mssg
+        description=norm_msg
     )
 
     async def is_high_power(interaction):
