@@ -892,6 +892,7 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
 
     user_id = str(interaction.user.id)
     commandscalled[user_id] = commandscalled.get(user_id, 0) + 1
+
     try:
         with open("Alliance.json", "r") as f:
             data = json.load(f)
@@ -957,57 +958,59 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
             await interaction.followup.send("❌ Missing resource data. Please try again.")
             return
 
+    # Set resource calculation values
     city = int(cities)
     nr_a = 750
     nr_a_f = 3000
     nr_a_minus = city * nr_a
     nr_a_m = 1000000
     
-    money_n = 0
-    gas_n = 0
-    mun_n = 0
-    ste_n = 0
-    all_n = 0
-    foo_n = 0
+    money_n = gas_n = mun_n = ste_n = all_n = foo_n = 0
     
-    percent = percent.value.strip().lower()  # extract the actual string value, ensuring no extra spaces
-    
-    # Check for 50% or just 50 and adjust the values accordingly
-    if percent in ["50", "50%"]:
+    # Handle percent reduction logic
+    percent_value = percent.value.strip().lower()
+    if percent_value in ["50", "50%"]:
         nr_a /= 2
         nr_a_f /= 2
         nr_a_m /= 2
-    
-    for res, resource_value in {
-        'money': money, 'gasoline': gasoline, 'munitions': munition,
-        'steel': steel, 'aluminum': aluminium, 'food': food
-    }.items():
+
+    # Resource adjustments
+    resources = {
+        'money': money, 
+        'gasoline': gasoline, 
+        'munitions': munition,
+        'steel': steel, 
+        'aluminum': aluminium, 
+        'food': food
+    }
+
+    for res, resource_value in resources.items():
+        nr_a_resource = nr_a_f if res == "food" else nr_a
+        nr_a_m_resource = nr_a_m if res == "money" else nr_a
+
+        # Compute how much resource is missing or required
         if res == 'money':
-            minus = city * nr_a_m
+            minus = city * nr_a_m_resource
             new_value = resource_value - minus
-            money_n = 0 if new_value >= 0 else -new_value
-    
+            money_n = max(0, -new_value)
         elif res == 'gasoline':
             new_value = resource_value - nr_a_minus
-            gas_n = 0 if new_value >= 0 else -new_value
-    
+            gas_n = max(0, -new_value)
         elif res == 'munitions':
             new_value = resource_value - nr_a_minus
-            mun_n = 0 if new_value >= 0 else -new_value
-    
+            mun_n = max(0, -new_value)
         elif res == 'steel':
             new_value = resource_value - nr_a_minus
-            ste_n = 0 if new_value >= 0 else -new_value
-    
+            ste_n = max(0, -new_value)
         elif res == 'aluminum':
             new_value = resource_value - nr_a_minus
-            all_n = 0 if new_value >= 0 else -new_value
-    
+            all_n = max(0, -new_value)
         elif res == 'food':
             nr_a_f_minus = city * nr_a_f
             new_value = resource_value - nr_a_f_minus
-            foo_n = 0 if new_value >= 0 else -new_value
-    
+            foo_n = max(0, -new_value)
+
+    # Building the request message
     request_lines = []
     if money_n > 0:
         request_lines.append(f"Money: {round(money_n):,.0f}\n")
@@ -1021,25 +1024,27 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
         request_lines.append(f"Steel: {round(ste_n):,.0f}\n")
     if all_n > 0:
         request_lines.append(f"Aluminum: {round(all_n):,.0f}")
-    
+
     request_lines = ' '.join(request_lines)
     description_text = request_lines
 
-        embed = discord.Embed(
-            title="💰 Grant Request",
-            color=discord.Color.gold(),
-            description=(
-                f"**Nation:** {nation_name} (`{own_id}`)\n"
-                f"**Requested by:** {interaction.user.mention}\n"
-                f"**Request:**\n{description_text}\n"
-                f"**Reason:** Warchest\n"
-            )
+    embed = discord.Embed(
+        title="💰 Grant Request",
+        color=discord.Color.gold(),
+        description=(
+            f"**Nation:** {nation_name} (`{own_id}`)\n"
+            f"**Requested by:** {interaction.user.mention}\n"
+            f"**Request:**\n{description_text}\n"
+            f"**Reason:** Warchest\n"
         )
-        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-        embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
-        await interaction.followup.send(embed=embed, view=GrantView())
+    )
+    image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+    embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
+    await interaction.followup.send(embed=embed, view=GrantView())
+    
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {e}")
+
 
 @bot.tree.command(name="request_infra_grant", description="Calculate resources needed to upgrade infrastructure")
 @app_commands.describe(current_infra="Your current infrastructure level", target_infra="Target infrastructure level", city_amount="Cities you want to upgrade")
