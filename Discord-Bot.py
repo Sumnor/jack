@@ -957,72 +957,73 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
             await interaction.followup.send("❌ Missing resource data. Please try again.")
             return
 
-        city = int(cities)
-        nr_a = 750
-        nr_a_f = 3000
-        nr_a_minus = city * nr_a
-        nr_a_m = 1000000
-
-        money_n = 0
-        gas_n = 0
-        mun_n = 0
-        ste_n = 0
-        all_n = 0
-        foo_n = 0
-
-        percent = percent.value  # extract the actual string value
-        if percent.strip().lower() in ["50", "50%"]:
-            nr_a /= 2
-            nr_a_f /= 2
-            nr_a_m /= 2
-
-
-        for res, resource_value in {
-            'money': money, 'gasoline': gasoline, 'munitions': munition,
-            'steel': steel, 'aluminum': aluminium, 'food': food
-        }.items():
-            if res == 'money':
-                minus = city * nr_a_m
-                new_value = resource_value - minus
-                money_n = 0 if new_value >= 0 else -new_value
-
-            elif res == 'gasoline':
-                new_value = resource_value - nr_a_minus
-                gas_n = 0 if new_value >= 0 else -new_value
-
-            elif res == 'munitions':
-                new_value = resource_value - nr_a_minus
-                mun_n = 0 if new_value >= 0 else -new_value
-
-            elif res == 'steel':
-                new_value = resource_value - nr_a_minus
-                ste_n = 0 if new_value >= 0 else -new_value
-
-            elif res == 'aluminum':
-                new_value = resource_value - nr_a_minus
-                all_n = 0 if new_value >= 0 else -new_value
-
-            elif res == 'food':
-                nr_a_f_minus = city * nr_a_f
-                new_value = resource_value - nr_a_f_minus
-                foo_n = 0 if new_value >= 0 else -new_value
-
-        request_lines = []
-        if money_n > 0:
-            request_lines.append(f"Money: {round(money_n):,.0f}\n")
-        if foo_n > 0:
-            request_lines.append(f"Food: {round(foo_n):,.0f}\n")
-        if gas_n > 0:
-            request_lines.append(f"Gasoline: {round(gas_n):,.0f}\n")
-        if mun_n > 0:
-            request_lines.append(f"Munitions: {round(mun_n):,.0f}\n")
-        if ste_n > 0:
-            request_lines.append(f"Steel: {round(ste_n):,.0f}\n")
-        if all_n > 0:
-            request_lines.append(f"Aluminum: {round(all_n):,.0f}")
-
-        request_lines = ' '.join(request_lines)
-        description_text = request_lines
+    city = int(cities)
+    nr_a = 750
+    nr_a_f = 3000
+    nr_a_minus = city * nr_a
+    nr_a_m = 1000000
+    
+    money_n = 0
+    gas_n = 0
+    mun_n = 0
+    ste_n = 0
+    all_n = 0
+    foo_n = 0
+    
+    percent = percent.value.strip().lower()  # extract the actual string value, ensuring no extra spaces
+    
+    # Check for 50% or just 50 and adjust the values accordingly
+    if percent in ["50", "50%"]:
+        nr_a /= 2
+        nr_a_f /= 2
+        nr_a_m /= 2
+    
+    for res, resource_value in {
+        'money': money, 'gasoline': gasoline, 'munitions': munition,
+        'steel': steel, 'aluminum': aluminium, 'food': food
+    }.items():
+        if res == 'money':
+            minus = city * nr_a_m
+            new_value = resource_value - minus
+            money_n = 0 if new_value >= 0 else -new_value
+    
+        elif res == 'gasoline':
+            new_value = resource_value - nr_a_minus
+            gas_n = 0 if new_value >= 0 else -new_value
+    
+        elif res == 'munitions':
+            new_value = resource_value - nr_a_minus
+            mun_n = 0 if new_value >= 0 else -new_value
+    
+        elif res == 'steel':
+            new_value = resource_value - nr_a_minus
+            ste_n = 0 if new_value >= 0 else -new_value
+    
+        elif res == 'aluminum':
+            new_value = resource_value - nr_a_minus
+            all_n = 0 if new_value >= 0 else -new_value
+    
+        elif res == 'food':
+            nr_a_f_minus = city * nr_a_f
+            new_value = resource_value - nr_a_f_minus
+            foo_n = 0 if new_value >= 0 else -new_value
+    
+    request_lines = []
+    if money_n > 0:
+        request_lines.append(f"Money: {round(money_n):,.0f}\n")
+    if foo_n > 0:
+        request_lines.append(f"Food: {round(foo_n):,.0f}\n")
+    if gas_n > 0:
+        request_lines.append(f"Gasoline: {round(gas_n):,.0f}\n")
+    if mun_n > 0:
+        request_lines.append(f"Munitions: {round(mun_n):,.0f}\n")
+    if ste_n > 0:
+        request_lines.append(f"Steel: {round(ste_n):,.0f}\n")
+    if all_n > 0:
+        request_lines.append(f"Aluminum: {round(all_n):,.0f}")
+    
+    request_lines = ' '.join(request_lines)
+    description_text = request_lines
 
         embed = discord.Embed(
             title="💰 Grant Request",
