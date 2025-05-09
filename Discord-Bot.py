@@ -952,17 +952,29 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
         steel = nation["steel"]
         aluminium = nation["aluminum"]
 
-        # Check for missing data
         if any(x is None for x in [cities, food, money, gasoline, munition, steel, aluminium]):
             await interaction.followup.send("❌ Missing resource data. Please try again.")
             return
 
         city = int(cities)
-        nr_a = 750
-        nr_a_f = 3000
-        nr_a_minus = city * nr_a
-        nr_a_m = 1000000
 
+        # Adjust per-city requirements if 50% is selected
+        percent_value = percent.value.strip().lower()
+        if percent_value in ["50", "50%"]:
+            nr_a = 325
+            nr_a_f = 1500
+            nr_a_m = 500000
+        else:
+            nr_a = 750
+            nr_a_f = 3000
+            nr_a_m = 1000000
+
+        # Calculate total required
+        nr_a_minus = city * nr_a
+        nr_a_f_minus = city * nr_a_f
+        money_needed = city * nr_a_m
+
+        # Calculate deficits
         money_n = 0
         gas_n = 0
         mun_n = 0
@@ -975,39 +987,24 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
             'steel': steel, 'aluminum': aluminium, 'food': food
         }.items():
             if res == 'money':
-                minus = city * nr_a_m
-                new_value = resource_value - minus
+                new_value = resource_value - money_needed
                 money_n = 0 if new_value >= 0 else -new_value
-
             elif res == 'gasoline':
                 new_value = resource_value - nr_a_minus
                 gas_n = 0 if new_value >= 0 else -new_value
-
             elif res == 'munitions':
                 new_value = resource_value - nr_a_minus
                 mun_n = 0 if new_value >= 0 else -new_value
-
             elif res == 'steel':
                 new_value = resource_value - nr_a_minus
                 ste_n = 0 if new_value >= 0 else -new_value
-
             elif res == 'aluminum':
                 new_value = resource_value - nr_a_minus
                 all_n = 0 if new_value >= 0 else -new_value
-
             elif res == 'food':
-                nr_a_f_minus = city * nr_a_f
                 new_value = resource_value - nr_a_f_minus
                 foo_n = 0 if new_value >= 0 else -new_value
 
-        percent = percent.value  # extract the actual string value
-        if percent.strip().lower() in ["50", "50%"]:
-            money_n /= 2
-            foo_n /= 2
-            gas_n /= 2
-            mun_n /= 2
-            ste_n /= 2
-            all_n /= 2
         request_lines = []
         if money_n > 0:
             request_lines.append(f"Money: {round(money_n):,.0f}\n")
@@ -1021,10 +1018,9 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
             request_lines.append(f"Steel: {round(ste_n):,.0f}\n")
         if all_n > 0:
             request_lines.append(f"Aluminum: {round(all_n):,.0f}")
-
+        
         request_lines = ' '.join(request_lines)
         description_text = request_lines
-
         embed = discord.Embed(
             title="💰 Grant Request",
             color=discord.Color.gold(),
