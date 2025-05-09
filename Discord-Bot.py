@@ -962,10 +962,10 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
         city = int(cities)
         percent_value = percent.value.strip().lower()
         if percent_value in ["100", "100%"]:
-        nr_a = 750
-        nr_a_f = 3000
-        nr_a_minus = city * nr_a
-        nr_a_m = 1000000
+            nr_a = 750
+            nr_a_f = 3000
+            nr_a_minus = city * nr_a
+            nr_a_m = 1000000
 
         money_n = gas_n = mun_n = ste_n = all_n = foo_n = 0
 
