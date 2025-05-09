@@ -892,7 +892,6 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
 
     user_id = str(interaction.user.id)
     commandscalled[user_id] = commandscalled.get(user_id, 0) + 1
-
     try:
         with open("Alliance.json", "r") as f:
             data = json.load(f)
@@ -958,64 +957,57 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
             await interaction.followup.send("❌ Missing resource data. Please try again.")
             return
 
-        # Set resource calculation values
         city = int(cities)
-        percent_value = percent.value.strip().lower()
-        if percent_value in ["100", "100%"]:
-            nr_a = 750
-            nr_a_f = 3000
-            nr_a_minus = city * nr_a
-            nr_a_m = 1000000
+        nr_a = 750
+        nr_a_f = 3000
+        nr_a_minus = city * nr_a
+        nr_a_m = 1000000
 
-        money_n = gas_n = mun_n = ste_n = all_n = foo_n = 0
+        money_n = 0
+        gas_n = 0
+        mun_n = 0
+        ste_n = 0
+        all_n = 0
+        foo_n = 0
 
-        # Handle percent reduction logic
-# Adjusting the percent logic
-        percent_value = percent.value.strip().lower()  # Get and normalize the value
-        if percent_value == "50" or percent_value == "50%":
-            # Adjust values when 50% is selected
-            nr_a = 325
-            nr_a_f = 1500
-            nr_a_m = 500000
-
-
-        # Resource adjustments
-        resources = {
-            'money': money, 
-            'gasoline': gasoline, 
-            'munitions': munition,
-            'steel': steel, 
-            'aluminum': aluminium, 
-            'food': food
-        }
-
-        for res, resource_value in resources.items():
-            nr_a_resource = nr_a_f if res == "food" else nr_a
-            nr_a_m_resource = nr_a_m if res == "money" else nr_a
-
-            # Compute how much resource is missing or required
+        for res, resource_value in {
+            'money': money, 'gasoline': gasoline, 'munitions': munition,
+            'steel': steel, 'aluminum': aluminium, 'food': food
+        }.items():
             if res == 'money':
-                minus = city * nr_a_m_resource
+                minus = city * nr_a_m
                 new_value = resource_value - minus
-                money_n = max(0, -new_value)
+                money_n = 0 if new_value >= 0 else -new_value
+
             elif res == 'gasoline':
                 new_value = resource_value - nr_a_minus
-                gas_n = max(0, -new_value)
+                gas_n = 0 if new_value >= 0 else -new_value
+
             elif res == 'munitions':
                 new_value = resource_value - nr_a_minus
-                mun_n = max(0, -new_value)
+                mun_n = 0 if new_value >= 0 else -new_value
+
             elif res == 'steel':
                 new_value = resource_value - nr_a_minus
-                ste_n = max(0, -new_value)
+                ste_n = 0 if new_value >= 0 else -new_value
+
             elif res == 'aluminum':
                 new_value = resource_value - nr_a_minus
-                all_n = max(0, -new_value)
+                all_n = 0 if new_value >= 0 else -new_value
+
             elif res == 'food':
                 nr_a_f_minus = city * nr_a_f
                 new_value = resource_value - nr_a_f_minus
-                foo_n = max(0, -new_value)
+                foo_n = 0 if new_value >= 0 else -new_value
 
-        # Building the request message
+        percent = percent.value  # extract the actual string value
+        if percent.strip().lower() in ["50", "50%"]:
+            money_n /= 2
+            foo_n /= 2
+            gas_n /= 2
+            mun_n /= 2
+            ste_n /= 2
+            all_n /= 2
         request_lines = []
         if money_n > 0:
             request_lines.append(f"Money: {round(money_n):,.0f}\n")
@@ -1046,10 +1038,8 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
         image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
         embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
         await interaction.followup.send(embed=embed, view=GrantView())
-
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {e}")
-
 
 
 @bot.tree.command(name="request_infra_grant", description="Calculate resources needed to upgrade infrastructure")
