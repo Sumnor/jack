@@ -19,8 +19,9 @@ import re
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
-bot_ke = os.getenv("bot_key")
+bot_key = os.getenv("bot_key")
 API_KEY = os.getenv("API_KEY")
+YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
 
 UNIT_PRICES = {
@@ -896,40 +897,81 @@ async def request_grant(interaction: discord.Interaction, request: str, reason: 
 
     await interaction.followup.send(embed=embed, view=GrantView())
 
+def parse_duration(duration):
+    duration = duration.replace('PT', '')
+    hours, minutes, seconds = 0, 0, 0
+
+    if 'H' in duration:
+        hours, duration = duration.split('H')
+        hours = int(hours)
+
+    if 'M' in duration:
+        minutes, duration = duration.split('M')
+        minutes = int(minutes)
+
+    if 'S' in duration:
+        seconds = int(duration.replace('S', ''))
+
+    return hours * 3600 + minutes * 60 + seconds
+
+# --- Bot Command ---
 @bot.tree.command(name="warn_maint", description="Notify users of bot maintenance (Dev only)")
 async def warn_maint(interaction: discord.Interaction, time: str):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
-    POS_VIDS = [
-        "https://www.youtube.com/shorts/tGKtrrX8EPU",
-        "https://www.youtube.com/shorts/fFXAxN-QwIg",
-        "https://www.youtube.com/shorts/kqI6NewiHZM",
-        "https://www.youtube.com/shorts/4M_n-0762Og",
-        "https://www.youtube.com/shorts/MYCwp05N-is",
-        "https://www.youtube.com/shorts/SWr_tqW6s0Q",
-        "https://www.youtube.com/shorts/4M_n-0762Og",
-        "https://www.youtube.com/shorts/sFf5gOwAzDU",
-        "https://www.youtube.com/shorts/NKQQJnBClAg",
-        "https://www.youtube.com/shorts/rZu43eI6h1Q",
-        "https://www.youtube.com/shorts/OYtN9np2LZ8"
-    ]
-    if user_id == "1148678095176474678":
-        chosen_vid = random.choice(POS_VIDS)
-        try:
-            msg = (
-                f"⚠️ **Bot Maintenance Notice** ⚠️\n\n"
-                f"🔧 The bot will be undergoing maintenance **until {time} (UTC +1)**.\n"
-                f"❌ Please **do not** accept, deny, or copy grant codes during this time.\n"
-                f"🛑 Also avoid using any of the bot's commands.\n\n"
-                f"We’ll be back soon! Sorry for any inconvenience this may cause.\n"
-                f"If you have questions, please ping @Sumnor.\n"
-                f"P.S.: If you're bored, watch this: {chosen_vid}"
-            )
-            await interaction.followup.send(msg)
-        except Exception as e:
-            await interaction.followup.send(f"❌ Failed to send maintenance warning: `{e}`")
-    else:
+    
+    if user_id != "1148678095176474678":
         await interaction.followup.send("You don't have the required permission level", ephemeral=True)
+        return
+
+    try:
+        # YouTube API Config
+        CHANNEL_ID = "UC_ID-A3YnSQXCwyIcCs9QFw"
+        YT_Key = "AIzaSyDgeyu4mjrqB0A-3LdNBmIRrZy1hRTwB9U"
+
+        # Fetch latest 50 videos
+        search_url = 'https://www.googleapis.com/youtube/v3/search'
+        search_params = {
+            'part': 'snippet',
+            'channelId': CHANNEL_ID,
+            'maxResults': 50,
+            'order': 'date',
+            'type': 'video',
+            'key': YT_Key
+        }
+        search_response = requests.get(search_url, params=search_params)
+        video_ids = [item['id']['videoId'] for item in search_response.json().get('items', []) if item['id'].get('videoId')]
+
+        # Get video durations
+        videos_url = 'https://www.googleapis.com/youtube/v3/videos'
+        videos_params = {
+            'part': 'contentDetails',
+            'id': ','.join(video_ids),
+            'key': YT_Key
+        }
+        videos_response = requests.get(videos_url, params=videos_params)
+        shorts = [
+            f"https://www.youtube.com/shorts/{item['id']}"
+            for item in videos_response.json().get('items', [])
+            if parse_duration(item['contentDetails']['duration']) <= 60
+        ]
+
+        # Pick a random Short
+        chosen_vid = random.choice(shorts) if shorts else "https://www.youtube.com"
+
+        # Send maintenance message
+        msg = (
+            f"⚠️ **Bot Maintenance Notice** ⚠️\n\n"
+            f"🔧 The bot will be undergoing maintenance **until {time} (UTC +1)**.\n"
+            f"❌ Please **do not** accept, deny, or copy grant codes during this time.\n"
+            f"🛑 Also avoid using any of the bot's commands.\n\n"
+            f"We’ll be back soon! Sorry for any inconvenience this may cause.\n"
+            f"If you have questions, please ping @Sumnor.\n"
+            f"P.S.: If you're bored, watch this: {chosen_vid}"
+        )
+        await interaction.followup.send(msg)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to send maintenance warning: `{e}`")
 
 percent_list = [
     app_commands.Choice(name="50%", value="50%"),
@@ -995,7 +1037,7 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
         response_json = response.json()
 
         if "data" not in response_json or "nations" not in response_json["data"] or "data" not in response_json["data"]["nations"]:
-            await interaction.response.send_message("❌ Failed to fetch nation data. Please check the Nation ID or try again later.")
+            await interaction.followup.send("❌ Failed to fetch nation data. Please check the Nation ID or try again later.")
             return
 
         nation_data = response_json["data"]["nations"]["data"]
