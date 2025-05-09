@@ -19,7 +19,7 @@ import re
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
-bot_ey = os.getenv("bot_key")
+bot_key = os.getenv("bot_key")
 API_KEY = os.getenv("API_KEY")
 commandscalled = {"_global": 0}
 
@@ -33,6 +33,22 @@ UNIT_PRICES = {
 }
 
 BANK_PERMISSION_TYPE = "Nation Deposit to Bank"
+
+class MessageView(View):
+    def __init__(self, description_text):
+        super().__init__()
+        self.description_text = description_text
+
+    @discord.ui.button(label="Generate Message", style=discord.ButtonStyle.green, custom_id="gm_message_button")
+    async def copy_message_button(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.defer()
+        await interaction.followup.send(
+            f"COPY THE FOLLOWING:\n"
+            "Go to the #💰︱essential-grants channel and request this with the /request_grant command:\n\n"
+            f"{self.description_text}\n\nOr use the `/warchest` command.",
+            ephemeral=True
+        )
+
 
 class BlueGuy(discord.ui.View):
     def __init__(self, category=None, data=None):
@@ -437,7 +453,6 @@ async def on_ready():
     await bot.tree.sync()
     print(f'Logged in as {bot.user}')
 
-
 @bot.tree.command(name="register", description="register")
 @app_commands.describe(nation_id="Not the link, just the numbers (e.g., 365325)")
 async def register(interaction: discord.Interaction, nation_id: str):
@@ -471,26 +486,74 @@ async def register(interaction: discord.Interaction, nation_id: str):
         await interaction.followup.send("❌ The Discord username on the nation page doesn't match your Discord username.")
         return
     
+    # Make sure the file exists and is a valid JSON
+    try:
+        with open("Alliance.json", "r") as f:
+            data = json.load(f)  # Make sure we're loading the file as a dictionary, not a string
+    except FileNotFoundError:
+        data = {}  # If file doesn't exist, initialize an empty dictionary
+
+    # Check if the user is already registered
+    if user_id in data:
+        await interaction.followup.send("❌ You're already registered.")
+        return
+
+    # Add the new registration
+    data[user_id] = {
+        "Name": discord_ur,
+        "NationID": nation_id
+    }
+
+    # Save the updated data to the file
+    try:
+        with open("Alliance.json", "w") as f:
+            json.dump(data, f, indent=4)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error saving registration data: {e}")
+        return
+
+    await interaction.followup.send("✅ You're registered successfully!")
+
+
+
+
+'''@bot.tree.command(name="register_manual", description="Manually register a nation with a given Discord username (no validation)")
+@app_commands.describe(
+    nation_id="Nation ID number (e.g., 365325)",
+    discord_username="Exact Discord username to register"
+)
+async def register_manual(interaction: discord.Interaction, nation_id: str, discord_username: str):
+    await interaction.response.defer()
+
+    if not str(interaction.user.id) == "1148678095176474678":
+        await interaction.followup.send("Not a public command")
+        return
+
+    if not nation_id.isdigit():
+        await interaction.followup.send("❌ Please enter only the Nation ID number, not a link.")
+        return
+
     try:
         with open("Alliance.json", "r") as f:
             data = json.load(f)
     except FileNotFoundError:
         data = {}
 
-    for user_data in data.values():
-        if user_data["Name"] == discord_ur:
-            await interaction.followup.send("❌ This Discord username is already registered.")
-            return
+    if discord_username in data:
+        await interaction.followup.send("❌ This Discord username is already registered.")
+        return
 
-    data[user_id] = {
-        "Name": discord_ur,
+    data[discord_username] = {
+        "Name": discord_username,
         "NationID": nation_id
     }
 
     with open("Alliance.json", "w") as f:
         json.dump(data, f, indent=4)
 
-    await interaction.followup.send("✅ You're registered successfully!")
+    await interaction.followup.send("✅ Registered successfully (manually, no validation).")
+'''
+
 
 @bot.tree.command(name="battle_sim", description="simulate a battle")
 async def simulation(interaction: discord.Interaction, nation_id: str, war_type: str):
@@ -1037,6 +1100,169 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {e}")
 
+import re
+
+# Your Nation ID mapping
+
+user_nation_ids = {
+    "patrickrickrickpatrick": 636722,
+    "masteraced": 365325,
+    "vladmier1": 510930,
+    "goswat14542308": 683429,
+    "darko50110": 671583,
+    "arstotzka111": 605608,
+    "hypercombatman": 236312,
+    ".technostan": 665217,
+    "wholelottawar": 635047,
+    "aeternite": 631277,
+    "speckgard": 631277,
+    "fishpool0211": 510895,
+    "micmou123": 277286,
+    "tymon_pik": 615360,
+    "cookie_xdsorry": 648675,
+    "jhon_tachanka_doe": 538189,
+    "pindakaas07": 613818,
+    "ellianmarkwell": 646388,
+    "sabtien123": 447228,
+    "kaelkek": 614369,
+    "lemyrzin": 650657,
+    "brutallich": 259382,
+    "varant1x": 646579,
+    "chevdev98": 680527,
+    "rogue__5": 673641,
+    "peoplerep_the_great": 554863,
+    "iam_jinxed": 671871,
+    "bendover995": 667252,
+    "scottyboi3413": 679028,
+    "1khri": 679562,
+    "acoldlinks": 615210,
+    "bruhbaboon": 683575,
+    "miranacious_17083": 680196,
+    ".nygi": 677500,
+    "skryni": 688146,
+    "sayyedistan.": 685174,
+    "jonas9629": 433465,
+    "dietc0ke": 622443,
+    "chrissyno": 551321,
+    "bigmoney89": 649719,
+    "man.is.80090": 625208,
+    "actuallyprille": 608492,
+    "fumzy0207": 652466,
+    "georgewashington1111": 645621,
+    "ticklemctickleson": 607513,
+    "r0b3rt11": 646757
+}
+
+@bot.tree.command(name="warchest_audit", description="Request a Warchest grant")
+@app_commands.describe(who="Tag the person you want to audit")
+async def warchest(interaction: discord.Interaction, who: discord.Member):
+    await interaction.response.defer()
+
+    target_user_name = who.name.lower()
+    if target_user_name not in user_nation_ids:
+        await interaction.followup.send(
+            f"❌ Could not find nation ID for {who.mention}. They must be in the preset list."
+        )
+        return
+    async def is_banker(interaction):
+        return (
+            any(role.name == "Government member" for role in interaction.user.roles)
+            or str(interaction.user.id) == "1148678095176474678"
+        )
+    if not await is_banker(interaction):
+        await interaction.followup.send("❌ You don't have the rights, lil bro.")
+        return
+    target_nation_id = user_nation_ids[target_user_name]
+
+    try:
+        # === API Call ===
+        GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
+        query = f"""
+        {{
+          nations(id: [{target_nation_id}]) {{
+            data {{
+              id
+              nation_name
+              num_cities
+              food
+              money
+              gasoline
+              munitions
+              steel
+              aluminum
+            }}
+          }}
+        }}
+        """
+        response = requests.post(
+            GRAPHQL_URL,
+            json={"query": query},
+            headers={"Content-Type": "application/json"}
+        )
+        response_json = response.json()
+
+        nation_data = response_json.get("data", {}).get("nations", {}).get("data", [])
+        if not nation_data:
+            await interaction.followup.send("❌ Nation not found. Please try again.")
+            return
+
+        nation = nation_data[0]
+        nation_name = nation["nation_name"]
+        cities = nation["num_cities"]
+        food = nation["food"]
+        money = nation["money"]
+        gasoline = nation["gasoline"]
+        munition = nation["munitions"]
+        steel = nation["steel"]
+        aluminium = nation["aluminum"]
+
+        city = int(cities)
+        nr_a = 750
+        nr_a_f = 3000
+        nr_a_m = 1000000
+
+        nr_a_minus = city * nr_a
+        nr_a_f_minus = city * nr_a_f
+        money_needed = city * nr_a_m
+
+        money_n = max(0, money_needed - money)
+        gas_n = max(0, nr_a_minus - gasoline)
+        mun_n = max(0, nr_a_minus - munition)
+        ste_n = max(0, nr_a_minus - steel)
+        all_n = max(0, nr_a_minus - aluminium)
+        foo_n = max(0, nr_a_f_minus - food)
+
+        request_lines = []
+        if money_n > 0:
+            request_lines.append(f"Money: {round(money_n):,}")
+        if foo_n > 0:
+            request_lines.append(f"Food: {round(foo_n):,}")
+        if gas_n > 0:
+            request_lines.append(f"Gasoline: {round(gas_n):,}")
+        if mun_n > 0:
+            request_lines.append(f"Munitions: {round(mun_n):,}")
+        if ste_n > 0:
+            request_lines.append(f"Steel: {round(ste_n):,}")
+        if all_n > 0:
+            request_lines.append(f"Aluminum: {round(all_n):,}")
+
+        description_text = "\n".join(request_lines) or "✅ Fully stocked warchest."
+
+        embed = discord.Embed(
+            title="Warchest Audit",
+            color=discord.Color.gold(),
+            description=(
+                f"**Nation:** {nation_name} (`{target_nation_id}`)\n"
+                f"**Leader:** {who.mention}\n"
+                f"**Missing Materials:**\n{description_text}\n"
+            )
+        )
+        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+        embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
+
+        await interaction.followup.send(embed=embed, view=MessageView(description_text))
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error: {e}")
 
 @bot.tree.command(name="request_infra_grant", description="Calculate resources needed to upgrade infrastructure")
 @app_commands.describe(current_infra="Your current infrastructure level", target_infra="Target infrastructure level", city_amount="Cities you want to upgrade")
@@ -1323,61 +1549,49 @@ mssg = (
 )
 
 
+
 @bot.tree.command(name="send_message_to_channels", description="Send a message to multiple channels by their IDs")
-@app_commands.describe(channel_ids="Space-separated list of channel IDs (e.g. 1319746766337478680 1357611748462563479)", message="The message to send to the channels")
+@app_commands.describe(
+    channel_ids="Space-separated list of channel IDs (e.g. 1319746766337478680 1357611748462563479)",
+    message="The message to send to the channels"
+)
 async def send_message_to_channels(interaction: discord.Interaction, channel_ids: str, message: str):
     await interaction.response.defer()
 
-    # Prepare the list of channel IDs by stripping the unwanted characters and handling space separation
-    channel_ids_list = [channel_id.strip().replace("<#", "").replace(">", "") for channel_id in channel_ids.split()]
+    # Clean and split channel IDs
+    channel_ids_list = [cid.strip().replace("<#", "").replace(">", "") for cid in channel_ids.split()]
 
-
-    # Function to check if the user has a specific role (e.g., "Government member")
+    # Permission check function
     async def is_banker(interaction):
         return (
-            any(role.name == "Government member" for role in interaction.user.roles)  # Modify this to fit your needs
+            any(role.name == "Government member" for role in interaction.user.roles)
             or str(interaction.user.id) == "1148678095176474678"
         )
 
-    # Check if the user has permission to run the command
     if not await is_banker(interaction):
-        await interaction.followup.send("You don't have the rights, lil bro.")
+        await interaction.followup.send("❌ You don't have the rights, lil bro.")
         return
 
     sent_count = 0
     failed_count = 0
 
-    # Iterate through each channel ID provided in the list
     for channel_id in channel_ids_list:
-        channel_found = False
-
-        # Iterate over the guild's text channels and match by ID
-        for channel in interaction.guild.text_channels:
-            # Debug: Print the channels the bot is checking agains
-
-            # Check if the channel ID matches
-            if str(channel.id) == channel_id:
-                channel_found = True
-
-                # Check if the bot has permission to send messages in this channel
-                if channel.permissions_for(interaction.guild.me).send_messages:
-                    try:
-                        # Send the message to the channel
-                        await channel.send(message)
-                        sent_count += 1
-                    except discord.Forbidden:
-                        failed_count += 1
-                    except discord.HTTPException:
-                        failed_count += 1
-                    break  # Stop once the message is sent to the correct channel
-        if not channel_found:
+        try:
+            channel = interaction.guild.get_channel(int(channel_id))
+            if channel:
+                await channel.send(message)
+                sent_count += 1
+            else:
+                failed_count += 1
+        except Exception:
             failed_count += 1
 
-    # Send a summary of the result
     await interaction.followup.send(
-        f"✅ Sent message to {sent_count} channels.\n"
-        f"❌ Failed to send message to {failed_count} channels or channel not found."
+        f"✅ Sent message to **{sent_count}** channel(s).\n"
+        f"❌ Failed for **{failed_count}** channel(s)."
     )
+
+
 
 
 
