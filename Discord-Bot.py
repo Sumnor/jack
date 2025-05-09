@@ -473,20 +473,20 @@ async def register(interaction: discord.Interaction, nation_id: str):
     if not discord_label:
         await interaction.followup.send("❌ Invalid Nation ID or the nation has no Discord username listed.")
         return
-
+    
     try:
-        discord_ur = discord_label.parent.find_next_sibling("td").text.strip()
+        discord_ur = discord_label.parent.find_next_sibling("td").text.strip().lower()
     except Exception:
         await interaction.followup.send("❌ Could not parse nation information. Possibly an invalid Nation ID.")
         return
-
-    user_name = interaction.user.name
+    
+    user_name = interaction.user.name.lower()  # Convert to lowercase for comparison
     user_id = str(interaction.user.id)
-
+    
     if discord_ur != user_name:
         await interaction.followup.send("❌ The Discord username on the nation page doesn't match your Discord username.")
         return
-    
+
     # Make sure the file exists and is a valid JSON
     try:
         with open("Alliance.json", "r") as f:
