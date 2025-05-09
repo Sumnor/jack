@@ -19,7 +19,7 @@ import re
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
-bot_key = os.getenv("bot_key")
+bot_ey = os.getenv("bot_key")
 API_KEY = os.getenv("API_KEY")
 commandscalled = {"_global": 0}
 
