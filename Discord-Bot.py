@@ -927,7 +927,6 @@ async def warn_maint(interaction: discord.Interaction, time: str):
     try:
         # YouTube API Config
         CHANNEL_ID = "UC_ID-A3YnSQXCwyIcCs9QFw"
-        YT_Key = "AIzaSyDgeyu4mjrqB0A-3LdNBmIRrZy1hRTwB9U"
 
         # Fetch latest 50 videos
         search_url = 'https://www.googleapis.com/youtube/v3/search'
