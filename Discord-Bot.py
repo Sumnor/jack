@@ -970,9 +970,10 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
         # Handle percent reduction logic
         percent_value = percent.value.strip().lower()
         if percent_value in ["50", "50%"]:
-            nr_a /= 2
-            nr_a_f /= 2
-            nr_a_m /= 2
+            # Adjust values if 50% is selected
+            nr_a = 325
+            nr_a_f = 1500
+            nr_a_m = 500000
 
         # Resource adjustments
         resources = {
@@ -1044,6 +1045,7 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
 
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {e}")
+
 
 
 @bot.tree.command(name="request_infra_grant", description="Calculate resources needed to upgrade infrastructure")
