@@ -970,6 +970,13 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
         all_n = 0
         foo_n = 0
 
+        percent = percent.value  # extract the actual string value
+        if percent.strip().lower() in ["50", "50%"]:
+            nr_a /= 2
+            nr_a_f /= 2
+            nr_a_m /= 2
+
+
         for res, resource_value in {
             'money': money, 'gasoline': gasoline, 'munitions': munition,
             'steel': steel, 'aluminum': aluminium, 'food': food
@@ -1000,14 +1007,6 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
                 new_value = resource_value - nr_a_f_minus
                 foo_n = 0 if new_value >= 0 else -new_value
 
-        percent = percent.value  # extract the actual string value
-        if percent.strip().lower() in ["50", "50%"]:
-            money_n /= 2
-            foo_n /= 2
-            gas_n /= 2
-            mun_n /= 2
-            ste_n /= 2
-            all_n /= 2
         request_lines = []
         if money_n > 0:
             request_lines.append(f"Money: {round(money_n):,.0f}\n")
