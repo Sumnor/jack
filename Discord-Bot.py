@@ -970,12 +970,14 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
         money_n = gas_n = mun_n = ste_n = all_n = foo_n = 0
 
         # Handle percent reduction logic
-        percent_value = percent.value.strip().lower()
-        if percent_value in ["50", "50%"]:
-            # Adjust values if 50% is selected
+# Adjusting the percent logic
+        percent_value = percent.value.strip().lower()  # Get and normalize the value
+        if percent_value == "50" or percent_value == "50%":
+            # Adjust values when 50% is selected
             nr_a = 325
             nr_a_f = 1500
             nr_a_m = 500000
+
 
         # Resource adjustments
         resources = {
