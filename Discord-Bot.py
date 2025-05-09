@@ -1271,7 +1271,7 @@ async def help(interaction: discord.Interaction):
         f"{bug_rep_desc}"
     )
     gov_mssg = discord.Embed(
-        title="## List of the commands (including the government once): ##",
+        title="List of the commands (including the government once): ",
         color=discord.Color.purple(),
         description=gov_msg
     )
@@ -1300,7 +1300,7 @@ async def help(interaction: discord.Interaction):
     )
 
     norm_mssg = discord.Embed(
-        title="## List of the commands: ##",
+        title="List of the commands:",
         color=discord.Color.blue(),
         description=norm_msg
     )
