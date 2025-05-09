@@ -19,7 +19,7 @@ import re
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
-bot_key = os.getenv("bot_key")
+bot_key = os.getenv("Key")
 API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
@@ -1247,51 +1247,51 @@ async def help(interaction: discord.Interaction):
     )
     gov_msg = (
         "## List of the commands (including the government once): ##\n"
-        "\n***(`/register`):***\n"
+        "\n***`/register`:***\n"
         f"{register_description}"
-        "\n***(`/warchest`):***\n"
+        "\n***`/warchest`:***\n"
         f"{warchest_desc}"
-        "\n***(`/warchest_audit`):***"
+        "\n***`/warchest_audit`:***"
         f"{warchest_audit_desc}"
-        "\n***(`/battle_sim`):***\n"
+        "\n***`/battle_sim`:***\n"
         f"{battle_sim_desc}"
-        "\n***(`/my_nation`):***\n"
+        "\n***`/my_nation`:***\n"
         f"{my_nation_desc}"
-        "\n***(`/resources`):***\n"
+        "\n***`/resources`:***\n"
         f"{resources_desc}"
-        "\n***(`/request_grant`):***\n"
+        "\n***`/request_grant`:***\n"
         f"{request_grant_desc}"
-        "\n***(`/request_city`):***\n"
+        "\n***`/request_city`:***\n"
         f"{request_city_desc}"
-        "\n***(`/request_infra_grant`):***\n"
+        "\n***`/request_infra_grant`:***\n"
         f"{request_infra_grant_desc}"
-        "\n***(`/request_project`):***\n"
+        "\n***`/request_project`:***\n"
         f"{request_project_desc}"
-        "\n***(`/bug_report`):***\n"
+        "\n***`/bug_report`:***\n"
         f"{bug_rep_desc}"
     )
 
     norm_msg = (
         "## List of the commands: ##\n"
-        "\n***(`/register`):***\n"
+        "\n***`/register`:***\n"
         f"{register_description}"
-        "\n***(`/warchest`):***\n"
+        "\n***`/warchest`:***\n"
         f"{warchest_desc}"
-        "\n***(`/battle_sim`):***\n"
+        "\n***`/battle_sim`:***\n"
         f"{battle_sim_desc}"
-        "\n***(`/my_nation`):***\n"
+        "\n***`/my_nation`:***\n"
         f"{my_nation_desc}"
-        "\n***(`/resources`):***\n"
+        "\n***`/resources`:***\n"
         f"{resources_desc}"
-        "\n***(`/request_grant`):***\n"
+        "\n***`/request_grant`:***\n"
         f"{request_grant_desc}"
-        "\n***(`/request_city`):***\n"
+        "\n***`/request_city`:***\n"
         f"{request_city_desc}"
-        "\n***(`/request_infra_grant`):***\n"
+        "\n***`/request_infra_grant`:***\n"
         f"{request_infra_grant_desc}"
-        "\n***(`/request_project`):***\n"
+        "\n***`/request_project`:***\n"
         f"{request_project_desc}"
-        "\n***(`/bug_report`):***\n"
+        "\n***`/bug_report`:***\n"
         f"{bug_rep_desc}"
     )
 
