@@ -1200,53 +1200,53 @@ async def help(interaction: discord.Interaction):
     await interaction.response.defer()
     register_description = (
         "Register yourself using this command to use the *many amazing* freatures of this bot, developed by (`@masteraced`)\n"
-        "The command is (`/register nation_id: 680627`)\n"
+        "The command is `/register nation_id: 680627`\n"
+        "*Note:* The bot only works if you're registered"
     )
     warchest_desc = (
         "Calculates the needed amount of materials for a warchest and requests those\n"
         "Once your request was approved, it will inform you by pinging you\n"
-        "The command is (`/warchest percent: 50% or 100%`)\n"
+        "The command is `/warchest percent: 50% or 100%`\n"
     )
     warchest_audit_desc = (
         "Calculates the needed amount of materials for a warchest and generates a message to send to the audited user (no ping)\n"
-        "The command is (`/warchest_audit who: 680627`)\n"
+        "The command is `/warchest_audit who: 680627`\n"
     )
     battle_sim_desc = (
         "Generates an approximate battle based on the military of both nations and shows approximate win-chance\n"
-        "The command is (`/battle_sim nation_id: 680627 war_type: Raid`)\n"
+        "The command is `/battle_sim nation_id: 680627 war_type: Raid`\n"
     )
     my_nation_desc = (
         "Gives you your own nation's military, score and war policy\n"
-        "The command is (`/my_nation`)\n"
+        "The command is `/my_nation`\n"
     )
     resources_desc = (
         "Gives you your own nation's resources\n"
-        "The command is (`/resources`)\n"
+        "The command is `/resources`\n"
     )
     request_grant_desc = (
         "Requests the requested materials. This command is to make the EA departments job easier\n"
-        "The command is (`/request_grant request: money 9mil, steel 7k, munition 70, ... reason: Warchest`)\n"
+        "The command is `/request_grant request: money 9mil, steel 7k, munition 70, ... reason: Warchest`\n"
     )
     request_city_desc = (
         "Calculates the approximate cost to buy the requested cities and, if wanted, requests them\n"
-        "The command is (`/request_city current_city: 10 target_city: 15`)\n"
+        "The command is `/request_city current_city: 10 target_city: 15`\n"
         "*Note*: on bigger request the cost inflates a bit\n"
     )
     request_infra_grant_desc = (
         "Calculates the approximate cost of the wanted infra and, if wanted, requests them\n" \
-        "The command is (`/request_infra_grant current_infra: 10 wanted_infra: 1500 city_amount:10`)\n"
+        "The command is `/request_infra_grant current_infra: 10 wanted_infra: 1500 city_amount:10`\n"
         "*Note*: on bigger request the cost inflates a bit\n"
     )
     request_project_desc = (
         "Calculates the needed materials and money to get the wanted project and, if wanted, requests it\n"
-        "The command is (`/request_project project: Moon Landing`)"
+        "The command is `/request_project project: Moon Landing`"
     )
     bug_rep_desc = (
         "Report a bug"
-        "The command is (`/bug_report bug: insert bug report here`)"
+        "The command is `/bug_report bug: insert bug report here`"
     )
     gov_msg = (
-        "## List of the commands (including the government once): ##\n"
         "\n***`/register`:***\n"
         f"{register_description}"
         "\n***`/warchest`:***\n"
@@ -1270,9 +1270,13 @@ async def help(interaction: discord.Interaction):
         "\n***`/bug_report`:***\n"
         f"{bug_rep_desc}"
     )
+    gov_mssg = discord.Embed(
+        title="## List of the commands (including the government once): ##",
+        color=discord.Color.purple(),
+        description=gov_mssg
+    )
 
     norm_msg = (
-        "## List of the commands: ##\n"
         "\n***`/register`:***\n"
         f"{register_description}"
         "\n***`/warchest`:***\n"
@@ -1295,6 +1299,12 @@ async def help(interaction: discord.Interaction):
         f"{bug_rep_desc}"
     )
 
+    norm_mssg = discord.Embed(
+        title="## List of the commands: ##",
+        color=discord.Color.blue(),
+        description=norm_mssg
+    )
+
     async def is_high_power(interaction):
         return (
             any(role.name == "Government member" for role in interaction.user.roles)
@@ -1302,9 +1312,9 @@ async def help(interaction: discord.Interaction):
         )
     
     if not await is_high_power(interaction):
-        await interaction.followup.send(gov_msg)
+        await interaction.followup.send(embed=norm_mssg)
     else:
-        await interaction.followup.send(norm_msg)
+        await interaction.followup.send(embed=gov_mssg)
 
 @bot.tree.command(name="warchest_audit", description="Request a Warchest grant")
 @app_commands.describe(who="Tag the person you want to audit")
