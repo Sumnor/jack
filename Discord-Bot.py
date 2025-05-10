@@ -1274,8 +1274,10 @@ async def help(interaction: discord.Interaction):
         title="List of the commands (including the government once): ",
         color=discord.Color.purple(),
         description=gov_msg
-    )
-
+    )    
+    image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+    gov_mssg.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
+    
     norm_msg = (
         "\n***`/register`:***\n"
         f"{register_description}"
@@ -1304,7 +1306,9 @@ async def help(interaction: discord.Interaction):
         color=discord.Color.blue(),
         description=norm_msg
     )
-
+    image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+    norm_mssg.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
+    
     async def is_high_power(interaction):
         return (
             any(role.name == "Government member" for role in interaction.user.roles)
