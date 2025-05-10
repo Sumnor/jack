@@ -1199,9 +1199,9 @@ user_nation_ids = {
 async def help(interaction: discord.Interaction):
     await interaction.response.defer()
     register_description = (
-        "Register yourself using this command to use the *many amazing* freatures of this bot, developed by (`@masteraced`)\n"
+        "Register yourself using this command to use the *many amazing* freatures of this bot, developed by **`@masteraced`**\n"
         "The command is `/register nation_id: 680627`\n"
-        "**Note:** The bot only works if you're registered"
+        "**Note:** The bot only works if you're registered\n"
     )
     warchest_desc = (
         "Calculates the needed amount of materials for a warchest and requests those\n"
@@ -1240,10 +1240,10 @@ async def help(interaction: discord.Interaction):
     )
     request_project_desc = (
         "Calculates the needed materials and money to get the wanted project and, if wanted, requests it\n"
-        "The command is `/request_project project: Moon Landing`"
+        "The command is `/request_project project: Moon Landing`\n"
     )
     bug_rep_desc = (
-        "Report a bug"
+        "Report a bug\n"
         "The command is `/bug_report bug: insert bug report here`"
     )
     gov_msg = (
