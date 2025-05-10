@@ -1251,7 +1251,7 @@ async def help(interaction: discord.Interaction):
         f"{register_description}"
         "\n***`/warchest`:***\n"
         f"{warchest_desc}"
-        "\n***`/warchest_audit`:***"
+        "\n***`/warchest_audit`\n:***"
         f"{warchest_audit_desc}"
         "\n***`/battle_sim`:***\n"
         f"{battle_sim_desc}"
