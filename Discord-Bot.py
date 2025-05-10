@@ -1201,7 +1201,7 @@ async def help(interaction: discord.Interaction):
     register_description = (
         "Register yourself using this command to use the *many amazing* freatures of this bot, developed by (`@masteraced`)\n"
         "The command is `/register nation_id: 680627`\n"
-        "*Note:* The bot only works if you're registered"
+        "**Note:** The bot only works if you're registered"
     )
     warchest_desc = (
         "Calculates the needed amount of materials for a warchest and requests those\n"
@@ -1231,12 +1231,12 @@ async def help(interaction: discord.Interaction):
     request_city_desc = (
         "Calculates the approximate cost to buy the requested cities and, if wanted, requests them\n"
         "The command is `/request_city current_city: 10 target_city: 15`\n"
-        "*Note*: on bigger request the cost inflates a bit\n"
+        "**Note**: on bigger request the cost inflates a bit\n"
     )
     request_infra_grant_desc = (
         "Calculates the approximate cost of the wanted infra and, if wanted, requests them\n" \
         "The command is `/request_infra_grant current_infra: 10 wanted_infra: 1500 city_amount:10`\n"
-        "*Note*: on bigger request the cost inflates a bit\n"
+        "**Note**: on bigger request the cost inflates a bit\n"
     )
     request_project_desc = (
         "Calculates the needed materials and money to get the wanted project and, if wanted, requests it\n"
