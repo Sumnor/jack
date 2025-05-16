@@ -14,6 +14,7 @@ from discord.ui import Button, View
 import random
 import os
 import re
+from sheets import get_sheet
 
 
 load_dotenv("cred.env")
@@ -454,6 +455,7 @@ async def on_ready():
     await bot.tree.sync()
     print(f'Logged in as {bot.user}')
 
+
 @bot.tree.command(name="register", description="register")
 @app_commands.describe(nation_id="Not the link, just the numbers (e.g., 365325)")
 async def register(interaction: discord.Interaction, nation_id: str):
@@ -466,10 +468,9 @@ async def register(interaction: discord.Interaction, nation_id: str):
     url = f"https://politicsandwar.com/nation/id={nation_id}"
     session = requests.Session()
     response = session.get(url)
-
     soup = BeautifulSoup(response.text, 'html.parser')
-    discord_label = soup.find(string="Discord Username:")
 
+    discord_label = soup.find(string="Discord Username:")
     if not discord_label:
         await interaction.followup.send("❌ Invalid Nation ID or the nation has no Discord username listed.")
         return
@@ -477,7 +478,7 @@ async def register(interaction: discord.Interaction, nation_id: str):
     try:
         discord_ur = discord_label.parent.find_next_sibling("td").text.strip()
     except Exception:
-        await interaction.followup.send("❌ Could not parse nation information. Possibly an invalid Nation ID.")
+        await interaction.followup.send("❌ Could not parse nation information.")
         return
 
     user_name = interaction.user.name
@@ -486,34 +487,20 @@ async def register(interaction: discord.Interaction, nation_id: str):
     if discord_ur != user_name:
         await interaction.followup.send("❌ The Discord username on the nation page doesn't match your Discord username.")
         return
-    
-    # Make sure the file exists and is a valid JSON
-    try:
-        with open("Alliance.json", "r") as f:
-            data = json.load(f)  # Make sure we're loading the file as a dictionary, not a string
-    except FileNotFoundError:
-        data = {}  # If file doesn't exist, initialize an empty dictionary
 
-    # Check if the user is already registered
-    if user_id in data:
+    # Use Google Sheets
+    sheet = get_sheet()
+    records = sheet.get_all_records()
+
+    # Prevent duplicate
+    if any(str(row["Discord ID"]) == user_id for row in records):
         await interaction.followup.send("❌ You're already registered.")
         return
 
-    # Add the new registration
-    data[user_id] = {
-        "Name": discord_ur,
-        "NationID": nation_id
-    }
-
-    # Save the updated data to the file
-    try:
-        with open("Alliance.json", "w") as f:
-            json.dump(data, f, indent=4)
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error saving registration data: {e}")
-        return
-
+    # Append new registration
+    sheet.append_row([user_name, user_id, nation_id])
     await interaction.followup.send("✅ You're registered successfully!")
+
 
 
 
