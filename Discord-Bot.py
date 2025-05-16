@@ -497,21 +497,22 @@ async def register(interaction: discord.Interaction, nation_id: str):
         await interaction.followup.send(f"❌ Failed to access registration sheet: {e}")
         return
 
-    user_id = str(interaction.user.id)
+    discord_username = str(interaction.user)  # e.g. sumnor_the_lazy#1234
 
     try:
-        # Check if user already registered
+        # Check if user already registered by username
         records = sheet.get_all_records()
         for row in records:
-            if str(row.get("UserID")) == user_id:
+            if str(row.get("DiscordUsername")) == discord_username:
                 await interaction.followup.send("❌ You are already registered.")
                 return
 
-        # Append new registration
-        sheet.append_row([user_id, nation_id])
-        await interaction.followup.send(f"✅ Registration successful! Your Nation ID `{nation_id}` has been saved.")
+        # Append new registration: [DiscordUsername, NationID]
+        sheet.append_row([discord_username, nation_id])
+        await interaction.followup.send(f"✅ Registration successful! Your Nation ID `{nation_id}` has been saved under `{discord_username}`.")
     except Exception as e:
         await interaction.followup.send(f"❌ Registration failed: {e}")
+
 
 
 '''@bot.tree.command(name="register_manual", description="Manually register a nation with a given Discord username (no validation)")
