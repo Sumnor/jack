@@ -488,30 +488,67 @@ async def on_ready():
 
 
 @bot.tree.command(name="register", description="Register your Nation ID")
-@app_commands.describe(nation_id="Your Nation ID")
+@app_commands.describe(nation_id="Not the link, just the numbers (e.g., 365325)")
 async def register(interaction: discord.Interaction, nation_id: str):
     await interaction.response.defer()
+
+    # Validate input: only digits allowed
+    if not nation_id.isdigit():
+        await interaction.followup.send("❌ Please enter only the Nation ID number, not a link.")
+        return
+
+    url = f"https://politicsandwar.com/nation/id={nation_id}"
+    session = requests.Session()
+
+    try:
+        response = session.get(url)
+        response.raise_for_status()
+    except Exception:
+        await interaction.followup.send("❌ Failed to fetch nation information. Please check the Nation ID and try again.")
+        return
+
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    # Find the Discord Username label on the page
+    discord_label = soup.find(string="Discord Username:")
+    if not discord_label:
+        await interaction.followup.send("❌ Invalid Nation ID or the nation has no Discord username listed.")
+        return
+
+    try:
+        discord_username_from_site = discord_label.parent.find_next_sibling("td").text.strip()
+    except Exception:
+        await interaction.followup.send("❌ Could not parse nation information.")
+        return
+
+    # Get the Discord username with discriminator (like sumnor_the_lazy#1234)
+    user_discord_username = str(interaction.user)
+
+    # Check if Discord username matches what's on the nation page
+    if discord_username_from_site != user_discord_username:
+        await interaction.followup.send("❌ The Discord username on the nation page doesn't match your Discord username.")
+        return
+
     try:
         sheet = get_sheet()
     except Exception as e:
         await interaction.followup.send(f"❌ Failed to access registration sheet: {e}")
         return
 
-    discord_username = str(interaction.user)  # e.g. sumnor_the_lazy#1234
+    records = sheet.get_all_records()
 
-    try:
-        # Check if user already registered by username
-        records = sheet.get_all_records()
-        for row in records:
-            if str(row.get("DiscordUsername")) == discord_username:
-                await interaction.followup.send("❌ You are already registered.")
-                return
+    # Check if Discord username or Nation ID already registered
+    for row in records:
+        if row.get("DiscordUsername") == user_discord_username:
+            await interaction.followup.send("❌ Your Discord username is already registered.")
+            return
+        if row.get("NationID") == nation_id:
+            await interaction.followup.send("❌ This Nation ID is already registered by another user.")
+            return
 
-        # Append new registration: [DiscordUsername, NationID]
-        sheet.append_row([discord_username, nation_id])
-        await interaction.followup.send(f"✅ Registration successful! Your Nation ID `{nation_id}` has been saved under `{discord_username}`.")
-    except Exception as e:
-        await interaction.followup.send(f"❌ Registration failed: {e}")
+    # Append new registration: DiscordUsername, DiscordUserID, NationID
+    sheet.append_row([user_discord_username, str(interaction.user.id), nation_id])
+    await interaction.followup.send(f"✅ Registration successful! Your Nation ID `{nation_id}` has been saved under `{user_discord_username}`.")
 
 
 
