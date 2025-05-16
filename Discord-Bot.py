@@ -450,23 +450,18 @@ def calculation(name, a, b, policy, war_type):
     }
 
 def get_sheet():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds_json_str = os.environ.get("GOOGLE_CREDENTIALS")
     if not creds_json_str:
-        raise RuntimeError("Environment variable 'GOOGLE_CREDENTIALS' not set")
-
+        raise RuntimeError("Environment variable 'GOOGLE_CREDENTIALS' not found.")
     try:
         creds_json = json.loads(creds_json_str)
     except json.JSONDecodeError as e:
         raise RuntimeError(f"Failed to parse GOOGLE_CREDENTIALS as JSON: {e}")
 
-    scope = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/drive"
-    ]
-
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
     client = gspread.authorize(creds)
-    sheet = client.open("Registrations").sheet1  # Change to your sheet name
+    sheet = client.open("Registrations").sheet1
     return sheet
 
 @bot.event
@@ -478,29 +473,30 @@ async def on_ready():
     print(f'Logged in as {bot.user}')
 
 
-@bot.tree.command(name="register", description="register")
-@app_commands.describe(nation_id="Not the link, just the numbers (e.g., 365325)")
+@bot.tree.command(name="register", description="Register your Nation ID")
+@app_commands.describe(nation_id="Your Nation ID")
 async def register(interaction: discord.Interaction, nation_id: str):
     await interaction.response.defer()
-    user_id = str(interaction.user.id)
-    
     try:
         sheet = get_sheet()
-        
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to access registration sheet: {e}")
+        return
+
+    user_id = str(interaction.user.id)
+
+    try:
         # Check if user already registered
         records = sheet.get_all_records()
-        for record in records:
-            if str(record.get("DiscordID", "")) == user_id:
-                await interaction.followup.send("✅ You are already registered!")
+        for row in records:
+            if str(row.get("UserID")) == user_id:
+                await interaction.followup.send("❌ You are already registered.")
                 return
-        
-        # Append user data - change/add columns as needed
-        sheet.append_row([user_id, interaction.user.name, "Additional", "Data", "Here"])
-        
-        await interaction.followup.send("🎉 Registration successful!")
-    
+
+        # Append new registration
+        sheet.append_row([user_id, nation_id])
+        await interaction.followup.send(f"✅ Registration successful! Your Nation ID `{nation_id}` has been saved.")
     except Exception as e:
-        print(f"Register error: {e}")
         await interaction.followup.send(f"❌ Registration failed: {e}")
 
 
