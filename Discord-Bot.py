@@ -1234,7 +1234,7 @@ async def help(interaction: discord.Interaction):
         "**Note**: on bigger request the cost inflates a bit\n"
     )
     request_infra_grant_desc = (
-        "Calculates the approximate cost of the wanted infra and, if wanted, requests them\n" \
+        "Calculates the approximate cost of the wanted infra and, if wanted, requests them\n"
         "The command is `/request_infra_grant current_infra: 10 wanted_infra: 1500 city_amount:10`\n"
         "**Note**: on bigger request the cost inflates a bit\n"
     )
@@ -1243,8 +1243,8 @@ async def help(interaction: discord.Interaction):
         "The command is `/request_project project: Moon Landing`\n"
     )
     bug_rep_desc = (
-        "Report a bug\n"
-        "The command is `/bug_report bug: insert bug report here`"
+        "Report a bug"
+        "The command is `/bug_report bug: insert bug report here`\n"
     )
     gov_msg = (
         "\n***`/register`:***\n"
@@ -1271,13 +1271,13 @@ async def help(interaction: discord.Interaction):
         f"{bug_rep_desc}"
     )
     gov_mssg = discord.Embed(
-        title="List of the commands (including the government once): ",
+        title="List of the commands (including the government once):",
         color=discord.Color.purple(),
         description=gov_msg
-    )    
+    )
     image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
     gov_mssg.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
-    
+
     norm_msg = (
         "\n***`/register`:***\n"
         f"{register_description}"
@@ -1308,7 +1308,6 @@ async def help(interaction: discord.Interaction):
     )
     image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
     norm_mssg.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
-    
     async def is_high_power(interaction):
         return (
             any(role.name == "Government member" for role in interaction.user.roles)
