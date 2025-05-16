@@ -492,43 +492,45 @@ async def on_ready():
 async def register(interaction: discord.Interaction, nation_id: str):
     await interaction.response.defer()
 
-    # Validate input: only digits allowed
+    # Validate nation_id format
     if not nation_id.isdigit():
-        await interaction.followup.send("❌ Please enter only the Nation ID number, not a link.")
+        await interaction.followup.send("❌ Please enter only the Nation ID number, not a link or invalid characters.")
         return
 
+    # Scrape nation page to verify Discord username
     url = f"https://politicsandwar.com/nation/id={nation_id}"
     session = requests.Session()
-
     try:
         response = session.get(url)
         response.raise_for_status()
-    except Exception:
-        await interaction.followup.send("❌ Failed to fetch nation information. Please check the Nation ID and try again.")
+    except requests.RequestException:
+        await interaction.followup.send("❌ Could not reach the nation page. Please try again later.")
         return
 
     soup = BeautifulSoup(response.text, 'html.parser')
-
-    # Find the Discord Username label on the page
     discord_label = soup.find(string="Discord Username:")
     if not discord_label:
         await interaction.followup.send("❌ Invalid Nation ID or the nation has no Discord username listed.")
         return
 
     try:
-        discord_username_from_site = discord_label.parent.find_next_sibling("td").text.strip()
+        discord_ur = discord_label.parent.find_next_sibling("td").text.strip()
     except Exception:
-        await interaction.followup.send("❌ Could not parse nation information.")
+        await interaction.followup.send("❌ Could not parse nation information properly.")
         return
 
-    # Get the Discord username with discriminator (like sumnor_the_lazy#1234)
-    user_discord_username = str(interaction.user)
+    user_discord_username = interaction.user.name
+    user_discord_id = str(interaction.user.id)
 
-    # Check if Discord username matches what's on the nation page
-    if discord_username_from_site != user_discord_username:
+    # Debug print for checking usernames (remove/comment in prod)
+    print(f"Nation page Discord username: {discord_ur}")
+    print(f"Discord interaction username: {user_discord_username}")
+
+    if discord_ur.lower() != user_discord_username.lower():
         await interaction.followup.send("❌ The Discord username on the nation page doesn't match your Discord username.")
         return
 
+    # Get the Google Sheet
     try:
         sheet = get_sheet()
     except Exception as e:
@@ -537,18 +539,27 @@ async def register(interaction: discord.Interaction, nation_id: str):
 
     records = sheet.get_all_records()
 
-    # Check if Discord username or Nation ID already registered
+    # Check for duplicates (case-insensitive username and nation ID)
+    normalized_username = user_discord_username.lower()
     for row in records:
-        if row.get("DiscordUsername") == user_discord_username:
+        sheet_username = row.get("DiscordUsername", "").lower()
+        sheet_nation = row.get("NationID", "")
+
+        if sheet_username == normalized_username:
             await interaction.followup.send("❌ Your Discord username is already registered.")
             return
-        if row.get("NationID") == nation_id:
+        if sheet_nation == nation_id:
             await interaction.followup.send("❌ This Nation ID is already registered by another user.")
             return
 
-    # Append new registration: DiscordUsername, DiscordUserID, NationID
-    sheet.append_row([user_discord_username, str(interaction.user.id), nation_id])
-    await interaction.followup.send(f"✅ Registration successful! Your Nation ID `{nation_id}` has been saved under `{user_discord_username}`.")
+    # Append new registration
+    try:
+        sheet.append_row([user_discord_username, user_discord_id, nation_id])
+    except Exception as e:
+        await interaction.followup.send(f"❌ Registration failed while saving data: {e}")
+        return
+
+    await interaction.followup.send(f"✅ You're registered successfully with Nation ID `{nation_id}`!")
 
 
 
