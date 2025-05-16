@@ -8,14 +8,13 @@ def get_sheet():
 
     try:
         creds_json_str = os.environ["GOOGLE_CREDENTIALS"]
-        creds_json = json.loads(creds_json_str)  # ✅ Convert JSON string to dict
+        creds_json = json.loads(creds_json_str) if isinstance(creds_json_str, str) else creds_json_str
     except KeyError:
         raise RuntimeError("Environment variable 'GOOGLE_CREDENTIALS' not found.")
-    except json.JSONDecodeError:
-        raise RuntimeError("GOOGLE_CREDENTIALS is not a valid JSON string.")
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"Failed to parse GOOGLE_CREDENTIALS as JSON: {e}")
 
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
-    client = gspread.authorize(creds)
 
     try:
         sheet = client.open("Registrations").sheet1
