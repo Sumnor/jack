@@ -7,9 +7,12 @@ def get_sheet():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
     try:
+        # Load the JSON string from environment variable
         creds_json = json.loads(os.environ["GOOGLE_CREDENTIALS"])
     except KeyError:
         raise RuntimeError("Environment variable 'GOOGLE_CREDENTIALS' not found.")
+    except json.JSONDecodeError:
+        raise RuntimeError("Failed to decode 'GOOGLE_CREDENTIALS' as JSON.")
 
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
 
