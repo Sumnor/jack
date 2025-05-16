@@ -1423,6 +1423,7 @@ async def request_infra_grant(interaction: Interaction, current_infra: int, targ
     await interaction.response.defer()
     user_id = str(interaction.user.id)
     commandscalled[user_id] = commandscalled.get(user_id, 0) + 1
+
     try:
         with open("Alliance.json", "r") as f:
             data = json.load(f)
@@ -1435,7 +1436,6 @@ async def request_infra_grant(interaction: Interaction, current_infra: int, targ
         await interaction.followup.send("🚫 Error checking registration. Please try again later.")
         return
 
-    # Check if the target infrastructure is greater than the current infrastructure
     if target_infra <= current_infra:
         await interaction.followup.send("❌ Target infrastructure must be greater than current infrastructure.")
         return
@@ -1444,7 +1444,6 @@ async def request_infra_grant(interaction: Interaction, current_infra: int, targ
     nation_name = datta[0]
     cost = calculate_total_infra_cost(current_infra, target_infra, city_amount)
 
-    # Check if the cost exceeds 900,000 and round up if necessary
     if cost > 900_000:
         cost = math.ceil(cost / 100_000) * 100_000
 
@@ -1468,32 +1467,50 @@ async def request_infra_grant(interaction: Interaction, current_infra: int, targ
         })
     )
 
-def infra_cost_per_level(level: int) -> float:
-    if 1 <= level <= 5:
-        return 300.21 - (level * 0.035)
-    elif 6 <= level <= 9:
-        return 300.00
-    elif 10 <= level <= 19:
-        return 3000.0
-    elif 20 <= level <= 29:
-        return 3002.20
-    elif 30 <= level <= 39:
-        return 3010.30
-    elif 40 <= level <= 50:
-        return 3025.00
-    else:
-        return 3050.00 + (level - 50) * 5  # mild inflation after 50
 
 def calculate_total_infra_cost(current_infra: int, target_infra: int, city_amount: int) -> float:
     if target_infra <= current_infra:
         return 0
 
+    tiers = [
+        (0, 100, 30_000),
+        (100, 200, 30_000),
+        (200, 300, 40_000),
+        (300, 400, 70_000),
+        (400, 500, 100_000),
+        (500, 600, 150_000),
+        (600, 700, 200_000),
+        (700, 800, 280_000),
+        (800, 900, 370_000),
+        (900, 1000, 470_000),
+        (1000, 1100, 580_000),
+        (1100, 1200, 710_000),
+        (1200, 1300, 850_000),
+        (1300, 1400, 1_000_000),
+        (1400, 1500, 1_200_000),
+        (1500, 1600, 1_400_000),
+        (1600, 1700, 1_600_000),
+        (1700, 1800, 1_800_000),
+        (1800, 1900, 2_000_000),
+        (1900, 2000, 2_300_000)
+    ]
+
+    # Apply 10% discount for CCE and Urbanization
+    tiers = [(low, high, cost * 0.9) for (low, high, cost) in tiers]
+
     total_cost = 0
-    for level in range(current_infra + 1, target_infra + 1):
-        cost_per_city = infra_cost_per_level(level)
-        total_cost += cost_per_city * city_amount
+    for low, high, cost_per_city in tiers:
+        if current_infra >= high or target_infra <= low:
+            continue
+
+        start = max(current_infra, low)
+        end = min(target_infra, high)
+
+        levels_in_tier = end - start
+        total_cost += levels_in_tier * cost_per_city * city_amount
 
     return total_cost
+
 
 @bot.tree.command(name="request_city", description="Calculate cost for upgrading from current city to target city")
 @app_commands.describe(current_cities="Your current number of cities", target_cities="Target number of cities")
