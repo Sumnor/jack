@@ -450,12 +450,25 @@ def calculation(name, a, b, policy, war_type):
     }
 
 def get_sheet():
+    import json
+    from oauth2client.service_account import ServiceAccountCredentials
+    import gspread
+    import os
+
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds_json_str = os.environ.get("GOOGLE_CREDENTIALS")
     if not creds_json_str:
         raise RuntimeError("Environment variable 'GOOGLE_CREDENTIALS' not found.")
+    
+    # Debug print (remove in production)
+    print("Raw GOOGLE_CREDENTIALS:", creds_json_str[:100], "...")  # Show start of string
+
     try:
-        creds_json = json.loads(creds_json_str)
+        # If creds_json_str is a JSON string, parse it to dict
+        if isinstance(creds_json_str, str):
+            creds_json = json.loads(creds_json_str)
+        else:
+            creds_json = creds_json_str
     except json.JSONDecodeError as e:
         raise RuntimeError(f"Failed to parse GOOGLE_CREDENTIALS as JSON: {e}")
 
@@ -463,6 +476,7 @@ def get_sheet():
     client = gspread.authorize(creds)
     sheet = client.open("Registrations").sheet1
     return sheet
+
 
 @bot.event
 async def on_ready():
