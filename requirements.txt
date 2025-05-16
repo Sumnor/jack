@@ -3,4 +3,6 @@ requests
 python-dotenv
 beautifulsoup4
 pandas
+gspread
+oauth2client
 
