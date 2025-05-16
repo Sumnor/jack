@@ -480,7 +480,7 @@ async def on_ready():
 
 @bot.tree.command(name="register", description="register")
 @app_commands.describe(nation_id="Not the link, just the numbers (e.g., 365325)")
-async def register(interaction: Interaction):
+async def register(interaction: discord.Interaction, nation_id: str):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
     
