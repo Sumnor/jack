@@ -13,8 +13,11 @@ from discord.ui import View, Modal, TextInput, button
 from discord.ui import Button, View
 import random
 import os
-import re
-from sheets import get_sheet
+import json
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import discord
+from discord import app_commands, Interaction
 
 
 load_dotenv("cred.env")
@@ -446,6 +449,25 @@ def calculation(name, a, b, policy, war_type):
         "loss_value": round(loss_value, 2)
     }
 
+def get_sheet():
+    creds_json_str = os.environ.get("GOOGLE_CREDENTIALS")
+    if not creds_json_str:
+        raise RuntimeError("Environment variable 'GOOGLE_CREDENTIALS' not set")
+
+    try:
+        creds_json = json.loads(creds_json_str)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"Failed to parse GOOGLE_CREDENTIALS as JSON: {e}")
+
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive"
+    ]
+
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
+    client = gspread.authorize(creds)
+    sheet = client.open("Registrations").sheet1  # Change to your sheet name
+    return sheet
 
 @bot.event
 async def on_ready():
@@ -458,51 +480,28 @@ async def on_ready():
 
 @bot.tree.command(name="register", description="register")
 @app_commands.describe(nation_id="Not the link, just the numbers (e.g., 365325)")
-async def register(interaction: discord.Interaction, nation_id: str):
+async def register(interaction: Interaction):
     await interaction.response.defer()
-
-    if not nation_id.isdigit():
-        await interaction.followup.send("❌ Please enter only the Nation ID number, not a link.")
-        return
-
-    url = f"https://politicsandwar.com/nation/id={nation_id}"
-    session = requests.Session()
-    response = session.get(url)
-    soup = BeautifulSoup(response.text, 'html.parser')
-
-    discord_label = soup.find(string="Discord Username:")
-    if not discord_label:
-        await interaction.followup.send("❌ Invalid Nation ID or the nation has no Discord username listed.")
-        return
-
-    try:
-        discord_ur = discord_label.parent.find_next_sibling("td").text.strip()
-    except Exception:
-        await interaction.followup.send("❌ Could not parse nation information.")
-        return
-
-    user_name = interaction.user.name
     user_id = str(interaction.user.id)
-
-    if discord_ur != user_name:
-        await interaction.followup.send("❌ The Discord username on the nation page doesn't match your Discord username.")
-        return
-
-    # Use Google Sheets
-    sheet = get_sheet()
-    records = sheet.get_all_records()
-
-    # Prevent duplicate
-    if any(str(row["Discord ID"]) == user_id for row in records):
-        await interaction.followup.send("❌ You're already registered.")
-        return
-
-    # Append new registration
-    sheet.append_row([user_name, user_id, nation_id])
-    await interaction.followup.send("✅ You're registered successfully!")
-
-
-
+    
+    try:
+        sheet = get_sheet()
+        
+        # Check if user already registered
+        records = sheet.get_all_records()
+        for record in records:
+            if str(record.get("DiscordID", "")) == user_id:
+                await interaction.followup.send("✅ You are already registered!")
+                return
+        
+        # Append user data - change/add columns as needed
+        sheet.append_row([user_id, interaction.user.name, "Additional", "Data", "Here"])
+        
+        await interaction.followup.send("🎉 Registration successful!")
+    
+    except Exception as e:
+        print(f"Register error: {e}")
+        await interaction.followup.send(f"❌ Registration failed: {e}")
 
 
 '''@bot.tree.command(name="register_manual", description="Manually register a nation with a given Discord username (no validation)")
