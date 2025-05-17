@@ -1536,27 +1536,22 @@ async def warchest(interaction: discord.Interaction, who: discord.Member):
         await interaction.followup.send(f"❌ Error: {e}")
 
 @bot.tree.command(name="request_infra_grant", description="Calculate resources needed to upgrade infrastructure")
-@app_commands.describe(current_infra="Your current infrastructure level", target_infra="Target infrastructure level", city_amount="Cities you want to upgrade")
-async def request_infra_grant(interaction: Interaction, current_infra: int, target_infra: int, city_amount: int):
+@app_commands.describe(target_infra="Target infrastructure level for all cities")
+async def request_infra_grant(interaction: Interaction, target_infra: int):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
     commandscalled[user_id] = commandscalled.get(user_id, 0) + 1
-
-    user_id = str(interaction.user.id)
 
     try:
         sheet = get_sheet()
         records = sheet.get_all_records()
 
-        # Find the user in the sheet by Discord ID
         user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
-
         if not user_row:
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
             return
 
         own_id = str(user_row.get("NationID", "")).strip()
-
         if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
             return
@@ -1565,37 +1560,66 @@ async def request_infra_grant(interaction: Interaction, current_infra: int, targ
         await interaction.followup.send(f"❌ Failed to access your data: {e}")
         return
 
-
-    if target_infra <= current_infra:
-        await interaction.followup.send("❌ Target infrastructure must be greater than current infrastructure.")
+    if target_infra > 2000:
+        await interaction.followup.send("❌ Target infrastructure cannot exceed 2000.")
         return
 
-    datta = get_resources(own_id)
-    nation_name = datta[0]
-    cost = calculate_total_infra_cost(current_infra, target_infra, city_amount)
+    try:
+        nation_data = get_resources(own_id)
+        nation_name = nation_data[0]
+        cities = nation_data[1]  # [{'infra': 1450}, {'infra': 1300}, ...]
 
-    if cost > 900_000:
-        cost = math.ceil(cost / 100_000) * 100_000
+        total_cost = 0
+        city_costs = []
 
-    embed = discord.Embed(
-        title="🛠️ Infrastructure Upgrade Cost",
-        color=discord.Color.green(),
-        description=f"From `{current_infra}` to `{target_infra}`\nEstimated Cost: **${cost:,.0f}**"
-    )
-    image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-    embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
+        for i, city in enumerate(cities, 1):
+            current_infra = city.get("infra", 0)
 
-    await interaction.followup.send(
-        embed=embed,
-        view=BlueGuy(category="infra", data={
-            "nation_name": nation_name,
-            "nation_id": own_id,
-            "from": current_infra,
-            "infra": target_infra,
-            "ct_count": city_amount,
-            "total_cost": cost
-        })
-    )
+            if current_infra >= target_infra:
+                city_costs.append((i, 0))
+                continue
+
+            if target_infra > 2000:
+                await interaction.followup.send(f"❌ City {i} target infra exceeds 2000.")
+                return
+
+            cost = calculate_total_infra_cost(current_infra, target_infra, 1)
+            total_cost += cost
+            city_costs.append((i, cost))
+
+        total_cost = math.ceil(total_cost / 100_000) * 100_000
+
+        desc_lines = [
+            f"**{nation_name}** (`{own_id}`)",
+            f"Target Infra: `{target_infra}`",
+            f"Cities: `{len(cities)}`",
+            "",
+            "\n".join([f"City {i}: ${cost:,.0f}" for i, cost in city_costs if cost > 0]),
+            "",
+            f"**Total Estimated Cost:** ${total_cost:,.0f}"
+        ]
+
+        embed = discord.Embed(
+            title="🏗️ Infrastructure Upgrade Estimation",
+            color=discord.Color.blurple(),
+            description="\n".join(desc_lines)
+        )
+        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+        embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
+
+        await interaction.followup.send(
+            embed=embed,
+            view=BlueGuy(category="infra", data={
+                "nation_name": nation_name,
+                "nation_id": own_id,
+                "infra": target_infra,
+                "ct_count": len(cities),
+                "total_cost": total_cost
+            })
+        )
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to fetch or process infrastructure data: {e}")
 
 
 def calculate_total_infra_cost(current_infra: int, target_infra: int, city_amount: int) -> float:
@@ -1625,21 +1649,21 @@ def calculate_total_infra_cost(current_infra: int, target_infra: int, city_amoun
         (1900, 2000, 2_300_000)
     ]
 
-    # Apply 10% discount for CCE and Urbanization
+    # Apply 10% discount
     tiers = [(low, high, cost * 0.9) for (low, high, cost) in tiers]
 
     total_cost = 0
-    for low, high, cost_per_city in tiers:
+    for low, high, cost in tiers:
         if current_infra >= high or target_infra <= low:
             continue
 
         start = max(current_infra, low)
         end = min(target_infra, high)
-
-        levels_in_tier = end - start
-        total_cost += levels_in_tier * cost_per_city * city_amount
+        portion = (end - start) / (high - low)
+        total_cost += cost * portion * city_amount
 
     return total_cost
+
 
 
 @bot.tree.command(name="request_city", description="Calculate cost for upgrading from current city to target city")
