@@ -747,14 +747,14 @@ async def own_nation(interaction: discord.Interaction):
     await interaction.response.defer()
 
     user_id = str(interaction.user.id)
-
-    global cached_sheet_data
-    records = cached_sheet_data
-    user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
-    
-    if not user_row:
-        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
-        return
+    try:
+        global cached_sheet_data
+        records = cached_sheet_data
+        user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
+        
+        if not user_row:
+            await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+            return
 
         own_id = str(user_row.get("NationID", "")).strip()
 
@@ -908,13 +908,14 @@ async def request_grant(interaction: discord.Interaction, request: str, reason: 
 
     user_id = str(interaction.user.id)
 
-    global cached_sheet_data
-    records = cached_sheet_data
-    user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
+    try:
+        global cached_sheet_data
+        records = cached_sheet_data
+        user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
     
-    if not user_row:
-        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
-        return
+        if not user_row:
+            await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+            return
 
         own_id = str(user_row.get("NationID", "")).strip()
 
@@ -922,7 +923,6 @@ async def request_grant(interaction: discord.Interaction, request: str, reason: 
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.", ephemeral=True)
             return
 
-    try:
         # Get the nation's data
         nation_data = get_military(own_id)
         nation_name = nation_data[0]
@@ -1080,7 +1080,7 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
     global commandscalled
     commandscalled["_global"] += 1
     user_id = str(interaction.user.id)
-
+    
     global cached_sheet_data
     records = cached_sheet_data
     user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
