@@ -619,7 +619,6 @@ async def simulation(interaction: discord.Interaction, nation_id: str, war_type:
     await interaction.response.defer()
     user_id = str(interaction.user.id)
 
-try:
     global cached_sheet_data
     records = cached_sheet_data
     user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
@@ -628,13 +627,12 @@ try:
         await interaction.followup.send("❌ You are not registered. Use `/register` first.")
         return
 
-
         own_id = str(user_row.get("NationID", "")).strip()
 
         if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
             return
-
+    try:
         try:
             opponent = get_military(nation_id)
             me = get_military(own_id)
