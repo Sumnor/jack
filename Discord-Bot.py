@@ -634,10 +634,6 @@ async def simulation(interaction: discord.Interaction, nation_id: str, war_type:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
             return
 
-    except Exception as e:
-        await interaction.followup.send(f"❌ Failed to access your data: {e}")
-        return
-
         try:
             opponent = get_military(nation_id)
             me = get_military(own_id)
@@ -767,10 +763,6 @@ async def own_nation(interaction: discord.Interaction):
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
             return
 
-    except Exception as e:
-        await interaction.followup.send(f"❌ Failed to access your data: {e}")
-        return
-
         nation_name, nation_leader, nation_score, war_policy, soldiers, tanks, aircraft, ships, spies, missiles, nuclear = get_military(own_id)
         msg = (
             f"🧑‍✈️ **Leader:** {nation_leader}\n"
@@ -840,9 +832,6 @@ async def resources(interaction: discord.Interaction):
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
             return
 
-    except Exception as e:
-        await interaction.followup.send(f"❌ Failed to access your data: {e}")
-        return
         
         # === API Call ===
         GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
@@ -933,10 +922,6 @@ async def request_grant(interaction: discord.Interaction, request: str, reason: 
         if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.", ephemeral=True)
             return
-
-    except Exception as e:
-        await interaction.followup.send(f"❌ Failed to access your data: {e}", ephemeral=True)
-        return
 
     try:
         # Get the nation's data
@@ -1111,9 +1096,6 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
             return
 
-    except Exception as e:
-        await interaction.followup.send(f"❌ Failed to access your data: {e}")
-        return
 
     try:
         # === API Call ===
@@ -1533,10 +1515,111 @@ async def warchest(interaction: discord.Interaction, who: discord.Member):
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {e}")
 
-def get_resources(nation_id: str):
-    # Your implementation to get nation resources etc.
-    # Return at least (nation_name, ...)
-    pass
+@bot.tree.command(name="request_city", description="Calculate cost for upgrading from current city to target city")
+@app_commands.describe(current_cities="Your current number of cities", target_cities="Target number of cities")
+async def request_city(interaction: discord.Interaction, current_cities: int, target_cities: int):
+    await interaction.response.defer()
+    user_id = str(interaction.user.id)
+    commandscalled[user_id] = commandscalled.get(user_id, 0) + 1
+    try:
+        with open("Alliance.json", "r") as f:
+            data = json.load(f)
+            if user_id not in data:
+                await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+                return
+        own_id = data[user_id]["NationID"]
+    except Exception as e:
+        print(f"Error checking registration: {e}")
+        await interaction.followup.send("🚫 Error checking registration. Please try again later.")
+        return
+    if target_cities <= current_cities:
+        await interaction.followup.send("❌ Target cities must be greater than current cities.")
+        return
+    elif current_cities <= 0:
+        await interaction.followup.send("❌ Current cities must be greater than 0.")
+        return        
+
+    datta = get_resources(own_id)
+    nation_name = datta[0]
+    total_cost = 0
+    cost_details = []
+    top20Average = 41.47  # This is static, you can change this
+
+    def compute_city_cost(cityToBuy: int, top20Average: float) -> float:
+        # Static costs for cities 2–10
+        static_costs = {
+            2: 400_000,
+            3: 900_000,
+            4: 1_600_000,
+            5: 2_500_000,
+            6: 3_600_000,
+            7: 4_900_000,
+            8: 6_400_000,
+            9: 8_100_000,
+            10: 10_000_000,
+        }
+
+        if cityToBuy < 11:
+            return static_costs.get(cityToBuy, 0)
+
+        delta = cityToBuy - (top20Average / 4)
+        clause_1 = (100_000 * (delta ** 3)) + (150_000 * delta) + 75_000
+        clause_2 = max(clause_1, (cityToBuy ** 2) * 100_000)
+
+        return clause_2
+
+    def round_up_to_nearest(value: float, round_to: float) -> float:
+        """
+        Round the value up to the nearest specified round_to value.
+        """
+        return math.ceil(value / round_to) * round_to
+
+    def get_rounding_multiple(city_number: int) -> int:
+        """
+        Returns the appropriate rounding multiple based on the city number.
+        For city numbers 30, 40, 50, etc.
+        """
+        if city_number < 30:
+            return 1_000_000  # Round to nearest 1 million for cities 17 to 29
+        elif city_number < 60:
+            return 5_000_000  # Round to nearest 5 million for cities 30 to 59
+        elif city_number < 100:
+            return 11_000_000  # Round to nearest 11 million for cities 60 to 99
+        else:
+            return 20_000_000  # Round to nearest 20 million for cities 100+
+
+    for i in range(current_cities + 1, target_cities + 1):
+        cost = compute_city_cost(i, top20Average)
+
+        # Apply the rounding logic based on the new rounding criteria
+        rounding_multiple = get_rounding_multiple(i)
+        
+        # Apply rounding to the nearest multiple depending on the city number
+        if i >= 30:
+            cost = round_up_to_nearest(cost, rounding_multiple)
+
+        total_cost += cost
+        cost_details.append(f"City {i}: ${cost:,.2f}")
+
+    embed = discord.Embed(
+        title="🏙️ City Upgrade Cost",
+        color=discord.Color.green(),
+        description="\n".join(cost_details)
+    )
+    embed.add_field(name="Total Cost:", value=f"${total_cost:,.0f}", inline=False)
+    image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+    embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
+
+    await interaction.followup.send(
+        embed=embed,
+        view=BlueGuy(category="city", data={
+            "nation_name": nation_name,
+            "nation_id": own_id,
+            "from": current_cities,
+            "city_num": target_cities,
+            "total_cost": total_cost
+        })
+)
 
 def get_city_data(nation_id: str) -> list[dict]:
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
@@ -1567,50 +1650,6 @@ def get_city_data(nation_id: str) -> list[dict]:
         return []
 
     return [{"name": city.get("name", "Unknown"), "infra": city.get("infrastructure", 0)} for city in city_data]
-
-def calculate_total_infra_cost(current_infra: int, target_infra: int, city_amount: int) -> float:
-    if target_infra <= current_infra:
-        return 0
-
-    tiers = [
-        (0, 100, 30_000),
-        (100, 200, 30_000),
-        (200, 300, 40_000),
-        (300, 400, 70_000),
-        (400, 500, 100_000),
-        (500, 600, 150_000),
-        (600, 700, 200_000),
-        (700, 800, 280_000),
-        (800, 900, 370_000),
-        (900, 1000, 470_000),
-        (1000, 1100, 580_000),
-        (1100, 1200, 710_000),
-        (1200, 1300, 850_000),
-        (1300, 1400, 1_000_000),
-        (1400, 1500, 1_200_000),
-        (1500, 1600, 1_400_000),
-        (1600, 1700, 1_600_000),
-        (1700, 1800, 1_800_000),
-        (1800, 1900, 2_000_000),
-        (1900, 2000, 2_300_000)
-    ]
-
-    # Apply 10% discount for CCE and Urbanization
-    tiers = [(low, high, cost * 0.9) for (low, high, cost) in tiers]
-
-    total_cost = 0
-    for low, high, cost_per_city in tiers:
-        if current_infra >= high or target_infra <= low:
-            continue
-
-        start = max(current_infra, low)
-        end = min(target_infra, high)
-
-        # Portion of 100 infra level range (e.g., 50 means half the tier)
-        levels_in_tier = (end - start) / 100
-        total_cost += levels_in_tier * cost_per_city * city_amount
-
-    return total_cost
 
 def calculate_infra_cost_for_range(start_infra: int, end_infra: int) -> float:
     """
@@ -1907,13 +1946,9 @@ def get_materials(project_name):
 async def request_project(interaction: Interaction, project_name: str, tech_advancement: bool = False):
     user_id = str(interaction.user.id)
 
+    global cached_sheet_data
     try:
-        sheet = get_sheet()
-        records = sheet.get_all_records()
-
-        # Find the user in the sheet by Discord ID
-        user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
-
+        user_row = next((row for row in cached_sheet_data if str(row.get("DiscordID", "")).strip() == user_id), None)
         if not user_row:
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
             return
