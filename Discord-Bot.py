@@ -1017,7 +1017,7 @@ def parse_duration(duration):
 async def warn_maint(interaction: discord.Interaction, time: str):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
-    
+
     if user_id != "1148678095176474678":
         await interaction.followup.send("You don't have the required permission level", ephemeral=True)
         return
@@ -1067,8 +1067,10 @@ async def warn_maint(interaction: discord.Interaction, time: str):
             f"P.S.: If you're bored, watch this: {chosen_vid}"
         )
         await interaction.followup.send(msg)
+
     except Exception as e:
         await interaction.followup.send(f"❌ Failed to send maintenance warning: `{e}`")
+
 
 percent_list = [
     app_commands.Choice(name="50%", value="50%"),
