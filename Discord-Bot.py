@@ -1966,8 +1966,6 @@ async def request_project(interaction: Interaction, project_name: str, tech_adva
         await interaction.followup.send(f"❌ Failed to access your data: {e}")
         return
 
-    own_id = data[user_id]["NationID"]
-    user_info = data[user_id]
     nation_data = get_resources(own_id)
     nation_name = nation_data[0] if nation_data else "?"
     mats = get_materials(project_name)
