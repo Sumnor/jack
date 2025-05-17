@@ -487,7 +487,7 @@ def load_sheet_data():
         sheet = get_sheet()
         cached_sheet_data = sheet.get_all_records()
         print("Sheet data loaded/refreshed")
-        print(chached_sheet_data)
+        print(cached_sheet_data)
     except Exception as e:
         print(f"Failed to load sheet data: {e}")
 
