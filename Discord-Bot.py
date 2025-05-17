@@ -1791,7 +1791,7 @@ async def infra_upgrade_cost(
             color=discord.Color.gold(),
             description=f"Upgrade from {current} to {target_infra}\nEstimated Cost: **${cost:,.0f}**"
         )
-        embed.set_footer(text="Brought to you by Darkstar", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
+        embed.set_footer(text="Brought to you by Darkstar\nPersonal Contribution by `@patrickrickrickpatrick`", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
         await interaction.followup.send(embed=embed)
         return
 
@@ -1819,7 +1819,7 @@ async def infra_upgrade_cost(
             color=discord.Color.green(),
             description="\n".join(description_lines) + f"\n\n**Total estimated cost(rounded up to the nearest million): ${rounded_total_cost:,.0f}**"
         )
-        embed.set_footer(text="Brought to you by Darkstar", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
+        embed.set_footer(text="Brought to you by Darkstar\nPersonal Contribution by `@patrickrickrickpatrick`", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
         await interaction.followup.send(embed=embed)
         return
 
