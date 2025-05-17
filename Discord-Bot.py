@@ -868,13 +868,13 @@ async def resources(interaction: discord.Interaction):
         response_json = response.json()
 
         if "data" not in response_json or "nations" not in response_json["data"] or "data" not in response_json["data"]["nations"]:
-            await interaction.response.send_message("❌ Failed to fetch nation data. Please check the Nation ID or try again later.")
+            await interaction.followup.send("❌ Failed to fetch nation data. Please check the Nation ID or try again later.")
             return
 
         nation_data = response_json["data"]["nations"]["data"]
 
         if not nation_data:
-            await interaction.response.send_message("❌ Nation not found. Please try again.")
+            await interaction.followup.send("❌ Nation not found. Please try again.")
             return
 
         nation = nation_data[0]
@@ -913,6 +913,7 @@ async def resources(interaction: discord.Interaction):
 @app_commands.describe(request="Details of your grant request", reason="Select the reason for your grant request.")
 @app_commands.choices(reason=reasons_for_grant)
 async def request_grant(interaction: discord.Interaction, request: str, reason: app_commands.Choice[str]):
+    await interaction.response.defer()
     user_id = str(interaction.user.id)
 
     try:
@@ -962,8 +963,6 @@ async def request_grant(interaction: discord.Interaction, request: str, reason: 
             ephemeral=True
         )
         return
-
-    await interaction.response.defer()
 
     formatted_lines = []
     for line in request_lines:
