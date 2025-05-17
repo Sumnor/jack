@@ -1950,6 +1950,7 @@ def get_materials(project_name):
 #@app_commands.choices(project_name=aller_names)
 @app_commands.describe(project_name="Name of the project", tech_advancement="Is Technological Advancement active?")
 async def request_project(interaction: Interaction, project_name: str, tech_advancement: bool = False):
+    await interaction.response.defer()
     user_id = str(interaction.user.id)
 
     try:
