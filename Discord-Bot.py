@@ -479,11 +479,23 @@ def get_sheet():
     return sheet
 
 
+cached_sheet_data = []  # global cache for sheet data
+
+def load_sheet_data():
+    global cached_sheet_data
+    try:
+        sheet = get_sheet()
+        cached_sheet_data = sheet.get_all_records()
+        print("Sheet data loaded/refreshed")
+    except Exception as e:
+        print(f"Failed to load sheet data: {e}")
+
 @bot.event
 async def on_ready():
     if not hasattr(bot, "persistent_views_added"):
-        bot.add_view(GrantView()) 
+        bot.add_view(GrantView())
         bot.persistent_views_added = True
+    load_sheet_data()  # load data once at startup
     await bot.tree.sync()
     print(f'Logged in as {bot.user}')
 
@@ -497,7 +509,6 @@ async def register(interaction: discord.Interaction, nation_id: str):
         await interaction.followup.send("❌ Please enter only the Nation ID number, not a link.")
         return
 
-    # Scrape PnW page
     url = f"https://politicsandwar.com/nation/id={nation_id}"
     session = requests.Session()
     response = session.get(url)
@@ -517,51 +528,52 @@ async def register(interaction: discord.Interaction, nation_id: str):
     user_discord_username = str(interaction.user.name).strip()
     user_id = str(interaction.user.id)
 
-    # Match PnW-displayed username with Discord
     if nation_discord_username != user_discord_username:
         await interaction.followup.send(
             f"❌ Username mismatch.\nNation lists: `{nation_discord_username}`\nYour Discord: `{user_discord_username}`"
         )
         return
 
-    # Get sheet
     try:
         sheet = get_sheet()
     except Exception as e:
         await interaction.followup.send(f"❌ Failed to access registration sheet: {e}")
         return
 
+    # Use the cached data to check registrations
+    global cached_sheet_data
+    cached_data = cached_sheet_data
+
+    user_discord_username_lower = user_discord_username.lower()
+    nation_id_str = str(nation_id)
+
+    for row in cached_data:
+        discord_name = str(row.get("DiscordUsername", "")).strip().lower()
+        discord_id = str(row.get("DiscordID", "")).strip()
+        registered_nation_id = str(row.get("NationID", "")).strip()
+
+        if user_discord_username_lower == discord_name:
+            await interaction.followup.send("❌ This Discord username is already registered.")
+            return
+
+        if user_id == discord_id:
+            await interaction.followup.send("❌ This Discord ID is already registered.")
+            return
+
+        if nation_id_str == registered_nation_id:
+            await interaction.followup.send("❌ This Nation ID is already registered.")
+            return
+
     try:
-        records = sheet.get_all_records()
-
-        # Normalize for comparison
-        user_discord_username_lower = user_discord_username.lower()
-        nation_id_str = str(nation_id)
-
-        for row in records:
-            discord_name = str(row.get("DiscordUsername", "")).strip().lower()
-            discord_id = str(row.get("DiscordID", "")).strip()
-            registered_nation_id = str(row.get("NationID", "")).strip()
-
-            # Check if username, ID, or nation is already used
-            if user_discord_username_lower == discord_name:
-                await interaction.followup.send("❌ This Discord username is already registered.")
-                return
-
-            if user_id == discord_id:
-                await interaction.followup.send("❌ This Discord ID is already registered.")
-                return
-
-            if nation_id_str == registered_nation_id:
-                await interaction.followup.send("❌ This Nation ID is already registered.")
-                return
-
-        # Append new registration
         sheet.append_row([user_discord_username, user_id, nation_id])
-        await interaction.followup.send("✅ You're registered successfully!")
-
     except Exception as e:
-        await interaction.followup.send(f"❌ Registration failed: {e}")
+        await interaction.followup.send(f"❌ Failed to write registration: {e}")
+        return
+
+    # Refresh cache after successful registration
+    load_sheet_data()
+
+    await interaction.followup.send("✅ You're registered successfully!")
 
 
 '''@bot.tree.command(name="register_manual", description="Manually register a nation with a given Discord username (no validation)")
@@ -607,16 +619,14 @@ async def simulation(interaction: discord.Interaction, nation_id: str, war_type:
     await interaction.response.defer()
     user_id = str(interaction.user.id)
 
-    try:
-        sheet = get_sheet()
-        records = sheet.get_all_records()
+    global cached_sheet_data
+    records = cached_sheet_data
+    user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
+    
+    if not user_row:
+        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        return
 
-        # Find the user in the sheet by Discord ID
-        user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
-
-        if not user_row:
-            await interaction.followup.send("❌ You are not registered. Use `/register` first.")
-            return
 
         own_id = str(user_row.get("NationID", "")).strip()
 
@@ -743,16 +753,13 @@ async def own_nation(interaction: discord.Interaction):
 
     user_id = str(interaction.user.id)
 
-    try:
-        sheet = get_sheet()
-        records = sheet.get_all_records()
-
-        # Find the user in the sheet by Discord ID
-        user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
-
-        if not user_row:
-            await interaction.followup.send("❌ You are not registered. Use `/register` first.")
-            return
+    global cached_sheet_data
+    records = cached_sheet_data
+    user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
+    
+    if not user_row:
+        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        return
 
         own_id = str(user_row.get("NationID", "")).strip()
 
@@ -819,16 +826,13 @@ async def resources(interaction: discord.Interaction):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
 
-    try:
-        sheet = get_sheet()
-        records = sheet.get_all_records()
-
-        # Find the user in the sheet by Discord ID
-        user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
-
-        if not user_row:
-            await interaction.followup.send("❌ You are not registered. Use `/register` first.")
-            return
+    global cached_sheet_data
+    records = cached_sheet_data
+    user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
+    
+    if not user_row:
+        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        return
 
         own_id = str(user_row.get("NationID", "")).strip()
 
@@ -916,16 +920,13 @@ async def request_grant(interaction: discord.Interaction, request: str, reason: 
 
     user_id = str(interaction.user.id)
 
-    try:
-        sheet = get_sheet()
-        records = sheet.get_all_records()
-
-        # Find the user in the sheet by Discord ID
-        user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
-
-        if not user_row:
-            await interaction.followup.send("❌ You are not registered. Use `/register` first.", ephemeral=True)
-            return
+    global cached_sheet_data
+    records = cached_sheet_data
+    user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
+    
+    if not user_row:
+        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        return
 
         own_id = str(user_row.get("NationID", "")).strip()
 
@@ -1096,16 +1097,13 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
     commandscalled["_global"] += 1
     user_id = str(interaction.user.id)
 
-    try:
-        sheet = get_sheet()
-        records = sheet.get_all_records()
-
-        # Find the user in the sheet by Discord ID
-        user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
-
-        if not user_row:
-            await interaction.followup.send("❌ You are not registered. Use `/register` first.")
-            return
+    global cached_sheet_data
+    records = cached_sheet_data
+    user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
+    
+    if not user_row:
+        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        return
 
         own_id = str(user_row.get("NationID", "")).strip()
 
@@ -1311,7 +1309,7 @@ async def help(interaction: discord.Interaction):
     warchest_desc = (
         "Calculates the needed amount of materials for a warchest and requests those\n"
         "Once your request was approved, it will inform you by pinging you\n"
-        "The command is `/warchest percent: 50% or 100%`\n"
+        "The command is `/request_warchest percent: 50% or 100%`\n"
     )
     warchest_audit_desc = (
         "Calculates the needed amount of materials for a warchest and generates a message to send to the audited user (no ping)\n"
@@ -1354,7 +1352,7 @@ async def help(interaction: discord.Interaction):
     gov_msg = (
         "\n***`/register`:***\n"
         f"{register_description}"
-        "\n***`/warchest`:***\n"
+        "\n***`/request_warchest`:***\n"
         f"{warchest_desc}"
         "\n***`/warchest_audit`\n:***"
         f"{warchest_audit_desc}"
@@ -1386,7 +1384,7 @@ async def help(interaction: discord.Interaction):
     norm_msg = (
         "\n***`/register`:***\n"
         f"{register_description}"
-        "\n***`/warchest`:***\n"
+        "\n***`/request_warchest`:***\n"
         f"{warchest_desc}"
         "\n***`/battle_sim`:***\n"
         f"{battle_sim_desc}"
@@ -1659,27 +1657,33 @@ def calculate_infra_cost_for_range(start_infra: int, end_infra: int) -> float:
     return total_cost
 
 
-@bot.tree.command(name="request_infra_grant", description="Calculate resources needed to upgrade infrastructure")
+@bot.tree.command(name="infra_upgrade_cost", description="Calculate infrastructure upgrade cost (single city, all cities, or custom)")
 @app_commands.describe(
-    current_infra="Your current infrastructure level (optional if auto_calculate=True)",
-    target_infra="Target infrastructure level",
-    city_amount="Number of cities to upgrade (optional if auto_calculate=True)",
-    auto_calculate="Automatically fetch city infra levels and calculate costs"
+    target_infra="Target infrastructure level (max 2000)",
+    current_infra="Your current infrastructure level (manual mode only)",
+    city_amount="Number of cities to upgrade (manual mode only)",
+    auto_calculate="Automatically fetch and calculate cost for all cities",
+    city_name="Calculate for a specific city by name"
 )
-await interaction.response.defer()
-async def request_infra_grant(
-    interaction: Interaction,
+async def infra_upgrade_cost(
+    interaction: discord.Interaction,
     target_infra: int,
     current_infra: int = None,
     city_amount: int = None,
-    auto_calculate: bool = False
+    auto_calculate: bool = False,
+    city_name: str = None
 ):
+    await interaction.response.defer()
     user_id = str(interaction.user.id)
 
+    if target_infra > 2000:
+        await interaction.followup.send("❌ Target infrastructure above 2000 is not supported.")
+        return
+
+    # 🔹 Validate registration
     try:
-        sheet = get_sheet()
-        records = sheet.get_all_records()
-        user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
+        global cached_sheet_data
+        user_row = next((row for row in cached_sheet_data if str(row.get("DiscordID", "")).strip() == user_id), None)
 
         if not user_row:
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
@@ -1693,145 +1697,85 @@ async def request_infra_grant(
         await interaction.followup.send(f"❌ Failed to access your data: {e}")
         return
 
-    if target_infra > 2000:
-        await interaction.followup.send("❌ Target infrastructure above 2000 is not supported.")
+    # 🔹 Retrieve city data
+    city_data = get_city_data(own_id)
+    if not city_data:
+        await interaction.followup.send("❌ Could not retrieve city data for your nation.")
         return
 
-    # Auto calculation mode: fetch each city infra, calculate cost per city
-    if auto_calculate:
-        city_data = get_city_data(own_id)
-        if not city_data:
-            await interaction.followup.send("❌ Could not retrieve city data for your nation.")
+    # 🔹 Specific city calculation
+    if city_name:
+        city = next((c for c in city_data if c["name"].lower() == city_name.lower()), None)
+        if not city:
+            await interaction.followup.send(f"❌ Could not find city named '{city_name}' in your nation.")
             return
 
+        current = city["infra"]
+        if current >= target_infra:
+            await interaction.followup.send(f"❌ '{city_name}' already has infrastructure >= target.")
+            return
+
+        cost = calculate_infra_cost_for_range(current, target_infra)
+        if cost > 900_000:
+            cost = math.ceil(cost / 10_000) * 10_000
+
+        embed = discord.Embed(
+            title=f"Upgrade Cost for {city_name}",
+            color=discord.Color.gold(),
+            description=f"Upgrade from {current} to {target_infra}\nEstimated Cost: **${cost:,.0f}**"
+        )
+        embed.set_footer(text="Brought to you by Darkstar", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
+        await interaction.followup.send(embed=embed)
+        return
+
+    # 🔹 Auto calculate for all cities
+    if auto_calculate:
         total_cost = 0
         description_lines = []
 
         for city in city_data:
-            city_name = city["name"]
-            city_current = city["infra"]
-            if city_current >= target_infra:
-                continue  # No upgrade needed
+            name = city["name"]
+            current = city["infra"]
+            if current >= target_infra:
+                continue
+            cost = calculate_infra_cost_for_range(current, target_infra)
+            total_cost += cost
+            description_lines.append(f"**{name}:** ${cost:,.0f}")
 
-            city_cost = calculate_infra_cost_for_range(city_current, target_infra)
-            total_cost += city_cost
-            description_lines.append(f"**{city_name}:** ${city_cost:,.0f}")
-
-        description_text = "\n".join(description_lines)
-        description_text += f"\n\n**Total estimated cost: ${total_cost:,.0f}**"
+        if not description_lines:
+            await interaction.followup.send("✅ All cities are already at or above the target infrastructure.")
+            return
 
         embed = discord.Embed(
-            title=f"🛠️ Infrastructure Upgrade Cost for {len(city_data)} Cities",
+            title=f"🛠️ Infrastructure Upgrade Cost for {len(description_lines)} City(ies)",
             color=discord.Color.green(),
-            description=description_text
+            description="\n".join(description_lines) + f"\n\n**Total estimated cost: ${total_cost:,.0f}**"
         )
-        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-        embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
-
+        embed.set_footer(text="Brought to you by Darkstar", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
         await interaction.followup.send(embed=embed)
         return
 
-    # Manual calculation mode: use provided current_infra and city_amount, with defaults
+    # 🔹 Manual input fallback
     if current_infra is None:
         current_infra = 0
     if city_amount is None:
         city_amount = 1
-
     if target_infra <= current_infra:
         await interaction.followup.send("❌ Target infrastructure must be greater than current infrastructure.")
         return
 
     total_cost = calculate_total_infra_cost(current_infra, target_infra, city_amount)
-    total_cost = math.ceil(total_cost / 100_000) * 100_000 if total_cost > 900_000 else total_cost
+    if total_cost > 900_000:
+        total_cost = math.ceil(total_cost / 100_000) * 100_000
 
     embed = discord.Embed(
         title="🛠️ Infrastructure Upgrade Cost",
         color=discord.Color.green(),
-        description=f"From `{current_infra}` to `{target_infra}` for `{city_amount}` city(ies)\nEstimated Cost: **${total_cost:,.
+        description=f"From `{current_infra}` to `{target_infra}` for `{city_amount}` city(ies)\nEstimated Cost: **${total_cost:,.0f}**"
+    )
+    embed.set_footer(text="Brought to you by Darkstar", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
+    await interaction.followup.send(embed=embed)
 
-
-
-
-
-ChatGPT said:
-0f}**"
-)
-image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
-
-csharp
-Copy
-Edit
-await interaction.followup.send(embed=embed)
-@bot.tree.command(name="upgrade_cost", description="Calculate cost for a single city's infrastructure upgrade")
-@app_commands.describe(
-city_name="Name of the city",
-target_infra="Target infrastructure level (max 2000)"
-)
-async def upgrade_cost(interaction: Interaction, city_name: str, target_infra: int):
-await interaction.response.defer()
-user_id = str(interaction.user.id)
-
-python
-Copy
-Edit
-if target_infra > 2000:
-    await interaction.followup.send("❌ Target infrastructure above 2000 is not supported.")
-    return
-
-try:
-    sheet = get_sheet()
-    records = sheet.get_all_records()
-    user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
-
-    if not user_row:
-        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
-        return
-
-    own_id = str(user_row.get("NationID", "")).strip()
-    if not own_id:
-        await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
-        return
-except Exception as e:
-    await interaction.followup.send(f"❌ Failed to access your data: {e}")
-    return
-
-city_data = get_city_data(own_id)
-city = next((c for c in city_data if c["name"].lower() == city_name.lower()), None)
-
-if not city:
-    await interaction.followup.send(f"❌ Could not find city named '{city_name}' in your nation.")
-    return
-
-current_infra = city["infra"]
-if current_infra >= target_infra:
-    await interaction.followup.send(f"❌ Your city '{city_name}' already has infrastructure >= target.")
-    return
-
-upgrade_cost_val = calculate_infra_cost_for_range(current_infra, target_infra)
-
-# Round to nearest 10k if > 900k for cleaner display
-if upgrade_cost_val > 900_000:
-    upgrade_cost_val = math.ceil(upgrade_cost_val / 10_000) * 10_000
-
-embed = discord.Embed(
-    title=f"Upgrade Cost for {city_name}",
-    color=discord.Color.gold(),
-    description=f"Upgrade from {current_infra} to {target_infra} infrastructure\nEstimated Cost: **${upgrade_cost_val:,.0f}**"
-)
-image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
-
-await interaction.followup.send(
-    embed=embed, 
-    view=BlueGuy(category="city", data={
-            "nation_name": nation_name,
-            "nation_id": own_id,
-            "from": current_cities,
-            "city_num": target_cities,
-            "total_cost": total_cost
-        })
-)
 
 list_of_em = [
     app_commands.Choice(name="Infrastructure Projects", value="infrastructure_projects"),
