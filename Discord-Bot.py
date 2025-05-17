@@ -1603,10 +1603,11 @@ def calculate_total_infra_cost(current_infra: int, target_infra: int, city_amoun
         start = max(current_infra, low)
         end = min(target_infra, high)
 
-        levels_in_tier = end - start
+        levels_in_tier = (end - start) / 100  # <- FIXED HERE
         total_cost += levels_in_tier * cost_per_city * city_amount
 
     return total_cost
+
 
 @bot.tree.command(name="request_infra_grant", description="Calculate resources needed to upgrade infrastructure")
 @app_commands.describe(
