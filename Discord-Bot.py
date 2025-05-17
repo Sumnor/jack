@@ -1883,9 +1883,9 @@ def get_materials(project_name):
     return None  # Project not found
 
 @bot.tree.command(name="request_project", description="Fetch resources for a project")
-@app_commands.choices(project_name=aller_names)
+#@app_commands.choices(project_name=aller_names)
 @app_commands.describe(project_name="Name of the project", tech_advancement="Is Technological Advancement active?")
-async def request_project(interaction: Interaction, project_name: app_commands.Choice[str], tech_advancement: bool = False):
+async def request_project(interaction: Interaction, project_name: str, tech_advancement: bool = False):
     user_id = str(interaction.user.id)
 
     try:
