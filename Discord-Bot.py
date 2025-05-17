@@ -1092,7 +1092,7 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
     await interaction.response.defer()
     global commandscalled
     commandscalled["_global"] += 1
-        user_id = str(interaction.user.id)
+    user_id = str(interaction.user.id)
 
     try:
         sheet = get_sheet()
