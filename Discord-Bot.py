@@ -1679,7 +1679,9 @@ def calculate_infra_cost_for_range(start_infra: int, end_infra: int) -> float:
         (1900, 2000, 2_300_000)
     ]
 
-
+    # Apply 10% discount for CCE and Urbanization
+    tiers = [(low, high, cost * 0.9) for (low, high, cost) in tiers]
+    
     total_cost = 0.0
     for low, high, cost_per_100 in tiers:
         if start_infra >= high or end_infra <= low:
@@ -1790,11 +1792,12 @@ async def infra_upgrade_cost(
         if not description_lines:
             await interaction.followup.send("✅ All cities are already at or above the target infrastructure.")
             return
-
+            
+        rounded_total_cost = math.ceil(total_cost / 1_000_000) * 1_000_000
         embed = discord.Embed(
             title=f"🛠️ Infrastructure Upgrade Cost for {len(description_lines)} City(ies)",
             color=discord.Color.green(),
-            description="\n".join(description_lines) + f"\n\n**Total estimated cost: ${total_cost:,.0f}**"
+            description="\n".join(description_lines) + f"\n\n**Total estimated cost: ${rounded_total_cost:,.0f}**"
         )
         embed.set_footer(text="Brought to you by Darkstar", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
         await interaction.followup.send(embed=embed)
