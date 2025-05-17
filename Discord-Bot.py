@@ -1666,6 +1666,7 @@ def calculate_infra_cost_for_range(start_infra: int, end_infra: int) -> float:
     city_amount="Number of cities to upgrade (optional if auto_calculate=True)",
     auto_calculate="Automatically fetch city infra levels and calculate costs"
 )
+await interaction.response.defer()
 async def request_infra_grant(
     interaction: Interaction,
     target_infra: int,
@@ -1673,7 +1674,6 @@ async def request_infra_grant(
     city_amount: int = None,
     auto_calculate: bool = False
 ):
-    await interaction.response.defer()
     user_id = str(interaction.user.id)
 
     try:
