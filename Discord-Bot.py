@@ -1252,6 +1252,7 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
 
 
 user_nation_ids = {
+    "lordygon": 459160,
     "patrickrickrickpatrick": 636722,
     "masteraced": 365325,
     "vladmier1": 510930,
@@ -1297,7 +1298,12 @@ user_nation_ids = {
     "fumzy0207": 652466,
     "georgewashington1111": 645621,
     "ticklemctickleson": 607513,
-    "r0b3rt11": 646757
+    "r0b3rt11": 646757,
+    "supersmart_09262": 684684,
+    "papang0001": 690323,
+    "gtag4ever": 647486,
+    "jiradin": 656339,
+    "pzoez2": 547638,
 }
 
 @bot.tree.command(name="help", description="Get the available commands")
@@ -1424,30 +1430,31 @@ async def help(interaction: discord.Interaction):
     else:
         await interaction.followup.send(embed=gov_mssg)
 
-@bot.tree.command(name="warchest_audit", description="Request a Warchest grant")
+@bot.tree.command(name="warchest_audit", description="Request a Warchest grant audit")
 @app_commands.describe(who="Tag the person you want to audit")
-async def warchest(interaction: discord.Interaction, who: discord.Member):
+async def warchest_audit(interaction: discord.Interaction, who: discord.Member):
     await interaction.response.defer()
 
-    target_user_name = who.name.lower()
-    if target_user_name not in user_nation_ids:
+    discord_id_str = str(who.id)
+    if discord_id_str not in cached_users:
         await interaction.followup.send(
-            f"❌ Could not find nation ID for {who.mention}. They must be in the preset list."
+            f"❌ Could not find Nation ID for {who.mention}. They must be registered in the Google Sheet."
         )
         return
 
+    # Permission check
     async def is_banker(interaction):
         return (
             any(role.name == "Government member" for role in interaction.user.roles)
             or str(interaction.user.id) == "1148678095176474678"
         )
-
     if not await is_banker(interaction):
-        await interaction.followup.send("❌ You don't have the rights, lil bro.")
+        await interaction.followup.send("❌ You don't have the rights to perform this action.")
         return
 
-    target_nation_id = user_nation_ids[target_user_name]
+    target_nation_id = int(cached_users[discord_id_str]["NationID"])
 
+    # (Rest of your logic below remains unchanged)
     def get_completion_color(percent_complete: float) -> str:
         if percent_complete >= 76:
             return "🟢"
@@ -1468,10 +1475,12 @@ async def warchest(interaction: discord.Interaction, who: discord.Member):
             percent_complete = (current_amount / total) * 100
 
         color_emoji = get_completion_color(percent_complete)
-        return f"{round(missing_amount):,} {resource_name} missing {color_emoji} ({percent_complete:.0f}% complete)"
+        if missing_amount == 0:
+            return f"0 {resource_name} missing (🟢 100% complete)"
+        else:
+            return f"{round(missing_amount):,} {resource_name} missing {color_emoji} ({percent_complete:.0f}% complete)"
 
     try:
-        # === API Call ===
         GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
         query = f"""
         {{
@@ -1510,7 +1519,7 @@ async def warchest(interaction: discord.Interaction, who: discord.Member):
         gasoline = nation["gasoline"]
         munition = nation["munitions"]
         steel = nation["steel"]
-        aluminium = nation["aluminum"]
+        aluminum = nation["aluminum"]
 
         city = int(cities)
         nr_a = 750
@@ -1525,7 +1534,7 @@ async def warchest(interaction: discord.Interaction, who: discord.Member):
         gas_n = max(0, nr_a_minus - gasoline)
         mun_n = max(0, nr_a_minus - munition)
         ste_n = max(0, nr_a_minus - steel)
-        all_n = max(0, nr_a_minus - aluminium)
+        all_n = max(0, nr_a_minus - aluminum)
         foo_n = max(0, nr_a_f_minus - food)
 
         request_lines = [
@@ -1534,11 +1543,11 @@ async def warchest(interaction: discord.Interaction, who: discord.Member):
             format_missing("Gasoline", gas_n, gasoline),
             format_missing("Munitions", mun_n, munition),
             format_missing("Steel", ste_n, steel),
-            format_missing("Aluminum", all_n, aluminium),
+            format_missing("Aluminum", all_n, aluminum),
         ]
 
         if all(missing == 0 for missing in [money_n, foo_n, gas_n, mun_n, ste_n, all_n]):
-            description_text = "0 material missing"
+            description_text = "0 material missing (🟢 100% complete)"
         else:
             description_text = "\n".join(request_lines)
 
@@ -1554,9 +1563,10 @@ async def warchest(interaction: discord.Interaction, who: discord.Member):
         image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
         embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
 
-        await interaction.followup.send(embed=embed, view=MessageView(description_text))
+        await interaction.followup.send(embed=embed)
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {e}")
+
 
 
 @bot.tree.command(name="request_city", description="Calculate cost for upgrading from current city to target city")
