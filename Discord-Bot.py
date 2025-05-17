@@ -233,7 +233,12 @@ class GrantView(View):
                 "Munitions": "-m",
                 "Steel": "-s",
                 "Aluminum": "-a",
-                "Food": "-f"
+                "Food": "-f",
+                "Oil": "-o",
+                "Uranium": "-u",
+                "Lead": "-l",
+                "Iron": "-I",
+                "Bauxite": "-b"
             }
 
             command_parts = [f"$tfo -t https://politicsandwar.com/nation/id={nation_id}"]
@@ -899,67 +904,85 @@ async def resources(interaction: discord.Interaction):
     await interaction.followup.send(embed=embed)
 
 @bot.tree.command(name="request_grant", description="Request a grant from the alliance bank")
-@app_commands.describe(request="Details of your grant request", reason="Select the reason for your grant request.")
+@app_commands.describe(
+    reason="Select the reason for your grant request.",
+    uranium="Amount of uranium requested",
+    coal="Amount of coal requested",
+    oil="Amount of oil requested",
+    bauxite="Amount of bauxite requested",
+    lead="Amount of lead requested",
+    iron="Amount of iron requested",
+    steel="Amount of steel requested",
+    aluminum="Amount of aluminum requested",
+    gasoline="Amount of gasoline requested",
+    money="Amount of money requested",
+    food="Amount of food requested",
+    munitions="Amount of munitions requested"
+)
 @app_commands.choices(reason=reasons_for_grant)
-async def request_grant(interaction: discord.Interaction, request: str, reason: app_commands.Choice[str]):
+async def request_grant(
+    interaction: discord.Interaction,
+    reason: app_commands.Choice[str],
+    uranium: int = 0,
+    coal: int = 0,
+    oil: int = 0,
+    bauxite: int = 0,
+    lead: int = 0,
+    iron: int = 0,
+    steel: int = 0,
+    aluminum: int = 0,
+    gasoline: int = 0,
+    money: int = 0,
+    food: int = 0,
+    munitions: int = 0,
+):
     await interaction.response.defer()
-
     user_id = str(interaction.user.id)
 
     try:
-        global cached_users  # the dict version
-        
-        user_data = cached_users.get(interaction.user.id)  # user_id as int, no need to cast to string if keys are ints
-        
+        global cached_users
+
+        user_data = cached_users.get(interaction.user.id)
         if not user_data:
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
             return
-        
-        own_id = str(user_data.get("NationID", "")).strip()
 
+        own_id = str(user_data.get("NationID", "")).strip()
         if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.", ephemeral=True)
             return
 
-        # Get the nation's data
         nation_data = get_military(own_id)
         nation_name = nation_data[0]
 
-        # Validate request format
-        request_lines = request.replace(",", "\n").split("\n")
-        valid_request = True
+        # Build resource list
+        resources = {
+            "Uranium": uranium,
+            "Coal": coal,
+            "Oil": oil,
+            "Bauxite": bauxite,
+            "Lead": lead,
+            "Iron": iron,
+            "Steel": steel,
+            "Aluminum": aluminum,
+            "Gasoline": gasoline,
+            "Money": money,
+            "Food": food,
+            "Munitions": munitions,
+        }
 
-        for line in request_lines:
-            parts = line.strip().split()
-            if len(parts) != 2:
-                valid_request = False
-                break
-            resource, amount_str = parts
-
-            if not re.match(r'^\d+(\.\d+)?(k|mil)?$', amount_str.lower()):
-                valid_request = False
-                break
-
-        if not valid_request:
-            await interaction.followup.send(
-                "❌ Invalid format. Please use `resource amount` format, e.g., `steel 900k` or `oil 1.2mil`.",
-                ephemeral=True
-            )
+        # Filter out 0 amounts so we only show requested resources
+        requested_resources = {k: v for k, v in resources.items() if v > 0}
+        if not requested_resources:
+            await interaction.followup.send("❌ You must request at least one resource.", ephemeral=True)
             return
 
-        formatted_lines = []
-        for line in request_lines:
-            resource, amount_str = line.strip().split()
-            amount_str = amount_str.lower().replace("mil", "000000").replace("k", "000")
-            try:
-                amount = int(float(amount_str))
-                formatted_amount = f"{amount:,}".replace(",", ".")
-                formatted_lines.append(f"{resource}: {formatted_amount}")
-            except ValueError:
-                formatted_lines.append(line)
-
-        final_output = "\n".join(formatted_lines)
-        description_text = f"{final_output}\n".title()
+        # Format lines with commas for thousands
+        formatted_lines = [
+            f"{resource}: {amount:,}".replace(",", ".")
+            for resource, amount in requested_resources.items()
+        ]
+        description_text = "\n".join(formatted_lines)
 
         embed = discord.Embed(
             title="💰 Grant Request",
@@ -967,12 +990,12 @@ async def request_grant(interaction: discord.Interaction, request: str, reason: 
             description=(
                 f"**Nation:** {nation_name} (`{own_id}`)\n"
                 f"**Requested by:** {interaction.user.mention}\n"
-                f"**Request:**\n{description_text}"
+                f"**Request:**\n{description_text}\n"
                 f"**Reason:** {reason.value.title()}\n"
             )
         )
         image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-        embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
+        embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
 
         await interaction.followup.send(embed=embed, view=GrantView())
 
