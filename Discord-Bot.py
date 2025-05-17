@@ -637,9 +637,9 @@ async def simulation(interaction: discord.Interaction, nation_id: str, war_type:
         await interaction.followup.send("❌ You are not registered. Use `/register` first.")
         return
     
-        own_id = str(user_data.get("NationID", "")).strip()
+    own_id = str(user_data.get("NationID", "")).strip()
 
-        if not own_id:
+    if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
             return
     try:
@@ -835,8 +835,8 @@ async def resources(interaction: discord.Interaction):
         await interaction.followup.send("❌ You are not registered. Use `/register` first.")
         return
     
-        own_id = str(user_data.get("NationID", "")).strip()
-        if not own_id:
+    own_id = str(user_data.get("NationID", "")).strip()
+    if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
             return
 
@@ -1100,7 +1100,7 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
     
     own_id = str(user_data.get("NationID", "")).strip()
 
-        if not own_id:
+    if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
             return
 
