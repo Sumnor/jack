@@ -1695,6 +1695,13 @@ def calculate_infra_cost_for_range(start_infra: int, end_infra: int) -> float:
 
     return total_cost
 
+def calculate_total_infra_cost(start_infra: int, end_infra: int, num_cities: int) -> float:
+    """
+    Calculate the total cost to upgrade multiple cities from start_infra to end_infra.
+    Applies `calculate_infra_cost_for_range` for each city and multiplies by the number of cities.
+    """
+    cost_per_city = calculate_infra_cost_for_range(start_infra, end_infra)
+    return cost_per_city * num_cities
 
 @bot.tree.command(name="request_infra_cost", description="Calculate infrastructure upgrade cost (single city, all cities, or custom)")
 @app_commands.describe(
