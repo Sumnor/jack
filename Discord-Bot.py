@@ -1087,7 +1087,7 @@ reasons_for_grant = [
     app_commands.Choice(name="Project", value="project"),
 ]
 
-@bot.tree.command(name="warchest", description="Request a Warchest grant")
+@bot.tree.command(name="request_warchest", description="Request a Warchest grant")
 @app_commands.describe(percent="How much percent of the warchest do you want")
 @app_commands.choices(percent=percent_list)
 async def warchest(interaction: discord.Interaction, percent: app_commands.Choice[str]):
