@@ -14,6 +14,7 @@ from discord.ui import Button, View
 import random
 import os
 import json
+import re
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import discord
@@ -607,14 +608,25 @@ async def simulation(interaction: discord.Interaction, nation_id: str, war_type:
     user_id = str(interaction.user.id)
 
     try:
-        with open("Alliance.json", "r") as f:
-            data = json.load(f)
+        sheet = get_sheet()
+        records = sheet.get_all_records()
 
-        if user_id not in data:
-            await interaction.followup.send("You are not registered. Use `/register` first.")
+        # Find the user in the sheet by Discord ID
+        user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
+
+        if not user_row:
+            await interaction.followup.send("❌ You are not registered. Use `/register` first.")
             return
 
-        own_id = data[user_id]["NationID"]
+        own_id = user_row.get("NationID", "").strip()
+
+        if not own_id:
+            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+            return
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to access your data: {e}")
+        return
 
         try:
             opponent = get_military(nation_id)
@@ -729,16 +741,29 @@ async def simulation(interaction: discord.Interaction, nation_id: str, war_type:
 async def own_nation(interaction: discord.Interaction):
     await interaction.response.defer()
 
-    try:
-        with open("Alliance.json", "r") as f:
-            data = json.load(f)
+    user_id = str(interaction.user.id)
 
-        user_id = str(interaction.user.id)
-        if user_id not in data:
-            await interaction.followup.send("❌ You are not registered.")
+    try:
+        sheet = get_sheet()
+        records = sheet.get_all_records()
+
+        # Find the user in the sheet by Discord ID
+        user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
+
+        if not user_row:
+            await interaction.followup.send("❌ You are not registered. Use `/register` first.")
             return
 
-        own_id = data[user_id]["NationID"]
+        own_id = user_row.get("NationID", "").strip()
+
+        if not own_id:
+            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+            return
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to access your data: {e}")
+        return
+
         nation_name, nation_leader, nation_score, war_policy, soldiers, tanks, aircraft, ships, spies, missiles, nuclear = get_military(own_id)
         msg = (
             f"🧑‍✈️ **Leader:** {nation_leader}\n"
@@ -792,15 +817,29 @@ RESOURCE_ABBR = {
 @bot.tree.command(name="resources", description="Resources of the nation")
 async def resources(interaction: discord.Interaction):
     await interaction.response.defer()
+
     user_id = str(interaction.user.id)
 
-    with open("Alliance.json", "r") as f:
-        data = json.load(f)
-        if user_id not in data:
+    try:
+        sheet = get_sheet()
+        records = sheet.get_all_records()
+
+        # Find the user in the sheet by Discord ID
+        user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
+
+        if not user_row:
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
             return
 
-        own_id = data[user_id]["NationID"]
+        own_id = user_row.get("NationID", "").strip()
+
+        if not own_id:
+            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+            return
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to access your data: {e}")
+        return
         
         # === API Call ===
         GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
@@ -876,13 +915,27 @@ async def resources(interaction: discord.Interaction):
 async def request_grant(interaction: discord.Interaction, request: str, reason: app_commands.Choice[str]):
     user_id = str(interaction.user.id)
 
-    with open("Alliance.json", "r") as f:
-        data = json.load(f)
-        if user_id not in data:
+    try:
+        sheet = get_sheet()
+        records = sheet.get_all_records()
+
+        # Find the user in the sheet by Discord ID
+        user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
+
+        if not user_row:
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
             return
 
-        own_id = data[user_id]["NationID"]
+        own_id = user_row.get("NationID", "").strip()
+
+        if not own_id:
+            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+            return
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to access your data: {e}")
+        return
+
 
     # Get the nation's data
     nation_data = get_military(own_id)
@@ -972,7 +1025,6 @@ async def warn_maint(interaction: discord.Interaction, time: str):
     try:
         # YouTube API Config
         CHANNEL_ID = "UC_ID-A3YnSQXCwyIcCs9QFw"
-        YT_Key = "AIzaSyDgeyu4mjrqB0A-3LdNBmIRrZy1hRTwB9U"
 
         # Fetch latest 50 videos
         search_url = 'https://www.googleapis.com/youtube/v3/search'
@@ -1038,20 +1090,27 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
     await interaction.response.defer()
     global commandscalled
     commandscalled["_global"] += 1
-    print(f"/warchest invoked by {interaction.user.name} in guild {interaction.guild.name}")
+        user_id = str(interaction.user.id)
 
-    user_id = str(interaction.user.id)
-    commandscalled[user_id] = commandscalled.get(user_id, 0) + 1
     try:
-        with open("Alliance.json", "r") as f:
-            data = json.load(f)
-            if user_id not in data:
-                await interaction.followup.send("❌ You are not registered. Use `/register` first.")
-                return
-        own_id = data[user_id]["NationID"]
+        sheet = get_sheet()
+        records = sheet.get_all_records()
+
+        # Find the user in the sheet by Discord ID
+        user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
+
+        if not user_row:
+            await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+            return
+
+        own_id = user_row.get("NationID", "").strip()
+
+        if not own_id:
+            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+            return
+
     except Exception as e:
-        print(f"Error checking registration: {e}")
-        await interaction.followup.send("🚫 Error checking registration. Please try again later.")
+        await interaction.followup.send(f"❌ Failed to access your data: {e}")
         return
 
     try:
@@ -1187,9 +1246,6 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {e}")
 
-import re
-
-# Your Nation ID mapping
 
 user_nation_ids = {
     "patrickrickrickpatrick": 636722,
@@ -1482,17 +1538,29 @@ async def request_infra_grant(interaction: Interaction, current_infra: int, targ
     user_id = str(interaction.user.id)
     commandscalled[user_id] = commandscalled.get(user_id, 0) + 1
 
+    user_id = str(interaction.user.id)
+
     try:
-        with open("Alliance.json", "r") as f:
-            data = json.load(f)
-            if user_id not in data:
-                await interaction.followup.send("❌ You are not registered. Use `/register` first.")
-                return
-        own_id = data[user_id]["NationID"]
+        sheet = get_sheet()
+        records = sheet.get_all_records()
+
+        # Find the user in the sheet by Discord ID
+        user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
+
+        if not user_row:
+            await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+            return
+
+        own_id = user_row.get("NationID", "").strip()
+
+        if not own_id:
+            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+            return
+
     except Exception as e:
-        print(f"Error checking registration: {e}")
-        await interaction.followup.send("🚫 Error checking registration. Please try again later.")
+        await interaction.followup.send(f"❌ Failed to access your data: {e}")
         return
+
 
     if target_infra <= current_infra:
         await interaction.followup.send("❌ Target infrastructure must be greater than current infrastructure.")
@@ -1576,17 +1644,29 @@ async def request_city(interaction: discord.Interaction, current_cities: int, ta
     await interaction.response.defer()
     user_id = str(interaction.user.id)
     commandscalled[user_id] = commandscalled.get(user_id, 0) + 1
+    user_id = str(interaction.user.id)
+
     try:
-        with open("Alliance.json", "r") as f:
-            data = json.load(f)
-            if user_id not in data:
-                await interaction.followup.send("❌ You are not registered. Use `/register` first.")
-                return
-        own_id = data[user_id]["NationID"]
+        sheet = get_sheet()
+        records = sheet.get_all_records()
+
+        # Find the user in the sheet by Discord ID
+        user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
+
+        if not user_row:
+            await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+            return
+
+        own_id = user_row.get("NationID", "").strip()
+
+        if not own_id:
+            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+            return
+
     except Exception as e:
-        print(f"Error checking registration: {e}")
-        await interaction.followup.send("🚫 Error checking registration. Please try again later.")
+        await interaction.followup.send(f"❌ Failed to access your data: {e}")
         return
+
     if target_cities <= current_cities:
         await interaction.followup.send("❌ Target cities must be greater than current cities.")
         return
@@ -1690,7 +1770,46 @@ list_of_em = [
     app_commands.Choice(name="Login Bonus", value="login_bonus")
 ]
 
+all_names = [
+    "Center for Civil Engineering",
+    "Advanced Engineering Corps",
+    "Arable Land Agency",
+    "Space Program",
+    "Moon Landing",
+    "Mars Landing",
+    "Telecommunications Satellite",
+    "Guiding Satellite",
+    "Nuclear Research Facility",
+    "Nuclear Launch Facility",
+    "Missile Launch Pad",
+    "Vital Defense System",
+    "Iron Dome",
+    "Fallout Shelter",
+    "Arms Stockpile",
+    "Military Salvage",
+    "Propaganda Bureau",
+    "Intelligence Agency",
+    "Spy Satellite",
+    "Surveillance Network",
+    "Clinical Research Center",
+    "Recycling Initiative",
+    "Research and Development Center",
+    "Green Technologies",
+    "Pirate Economy",
+    "Advanced Pirate Economy",
+    "International Trade Center",
+    "Ironworks",
+    "Bauxiteworks",
+    "Emergency Gasoline Reserve",
+    "Mass Irrigation",
+    "Uranium Enrichment Program",
+    "Government Support Agency",
+    "Bureau of Domestic Affairs",
+    "Specialized Police Training Program",
+    "Activity Center"
+]
 
+aller_names = [app_commands.Choice(name=name, value=name) for name in all_names]
 
 project_costs = {
     "Infrastructure Projects": {
@@ -1762,18 +1881,32 @@ def get_materials(project_name):
     return None  # Project not found
 
 @bot.tree.command(name="request_project", description="Fetch resources for a project")
+@app_commands.choices(project_name=aller_names)
 @app_commands.describe(project_name="Name of the project", tech_advancement="Is Technological Advancement active?")
-async def request_project(interaction: Interaction, project_name: str, tech_advancement: bool = False):
-    await interaction.response.defer()
+async def request_project(interaction: Interaction, project_name: app_commands.Choice[str], tech_advancement: bool = False):
+     user_id = str(interaction.user.id)
 
-    user_id = str(interaction.user.id)  # ensure it's string since JSON keys are strings
+    try:
+        sheet = get_sheet()
+        records = sheet.get_all_records()
 
-    with open("Alliance.json", "r") as f:
-        data = json.load(f)
+        # Find the user in the sheet by Discord ID
+        user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
 
-    if user_id not in data:
-        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        if not user_row:
+            await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+            return
+
+        own_id = user_row.get("NationID", "").strip()
+
+        if not own_id:
+            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+            return
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to access your data: {e}")
         return
+
     own_id = data[user_id]["NationID"]
     user_info = data[user_id]
     nation_data = get_resources(own_id)
