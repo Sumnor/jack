@@ -817,7 +817,6 @@ RESOURCE_ABBR = {
 @bot.tree.command(name="resources", description="Resources of the nation")
 async def resources(interaction: discord.Interaction):
     await interaction.response.defer()
-
     user_id = str(interaction.user.id)
 
     try:
@@ -914,6 +913,7 @@ async def resources(interaction: discord.Interaction):
 @app_commands.choices(reason=reasons_for_grant)
 async def request_grant(interaction: discord.Interaction, request: str, reason: app_commands.Choice[str]):
     await interaction.response.defer()
+
     user_id = str(interaction.user.id)
 
     try:
@@ -924,75 +924,78 @@ async def request_grant(interaction: discord.Interaction, request: str, reason: 
         user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
 
         if not user_row:
-            await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+            await interaction.followup.send("❌ You are not registered. Use `/register` first.", ephemeral=True)
             return
 
         own_id = str(user_row.get("NationID", "")).strip()
 
         if not own_id:
-            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.", ephemeral=True)
             return
 
     except Exception as e:
-        await interaction.followup.send(f"❌ Failed to access your data: {e}")
+        await interaction.followup.send(f"❌ Failed to access your data: {e}", ephemeral=True)
         return
 
+    try:
+        # Get the nation's data
+        nation_data = get_military(own_id)
+        nation_name = nation_data[0]
 
-    # Get the nation's data
-    nation_data = get_military(own_id)
-    nation_name = nation_data[0]
+        # Validate request format
+        request_lines = request.replace(",", "\n").split("\n")
+        valid_request = True
 
-    # Validate request format
-    request_lines = request.replace(",", "\n").split("\n")
-    valid_request = True
+        for line in request_lines:
+            parts = line.strip().split()
+            if len(parts) != 2:
+                valid_request = False
+                break
+            resource, amount_str = parts
 
-    for line in request_lines:
-        parts = line.strip().split()
-        if len(parts) != 2:
-            valid_request = False
-            break
-        resource, amount_str = parts
+            if not re.match(r'^\d+(\.\d+)?(k|mil)?$', amount_str.lower()):
+                valid_request = False
+                break
 
-        if not re.match(r'^\d+(\.\d+)?(k|mil)?$', amount_str.lower()):
-            valid_request = False
-            break
+        if not valid_request:
+            await interaction.followup.send(
+                "❌ Invalid format. Please use `resource amount` format, e.g., `steel 900k` or `oil 1.2mil`.",
+                ephemeral=True
+            )
+            return
 
-    if not valid_request:
-        await interaction.followup.send(
-            f"❌ Invalid format. Please use `resource amount` format, e.g., `steel 900k` or `oil 1.2mil`.",
-            ephemeral=True
+        formatted_lines = []
+        for line in request_lines:
+            resource, amount_str = line.strip().split()
+            amount_str = amount_str.lower().replace("mil", "000000").replace("k", "000")
+            try:
+                amount = int(float(amount_str))
+                formatted_amount = f"{amount:,}".replace(",", ".")
+                formatted_lines.append(f"{resource}: {formatted_amount}")
+            except ValueError:
+                formatted_lines.append(line)
+
+        final_output = "\n".join(formatted_lines)
+        description_text = f"{final_output}\n".title()
+
+        embed = discord.Embed(
+            title="💰 Grant Request",
+            color=discord.Color.gold(),
+            description=(
+                f"**Nation:** {nation_name} (`{own_id}`)\n"
+                f"**Requested by:** {interaction.user.mention}\n"
+                f"**Request:**\n{description_text}"
+                f"**Reason:** {reason.value.title()}\n"
+            )
         )
-        return
+        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+        embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
 
-    formatted_lines = []
-    for line in request_lines:
-        resource, amount_str = line.strip().split()
-        amount_str = amount_str.lower().replace("mil", "000000").replace("k", "000")
-        try:
-            amount = int(float(amount_str))
-            formatted_amount = f"{amount:,}".replace(",", ".")
-            formatted_lines.append(f"{resource}: {formatted_amount}")
-        except ValueError:
-            formatted_lines.append(line)
+        await interaction.followup.send(embed=embed, view=GrantView())
 
-    final_output = "\n".join(formatted_lines)
-    description_text = f"{final_output}\n".title()
+    except Exception as e:
+        await interaction.followup.send(f"❌ An unexpected error occurred: {e}", ephemeral=True)
 
-
-    embed = discord.Embed(
-        title="💰 Grant Request",
-        color=discord.Color.gold(),
-        description=(
-            f"**Nation:** {nation_name} (`{own_id}`)\n"
-            f"**Requested by:** {interaction.user.mention}\n"
-            f"**Request:**\n{description_text}"
-            f"**Reason:** {reason.value.title()}\n"
-        )
-    )
-    image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-    embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
-
-    await interaction.followup.send(embed=embed, view=GrantView())
 
 def parse_duration(duration):
     duration = duration.replace('PT', '')
