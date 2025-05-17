@@ -1822,6 +1822,14 @@ async def infra_upgrade_cost(
         cost = calculate_infra_cost_for_range(current, target_infra)
         if cost > 900_000:
             cost = math.ceil(cost / 10_000) * 10_000
+        data = {
+            "nation_name": nation_name,
+            "nation_id": nation_id,
+            "from": current_infra,
+            "infra": target_infra,
+            "ct_count": city_amount,
+            "total_cost": cost
+        }
 
         embed = discord.Embed(
             title=f"Upgrade Cost for {city_name}",
@@ -1829,7 +1837,10 @@ async def infra_upgrade_cost(
             description=f"Upgrade from {current} to {target_infra}\nEstimated Cost: **${cost:,.0f}**"
         )
         embed.set_footer(text="Brought to you by Darkstar\nPersonal Contribution by @patrickrickrickpatrick", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
-        await interaction.followup.send(embed=embed)
+        await interaction.followup.send(
+            embed=embed,
+            view=BlueGuy(category="infra", data=data)
+        )
         return
 
     # 🔹 Auto calculate for all cities
@@ -1851,13 +1862,25 @@ async def infra_upgrade_cost(
             return
             
         rounded_total_cost = int(math.ceil(total_cost / 1_000_000.0)) * 1_000_000
+        data = {
+            "nation_name": nation_name,
+            "nation_id": nation_id,
+            "from": current_infra,
+            "infra": target_infra,
+            "ct_count": city_amount,
+            "total_cost": rounded_total_cost
+        }
+        
         embed = discord.Embed(
             title=f"🛠️ Infrastructure Upgrade Cost for {len(description_lines)} City(ies)",
             color=discord.Color.green(),
             description="\n".join(description_lines) + f"\n\n**Total estimated cost(rounded up to the nearest million): ${rounded_total_cost:,.0f}**"
         )
         embed.set_footer(text="Brought to you by Darkstar\nPersonal Contribution by @patrickrickrickpatrick", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
-        await interaction.followup.send(embed=embed, view=BlueGuy(money=rounded_total_cost))
+        await interaction.followup.send(
+            embed=embed,
+            view=BlueGuy(category="infra", data=data)
+        )
         return
 
     # 🔹 Manual input fallback
