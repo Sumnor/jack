@@ -1857,7 +1857,7 @@ async def infra_upgrade_cost(
             description="\n".join(description_lines) + f"\n\n**Total estimated cost(rounded up to the nearest million): ${rounded_total_cost:,.0f}**"
         )
         embed.set_footer(text="Brought to you by Darkstar\nPersonal Contribution by @patrickrickrickpatrick", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
-        await interaction.followup.send(embed=embed, view=GrantView())
+        await interaction.followup.send(embed=embed, view=BlueGuy(money=rounded_total_cost))
         return
 
     # 🔹 Manual input fallback
@@ -1879,7 +1879,7 @@ async def infra_upgrade_cost(
         description=f"From `{current_infra}` to `{target_infra}` for `{city_amount}` city(ies)\nEstimated Cost: **${total_cost:,.0f}**"
     )
     embed.set_footer(text="Brought to you by Darkstar", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
-    await interaction.followup.send(embed=embed, view=GrantView())
+    await interaction.followup.send(embed=embed, view=BlueGuy(money=total_cost))
 
 
 list_of_em = [
