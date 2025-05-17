@@ -1435,15 +1435,40 @@ async def warchest(interaction: discord.Interaction, who: discord.Member):
             f"❌ Could not find nation ID for {who.mention}. They must be in the preset list."
         )
         return
+
     async def is_banker(interaction):
         return (
             any(role.name == "Government member" for role in interaction.user.roles)
             or str(interaction.user.id) == "1148678095176474678"
         )
+
     if not await is_banker(interaction):
         await interaction.followup.send("❌ You don't have the rights, lil bro.")
         return
+
     target_nation_id = user_nation_ids[target_user_name]
+
+    def get_completion_color(percent_complete: float) -> str:
+        if percent_complete >= 76:
+            return "🟢"
+        elif percent_complete >= 51:
+            return "🟡"
+        elif percent_complete >= 26:
+            return "🟠"
+        elif percent_complete >= 10:
+            return "🔴"
+        else:
+            return "⚫"
+
+    def format_missing(resource_name, missing_amount, current_amount):
+        total = missing_amount + current_amount
+        if total == 0:
+            percent_complete = 100
+        else:
+            percent_complete = (current_amount / total) * 100
+
+        color_emoji = get_completion_color(percent_complete)
+        return f"{round(missing_amount):,} {resource_name} missing {color_emoji} ({percent_complete:.0f}% complete)"
 
     try:
         # === API Call ===
@@ -1503,21 +1528,19 @@ async def warchest(interaction: discord.Interaction, who: discord.Member):
         all_n = max(0, nr_a_minus - aluminium)
         foo_n = max(0, nr_a_f_minus - food)
 
-        request_lines = []
-        if money_n > 0:
-            request_lines.append(f"Money: {round(money_n):,}")
-        if foo_n > 0:
-            request_lines.append(f"Food: {round(foo_n):,}")
-        if gas_n > 0:
-            request_lines.append(f"Gasoline: {round(gas_n):,}")
-        if mun_n > 0:
-            request_lines.append(f"Munitions: {round(mun_n):,}")
-        if ste_n > 0:
-            request_lines.append(f"Steel: {round(ste_n):,}")
-        if all_n > 0:
-            request_lines.append(f"Aluminum: {round(all_n):,}")
+        request_lines = [
+            format_missing("Money", money_n, money),
+            format_missing("Food", foo_n, food),
+            format_missing("Gasoline", gas_n, gasoline),
+            format_missing("Munitions", mun_n, munition),
+            format_missing("Steel", ste_n, steel),
+            format_missing("Aluminum", all_n, aluminium),
+        ]
 
-        description_text = "\n".join(request_lines) or "✅ Fully stocked warchest."
+        if all(missing == 0 for missing in [money_n, foo_n, gas_n, mun_n, ste_n, all_n]):
+            description_text = "0 material missing"
+        else:
+            description_text = "\n".join(request_lines)
 
         embed = discord.Embed(
             title="Warchest Audit",
@@ -1534,6 +1557,7 @@ async def warchest(interaction: discord.Interaction, who: discord.Member):
         await interaction.followup.send(embed=embed, view=MessageView(description_text))
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {e}")
+
 
 @bot.tree.command(name="request_city", description="Calculate cost for upgrading from current city to target city")
 @app_commands.describe(current_cities="Your current number of cities", target_cities="Target number of cities")
@@ -1791,7 +1815,7 @@ async def infra_upgrade_cost(
             color=discord.Color.gold(),
             description=f"Upgrade from {current} to {target_infra}\nEstimated Cost: **${cost:,.0f}**"
         )
-        embed.set_footer(text="Brought to you by Darkstar\nPersonal Contribution by `@patrickrickrickpatrick`", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
+        embed.set_footer(text="Brought to you by Darkstar\nPersonal Contribution by @patrickrickrickpatrick", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
         await interaction.followup.send(embed=embed)
         return
 
@@ -1819,8 +1843,8 @@ async def infra_upgrade_cost(
             color=discord.Color.green(),
             description="\n".join(description_lines) + f"\n\n**Total estimated cost(rounded up to the nearest million): ${rounded_total_cost:,.0f}**"
         )
-        embed.set_footer(text="Brought to you by Darkstar\nPersonal Contribution by `@patrickrickrickpatrick`", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
-        await interaction.followup.send(embed=embed)
+        embed.set_footer(text="Brought to you by Darkstar\nPersonal Contribution by @patrickrickrickpatrick", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
+        await interaction.followup.send(embed=embed, view=GrantView())
         return
 
     # 🔹 Manual input fallback
@@ -1842,7 +1866,7 @@ async def infra_upgrade_cost(
         description=f"From `{current_infra}` to `{target_infra}` for `{city_amount}` city(ies)\nEstimated Cost: **${total_cost:,.0f}**"
     )
     embed.set_footer(text="Brought to you by Darkstar", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
-    await interaction.followup.send(embed=embed)
+    await interaction.followup.send(embed=embed, view=GrantView())
 
 
 list_of_em = [
