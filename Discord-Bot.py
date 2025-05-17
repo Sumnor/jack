@@ -482,12 +482,21 @@ def get_sheet():
 cached_sheet_data = []  # global cache for sheet data
 
 def load_sheet_data():
-    global cached_sheet_data
+    global cached_users
     try:
         sheet = get_sheet()
-        cached_sheet_data = sheet.get_all_records()
+        records = sheet.get_all_records()
+        
+        cached_users = {
+            record['DiscordID']: {
+                'DiscordUsername': record['DiscordUsername'],
+                'NationID': record['NationID']
+            }
+            for record in records
+        }
+        
         print("Sheet data loaded/refreshed")
-        print(cached_sheet_data)
+        print(cached_users)
     except Exception as e:
         print(f"Failed to load sheet data: {e}")
 
@@ -620,15 +629,15 @@ async def simulation(interaction: discord.Interaction, nation_id: str, war_type:
     await interaction.response.defer()
     user_id = str(interaction.user.id)
 
-    global cached_sheet_data
-    records = cached_sheet_data
-    user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
+    global cached_users  # the dict version
     
-    if not user_row:
+    user_data = cached_users.get(interaction.user.id)  # user_id as int, no need to cast to string if keys are ints
+    
+    if not user_data:
         await interaction.followup.send("❌ You are not registered. Use `/register` first.")
         return
-
-        own_id = str(user_row.get("NationID", "")).strip()
+    
+    own_id = str(user_data.get("NationID", "")).strip()
 
         if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
@@ -749,15 +758,15 @@ async def own_nation(interaction: discord.Interaction):
 
     user_id = str(interaction.user.id)
     try:
-        global cached_sheet_data
-        records = cached_sheet_data
-        user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
+        global cached_users  # the dict version
         
-        if not user_row:
+        user_data = cached_users.get(interaction.user.id)  # user_id as int, no need to cast to string if keys are ints
+        
+        if not user_data:
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
             return
-
-        own_id = str(user_row.get("NationID", "")).strip()
+        
+        own_id = str(user_data.get("NationID", "")).strip()
 
         if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
@@ -818,16 +827,15 @@ async def resources(interaction: discord.Interaction):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
 
-    global cached_sheet_data
-    records = cached_sheet_data
-    user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
+    global cached_users  # the dict version
     
-    if not user_row:
+    user_data = cached_users.get(interaction.user.id)  # user_id as int, no need to cast to string if keys are ints
+    
+    if not user_data:
         await interaction.followup.send("❌ You are not registered. Use `/register` first.")
         return
-
-        own_id = str(user_row.get("NationID", "")).strip()
-
+    
+    own_id = str(user_data.get("NationID", "")).strip()
         if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
             return
@@ -910,15 +918,15 @@ async def request_grant(interaction: discord.Interaction, request: str, reason: 
     user_id = str(interaction.user.id)
 
     try:
-        global cached_sheet_data
-        records = cached_sheet_data
-        user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
-    
-        if not user_row:
+        global cached_users  # the dict version
+        
+        user_data = cached_users.get(interaction.user.id)  # user_id as int, no need to cast to string if keys are ints
+        
+        if not user_data:
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
             return
-
-        own_id = str(user_row.get("NationID", "")).strip()
+        
+        own_id = str(user_data.get("NationID", "")).strip()
 
         if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.", ephemeral=True)
@@ -1082,15 +1090,15 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
     commandscalled["_global"] += 1
     user_id = str(interaction.user.id)
     
-    global cached_sheet_data
-    records = cached_sheet_data
-    user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
+    global cached_users  # the dict version
     
-    if not user_row:
+    user_data = cached_users.get(interaction.user.id)  # user_id as int, no need to cast to string if keys are ints
+    
+    if not user_data:
         await interaction.followup.send("❌ You are not registered. Use `/register` first.")
         return
-
-        own_id = str(user_row.get("NationID", "")).strip()
+    
+    own_id = str(user_data.get("NationID", "")).strip()
 
         if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
@@ -1522,12 +1530,15 @@ async def request_city(interaction: discord.Interaction, current_cities: int, ta
     user_id = str(interaction.user.id)
     commandscalled[user_id] = commandscalled.get(user_id, 0) + 1
     try:
-        with open("Alliance.json", "r") as f:
-            data = json.load(f)
-            if user_id not in data:
-                await interaction.followup.send("❌ You are not registered. Use `/register` first.")
-                return
-        own_id = data[user_id]["NationID"]
+        global cached_users  # the dict version
+        
+        user_data = cached_users.get(interaction.user.id)  # user_id as int, no need to cast to string if keys are ints
+        
+        if not user_data:
+            await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+            return
+        
+        own_id = str(user_data.get("NationID", "")).strip()
     except Exception as e:
         print(f"Error checking registration: {e}")
         await interaction.followup.send("🚫 Error checking registration. Please try again later.")
@@ -1696,7 +1707,7 @@ def calculate_infra_cost_for_range(start_infra: int, end_infra: int) -> float:
     return total_cost
 
 
-@bot.tree.command(name="infra_upgrade_cost", description="Calculate infrastructure upgrade cost (single city, all cities, or custom)")
+@bot.tree.command(name="request_infra_cost", description="Calculate infrastructure upgrade cost (single city, all cities, or custom)")
 @app_commands.describe(
     target_infra="Target infrastructure level (max 2000)",
     current_infra="Your current infrastructure level (manual mode only)",
@@ -1721,14 +1732,15 @@ async def infra_upgrade_cost(
 
     # 🔹 Validate registration
     try:
-        global cached_sheet_data
-        user_row = next((row for row in cached_sheet_data if str(row.get("DiscordID", "")).strip() == user_id), None)
-
-        if not user_row:
+        global cached_users  # the dict version
+        
+        user_data = cached_users.get(interaction.user.id)  # user_id as int, no need to cast to string if keys are ints
+        
+        if not user_data:
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
             return
-
-        own_id = str(user_row.get("NationID", "")).strip()
+        
+        own_id = str(user_data.get("NationID", "")).strip()
         if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
             return
@@ -1946,14 +1958,16 @@ def get_materials(project_name):
 async def request_project(interaction: Interaction, project_name: str, tech_advancement: bool = False):
     user_id = str(interaction.user.id)
 
-    global cached_sheet_data
     try:
-        user_row = next((row for row in cached_sheet_data if str(row.get("DiscordID", "")).strip() == user_id), None)
-        if not user_row:
+        global cached_users  # the dict version
+        
+        user_data = cached_users.get(interaction.user.id)  # user_id as int, no need to cast to string if keys are ints
+        
+        if not user_data:
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
             return
-
-        own_id = str(user_row.get("NationID", "")).strip()
+        
+        own_id = str(user_data.get("NationID", "")).strip()
 
         if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
