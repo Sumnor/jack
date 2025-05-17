@@ -488,78 +488,72 @@ async def on_ready():
 
 
 @bot.tree.command(name="register", description="Register your Nation ID")
-@app_commands.describe(nation_id="Not the link, just the numbers (e.g., 365325)")
+@app_commands.describe(nation_id="Your Nation ID (numbers only, e.g., 365325)")
 async def register(interaction: discord.Interaction, nation_id: str):
     await interaction.response.defer()
 
-    # Validate nation_id format
     if not nation_id.isdigit():
-        await interaction.followup.send("❌ Please enter only the Nation ID number, not a link or invalid characters.")
+        await interaction.followup.send("❌ Please enter only the Nation ID number, not a link.")
         return
 
-    # Scrape nation page to verify Discord username
     url = f"https://politicsandwar.com/nation/id={nation_id}"
     session = requests.Session()
-    try:
-        response = session.get(url)
-        response.raise_for_status()
-    except requests.RequestException:
-        await interaction.followup.send("❌ Could not reach the nation page. Please try again later.")
-        return
-
+    response = session.get(url)
     soup = BeautifulSoup(response.text, 'html.parser')
+
     discord_label = soup.find(string="Discord Username:")
     if not discord_label:
         await interaction.followup.send("❌ Invalid Nation ID or the nation has no Discord username listed.")
         return
 
     try:
-        discord_ur = discord_label.parent.find_next_sibling("td").text.strip()
+        nation_discord_username = discord_label.parent.find_next_sibling("td").text.strip()
     except Exception:
-        await interaction.followup.send("❌ Could not parse nation information properly.")
+        await interaction.followup.send("❌ Could not parse nation information.")
         return
 
     user_discord_username = interaction.user.name
-    user_discord_id = str(interaction.user.id)
+    user_id = str(interaction.user.id)
 
-    # Debug print for checking usernames (remove/comment in prod)
-    print(f"Nation page Discord username: {discord_ur}")
-    print(f"Discord interaction username: {user_discord_username}")
-
-    if discord_ur.lower() != user_discord_username.lower():
+    if nation_discord_username != user_discord_username:
         await interaction.followup.send("❌ The Discord username on the nation page doesn't match your Discord username.")
         return
 
-    # Get the Google Sheet
     try:
         sheet = get_sheet()
     except Exception as e:
         await interaction.followup.send(f"❌ Failed to access registration sheet: {e}")
         return
 
-    records = sheet.get_all_records()
-
-    # Check for duplicates (case-insensitive username and nation ID)
-    normalized_username = user_discord_username.lower()
-    for row in records:
-        sheet_username = row.get("DiscordUsername", "").lower()
-        sheet_nation = row.get("NationID", "")
-
-        if sheet_username == normalized_username:
-            await interaction.followup.send("❌ Your Discord username is already registered.")
-            return
-        if sheet_nation == nation_id:
-            await interaction.followup.send("❌ This Nation ID is already registered by another user.")
-            return
-
-    # Append new registration
     try:
-        sheet.append_row([user_discord_username, user_discord_id, nation_id])
-    except Exception as e:
-        await interaction.followup.send(f"❌ Registration failed while saving data: {e}")
-        return
+        records = sheet.get_all_records()
 
-    await interaction.followup.send(f"✅ You're registered successfully with Nation ID `{nation_id}`!")
+        # Normalize keys and check for duplicates
+        def normalize_key(key):
+            return key.strip().lower()
+
+        normalized_username = user_discord_username.lower()
+        for row in records:
+            row_normalized = {normalize_key(k): str(v).strip() for k, v in row.items()}
+            sheet_username = row_normalized.get("discordusername", "").lower()
+            sheet_discord_id = row_normalized.get("discordid", "")
+            sheet_nation_id = row_normalized.get("nationid", "")
+
+            if sheet_username == normalized_username or sheet_discord_id == user_id:
+                await interaction.followup.send("❌ You are already registered.")
+                return
+
+            if sheet_nation_id == nation_id:
+                await interaction.followup.send("❌ This Nation ID is already registered by another user.")
+                return
+
+        # Append new registration
+        sheet.append_row([user_discord_username, user_id, nation_id])
+        await interaction.followup.send("✅ You're registered successfully!")
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Registration failed: {e}")
+
 
 
 
