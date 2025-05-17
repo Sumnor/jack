@@ -1679,8 +1679,6 @@ def calculate_infra_cost_for_range(start_infra: int, end_infra: int) -> float:
         (1900, 2000, 2_300_000)
     ]
 
-    # Apply 10% discount for CCE and Urbanization
-    tiers = [(low, high, cost * 0.9) for (low, high, cost) in tiers]
 
     total_cost = 0.0
     for low, high, cost_per_100 in tiers:
