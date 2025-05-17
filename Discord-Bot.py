@@ -825,89 +825,78 @@ RESOURCE_ABBR = {
 @bot.tree.command(name="resources", description="Resources of the nation")
 async def resources(interaction: discord.Interaction):
     await interaction.response.defer()
-    user_id = str(interaction.user.id)
+    user_id = interaction.user.id  # use as int if dict keys are ints
 
-    global cached_users  # the dict version
-    
-    user_data = cached_users.get(interaction.user.id)  # user_id as int, no need to cast to string if keys are ints
-    
+    global cached_users
+
+    user_data = cached_users.get(user_id)
+
     if not user_data:
         await interaction.followup.send("❌ You are not registered. Use `/register` first.")
         return
-    
+
     own_id = str(user_data.get("NationID", "")).strip()
     if not own_id:
-            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
-            return
+        await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+        return
 
-        
-        # === API Call ===
-        GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
-        query = f"""
-        {{
-          nations(id: [{own_id}]) {{
-            data {{
-              id
-              nation_name
-              num_cities
-              food
-              money
-              gasoline
-              munitions
-              steel
-              aluminum
-            }}
-          }}
+    # === API Call ===
+    GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
+    query = f"""
+    {{
+      nations(id: [{own_id}]) {{
+        data {{
+          id
+          nation_name
+          num_cities
+          food
+          money
+          gasoline
+          munitions
+          steel
+          aluminum
         }}
-        """
+      }}
+    }}
+    """
+    try:
         response = requests.post(
             GRAPHQL_URL,
             json={"query": query},
             headers={"Content-Type": "application/json"}
         )
         response_json = response.json()
+    except Exception as e:
+        await interaction.followup.send(f"❌ API call failed: {e}")
+        return
 
-        if "data" not in response_json or "nations" not in response_json["data"] or "data" not in response_json["data"]["nations"]:
-            await interaction.followup.send("❌ Failed to fetch nation data. Please check the Nation ID or try again later.")
-            return
+    if "data" not in response_json or "nations" not in response_json["data"] or "data" not in response_json["data"]["nations"]:
+        await interaction.followup.send("❌ Failed to fetch nation data. Please check the Nation ID or try again later.")
+        return
 
-        nation_data = response_json["data"]["nations"]["data"]
+    nation_data = response_json["data"]["nations"]["data"]
+    if not nation_data:
+        await interaction.followup.send("❌ Nation not found. Please try again.")
+        return
 
-        if not nation_data:
-            await interaction.followup.send("❌ Nation not found. Please try again.")
-            return
+    nation = nation_data[0]
 
-        nation = nation_data[0]
-        nation_name = nation["nation_name"]
-        cities = nation["num_cities"]
-        food = nation["food"]
-        money = nation["money"]
-        gasoline = nation["gasoline"]
-        munition = nation["munitions"]
-        steel = nation["steel"]
-        aluminium = nation["aluminum"]
+    # === Embed Response ===
+    embed = discord.Embed(
+        title=f"📦 Resources for {nation['nation_name']}",
+        color=discord.Color.blue(),
+        description=f"Cities: {nation['num_cities']}"
+    )
+    embed.add_field(name="💰 Money", value=f"${float(nation['money']):,.0f}", inline=True)
+    embed.add_field(name="🍖 Food", value=f"{float(nation['food']):,.0f}", inline=True)
+    embed.add_field(name="⛽ Gasoline", value=f"{float(nation['gasoline']):,.0f}", inline=True)
+    embed.add_field(name="💣 Munitions", value=f"{float(nation['munitions']):,.0f}", inline=True)
+    embed.add_field(name="🪨 Steel", value=f"{float(nation['steel']):,.0f}", inline=True)
+    embed.add_field(name="🛠️ Aluminum", value=f"{float(nation['aluminum']):,.0f}", inline=True)
 
-        if any(x is None for x in [cities, food, money, gasoline, munition, steel, aluminium]):
-            await interaction.followup.send("❌ Missing resource data. Please try again.")
-            return 
-
-        msg = (
-            f"**Cities:** {cities}\n"
-            f"**Food:** {round(food):,.0f}\n"
-            f"**Money:** {round(money):,.0f}\n"
-            f"**Gasoline:** {round(gasoline):,.0f}\n"
-            f"**Munition:** {round(munition):,.0f}\n"
-            f"**Steel:** {round(steel):,.0f}\n"
-            f"**Aluminum:** {round(aluminium):,.0f}\n"
-        )
-        embed = discord.Embed(
-            title= f"***Nation:***  {nation_name}",
-            color=discord.Color.dark_embed(),
-            description=(msg)
-        )
-        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-        embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
-        await interaction.followup.send(embed=embed)
+    image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+    embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
+    await interaction.followup.send(embed=embed)
 
 @bot.tree.command(name="request_grant", description="Request a grant from the alliance bank")
 @app_commands.describe(request="Details of your grant request", reason="Select the reason for your grant request.")
