@@ -1261,7 +1261,7 @@ user_nation_ids = {
     "hypercombatman": 236312,
     ".technostan": 665217,
     "wholelottawar": 635047,
-    "aeternite": 631277,
+    "aeternite": 619412,
     "speckgard": 631277,
     "fishpool0211": 510895,
     "micmou123": 277286,
