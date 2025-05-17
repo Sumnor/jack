@@ -1793,11 +1793,11 @@ async def infra_upgrade_cost(
             await interaction.followup.send("✅ All cities are already at or above the target infrastructure.")
             return
             
-        rounded_total_cost = math.ceil(total_cost / 1_000_000) * 1_000_000
+        rounded_total_cost = int(math.ceil(total_cost / 1_000_000.0)) * 1_000_000
         embed = discord.Embed(
             title=f"🛠️ Infrastructure Upgrade Cost for {len(description_lines)} City(ies)",
             color=discord.Color.green(),
-            description="\n".join(description_lines) + f"\n\n**Total estimated cost: ${rounded_total_cost:,.0f}**"
+            description="\n".join(description_lines) + f"\n\n**Total estimated cost(rounded up to the nearest million): ${rounded_total_cost:,.0f}**"
         )
         embed.set_footer(text="Brought to you by Darkstar", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
         await interaction.followup.send(embed=embed)
