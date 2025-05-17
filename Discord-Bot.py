@@ -1435,14 +1435,22 @@ async def help(interaction: discord.Interaction):
 async def warchest_audit(interaction: discord.Interaction, who: discord.Member):
     await interaction.response.defer()
 
-    discord_id_str = str(who.id)
-    if discord_id_str not in cached_users:
+    target_username = who.name.lower()
+
+    # Find cached discord ID by matching DiscordUsername from cached_users
+    target_discord_id = None
+    for discord_id, info in cached_users.items():
+        if info['DiscordUsername'].lower() == target_username:
+            target_discord_id = discord_id
+            break
+
+    if target_discord_id is None:
         await interaction.followup.send(
-            f"❌ Could not find Nation ID for {who.mention}. They must be registered in the Google Sheet."
+            f"❌ Could not find Nation ID for {who.mention}. "
+            "They must be registered in the Google Sheet with their Discord username."
         )
         return
 
-    # Permission check
     async def is_banker(interaction):
         return (
             any(role.name == "Government member" for role in interaction.user.roles)
@@ -1452,9 +1460,8 @@ async def warchest_audit(interaction: discord.Interaction, who: discord.Member):
         await interaction.followup.send("❌ You don't have the rights to perform this action.")
         return
 
-    target_nation_id = int(cached_users[discord_id_str]["NationID"])
+    target_nation_id = int(cached_users[target_discord_id]["NationID"])
 
-    # (Rest of your logic below remains unchanged)
     def get_completion_color(percent_complete: float) -> str:
         if percent_complete >= 76:
             return "🟢"
@@ -1475,10 +1482,7 @@ async def warchest_audit(interaction: discord.Interaction, who: discord.Member):
             percent_complete = (current_amount / total) * 100
 
         color_emoji = get_completion_color(percent_complete)
-        if missing_amount == 0:
-            return f"0 {resource_name} missing (🟢 100% complete)"
-        else:
-            return f"{round(missing_amount):,} {resource_name} missing {color_emoji} ({percent_complete:.0f}% complete)"
+        return f"{round(missing_amount):,} {resource_name} missing {color_emoji} ({percent_complete:.0f}% complete)"
 
     try:
         GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
@@ -1519,7 +1523,7 @@ async def warchest_audit(interaction: discord.Interaction, who: discord.Member):
         gasoline = nation["gasoline"]
         munition = nation["munitions"]
         steel = nation["steel"]
-        aluminum = nation["aluminum"]
+        aluminium = nation["aluminum"]
 
         city = int(cities)
         nr_a = 750
@@ -1534,7 +1538,7 @@ async def warchest_audit(interaction: discord.Interaction, who: discord.Member):
         gas_n = max(0, nr_a_minus - gasoline)
         mun_n = max(0, nr_a_minus - munition)
         ste_n = max(0, nr_a_minus - steel)
-        all_n = max(0, nr_a_minus - aluminum)
+        all_n = max(0, nr_a_minus - aluminium)
         foo_n = max(0, nr_a_f_minus - food)
 
         request_lines = [
@@ -1543,11 +1547,11 @@ async def warchest_audit(interaction: discord.Interaction, who: discord.Member):
             format_missing("Gasoline", gas_n, gasoline),
             format_missing("Munitions", mun_n, munition),
             format_missing("Steel", ste_n, steel),
-            format_missing("Aluminum", all_n, aluminum),
+            format_missing("Aluminum", all_n, aluminium),
         ]
 
         if all(missing == 0 for missing in [money_n, foo_n, gas_n, mun_n, ste_n, all_n]):
-            description_text = "0 material missing (🟢 100% complete)"
+            description_text = "0 material missing"
         else:
             description_text = "\n".join(request_lines)
 
@@ -1563,10 +1567,9 @@ async def warchest_audit(interaction: discord.Interaction, who: discord.Member):
         image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
         embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
 
-        await interaction.followup.send(embed=embed)
+        await interaction.followup.send(embed=embed, view=MessageView(description_text))
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {e}")
-
 
 
 @bot.tree.command(name="request_city", description="Calculate cost for upgrading from current city to target city")
