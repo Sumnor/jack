@@ -618,7 +618,7 @@ async def simulation(interaction: discord.Interaction, nation_id: str, war_type:
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
             return
 
-        own_id = user_row.get("NationID", "").strip()
+        own_id = str(user_row.get("NationID", "")).strip()
 
         if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
@@ -754,7 +754,7 @@ async def own_nation(interaction: discord.Interaction):
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
             return
 
-        own_id = user_row.get("NationID", "").strip()
+        own_id = str(user_row.get("NationID", "")).strip()
 
         if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
@@ -831,7 +831,7 @@ async def resources(interaction: discord.Interaction):
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
             return
 
-        own_id = user_row.get("NationID", "").strip()
+        own_id = str(user_row.get("NationID", "")).strip()
 
         if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
@@ -926,7 +926,7 @@ async def request_grant(interaction: discord.Interaction, request: str, reason: 
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
             return
 
-        own_id = user_row.get("NationID", "").strip()
+        own_id = str(user_row.get("NationID", "")).strip()
 
         if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
@@ -1105,7 +1105,7 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
             return
 
-        own_id = user_row.get("NationID", "").strip()
+        own_id = str(user_row.get("NationID", "")).strip()
 
         if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
@@ -1553,7 +1553,7 @@ async def request_infra_grant(interaction: Interaction, current_infra: int, targ
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
             return
 
-        own_id = user_row.get("NationID", "").strip()
+        own_id = str(user_row.get("NationID", "")).strip()
 
         if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
@@ -1659,7 +1659,7 @@ async def request_city(interaction: discord.Interaction, current_cities: int, ta
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
             return
 
-        own_id = user_row.get("NationID", "").strip()
+        own_id = str(user_row.get("NationID", "")).strip()
 
         if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
@@ -1899,7 +1899,7 @@ async def request_project(interaction: Interaction, project_name: str, tech_adva
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
             return
 
-        own_id = user_row.get("NationID", "").strip()
+        own_id = str(user_row.get("NationID", "")).strip()
 
         if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
