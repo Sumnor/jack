@@ -619,6 +619,7 @@ async def simulation(interaction: discord.Interaction, nation_id: str, war_type:
     await interaction.response.defer()
     user_id = str(interaction.user.id)
 
+try:
     global cached_sheet_data
     records = cached_sheet_data
     user_row = next((row for row in records if str(row.get("DiscordID", "")).strip() == user_id), None)
