@@ -990,6 +990,23 @@ async def request_grant(
     except Exception as e:
         await interaction.followup.send(f"❌ An unexpected error occurred: {e}", ephemeral=True)
 
+def parse_amount(amount):
+    if isinstance(amount, (int, float)):
+        return amount
+
+    amount = str(amount).lower().replace(",", "").strip()
+    match = re.match(r"^([\d\.]+)\s*(k|m|mil|million)?$", amount)
+    if not match:
+        raise ValueError(f"Invalid amount format: {amount}")
+
+    num, suffix = match.groups()
+    num = float(num)
+
+    if suffix in ("k",):
+        return int(num * 1_000)
+    elif suffix in ("m", "mil", "million"):
+        return int(num * 1_000_000)
+    return int(num)
 
 def parse_duration(duration):
     duration = duration.replace('PT', '')
