@@ -486,31 +486,36 @@ def get_sheet():
 
 cached_sheet_data = []  # global cache for sheet data
 
+cached_users = {}
+cached_sheet_data = []  # global cache for sheet data
+
 def load_sheet_data():
-    global cached_users
+    global cached_users, cached_sheet_data
     try:
         sheet = get_sheet()
         records = sheet.get_all_records()
-        
+        cached_sheet_data = records  # For later use if needed
+
         cached_users = {
-            record['DiscordID']: {
-                'DiscordUsername': record['DiscordUsername'],
-                'NationID': record['NationID']
+            str(record['DiscordID']): {
+                'DiscordUsername': str(record['DiscordUsername']).strip().lower(),
+                'NationID': str(record['NationID']).strip()
             }
             for record in records
         }
-        
+
         print("Sheet data loaded/refreshed")
         print(cached_users)
     except Exception as e:
         print(f"Failed to load sheet data: {e}")
+
 
 @bot.event
 async def on_ready():
     if not hasattr(bot, "persistent_views_added"):
         bot.add_view(GrantView())
         bot.persistent_views_added = True
-    load_sheet_data()  # load data once at startup
+    load_sheet_data()
     await bot.tree.sync()
     print(f'Logged in as {bot.user}')
 
@@ -535,13 +540,14 @@ async def register(interaction: discord.Interaction, nation_id: str):
         return
 
     try:
-        nation_discord_username = discord_label.parent.find_next_sibling("td").text.strip()
+        nation_discord_username = discord_label.parent.find_next_sibling("td").text.strip().lower()
     except Exception:
         await interaction.followup.send("❌ Could not parse nation information.")
         return
 
-    user_discord_username = str(interaction.user.name).strip()
+    user_discord_username = interaction.user.name.strip().lower()
     user_id = str(interaction.user.id)
+    nation_id_str = str(nation_id).strip()
 
     if nation_discord_username != user_discord_username:
         await interaction.followup.send(
@@ -549,45 +555,27 @@ async def register(interaction: discord.Interaction, nation_id: str):
         )
         return
 
-    try:
-        sheet = get_sheet()
-    except Exception as e:
-        await interaction.followup.send(f"❌ Failed to access registration sheet: {e}")
-        return
+    global cached_users
 
-    # Use the cached data to check registrations
-    global cached_sheet_data
-    cached_data = cached_sheet_data
-
-    user_discord_username_lower = user_discord_username.lower()
-    nation_id_str = str(nation_id)
-
-    for row in cached_data:
-        discord_name = str(row.get("DiscordUsername", "")).strip().lower()
-        discord_id = str(row.get("DiscordID", "")).strip()
-        registered_nation_id = str(row.get("NationID", "")).strip()
-
-        if user_discord_username_lower == discord_name:
-            await interaction.followup.send("❌ This Discord username is already registered.")
-            return
-
-        if user_id == discord_id:
+    for uid, data in cached_users.items():
+        if uid == user_id:
             await interaction.followup.send("❌ This Discord ID is already registered.")
             return
-
-        if nation_id_str == registered_nation_id:
+        if data['DiscordUsername'] == user_discord_username:
+            await interaction.followup.send("❌ This Discord username is already registered.")
+            return
+        if data['NationID'] == nation_id_str:
             await interaction.followup.send("❌ This Nation ID is already registered.")
             return
 
     try:
-        sheet.append_row([user_discord_username, user_id, nation_id])
+        sheet = get_sheet()
+        sheet.append_row([interaction.user.name, user_id, nation_id])
     except Exception as e:
         await interaction.followup.send(f"❌ Failed to write registration: {e}")
         return
 
-    # Refresh cache after successful registration
     load_sheet_data()
-
     await interaction.followup.send("✅ You're registered successfully!")
 
 
