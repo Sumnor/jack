@@ -621,10 +621,9 @@ async def register_manual(interaction: discord.Interaction, nation_id: str, disc
 async def simulation(interaction: discord.Interaction, nation_id: str, war_type: str):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
-
     global cached_users  # the dict version
     
-    user_data = cached_users.get(interaction.user.id)  # user_id as int, no need to cast to string if keys are ints
+    user_data = cached_users.get(user_id)  # user_id as int, no need to cast to string if keys are ints
     
     if not user_data:
         await interaction.followup.send("❌ You are not registered. Use `/register` first.")
