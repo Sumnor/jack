@@ -923,26 +923,26 @@ async def resources(interaction: discord.Interaction):
 async def request_grant(
     interaction: discord.Interaction,
     reason: app_commands.Choice[str],
-    uranium: int = 0,
-    coal: int = 0,
-    oil: int = 0,
-    bauxite: int = 0,
-    lead: int = 0,
-    iron: int = 0,
-    steel: int = 0,
-    aluminum: int = 0,
-    gasoline: int = 0,
-    money: int = 0,
-    food: int = 0,
-    munitions: int = 0,
+    uranium: str = "0",
+    coal: str = "0",
+    oil: str = "0",
+    bauxite: str = "0",
+    lead: str = "0",
+    iron: str = "0",
+    steel: str = "0",
+    aluminum: str = "0",
+    gasoline: str = "0",
+    money: str = "0",
+    food: str = "0",
+    munitions: str = "0",
 ):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
 
     try:
         global cached_users
+        user_data = cached_users.get(user_id)
 
-        user_data = cached_users.get(interaction.user.id)
         if not user_data:
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
             return
@@ -955,8 +955,8 @@ async def request_grant(
         nation_data = get_military(own_id)
         nation_name = nation_data[0]
 
-        # Build resource list
-        resources = {
+        # Parse input values
+        raw_inputs = {
             "Uranium": uranium,
             "Coal": coal,
             "Oil": oil,
@@ -971,13 +971,13 @@ async def request_grant(
             "Munitions": munitions,
         }
 
-        # Filter out 0 amounts so we only show requested resources
+        resources = {k: parse_amount(v) for k, v in raw_inputs.items()}
         requested_resources = {k: v for k, v in resources.items() if v > 0}
+
         if not requested_resources:
             await interaction.followup.send("❌ You must request at least one resource.", ephemeral=True)
             return
 
-        # Format lines with commas for thousands
         formatted_lines = [
             f"{resource}: {amount:,}".replace(",", ".")
             for resource, amount in requested_resources.items()
