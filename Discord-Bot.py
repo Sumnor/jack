@@ -1807,7 +1807,9 @@ async def infra_upgrade_cost(
         await interaction.followup.send("❌ Could not retrieve city data for your nation.")
         return
 
-    # 🔹 Specific city calculation
+    nation_data = get_resources(own_id)
+    nation_name = nation_data[0]
+    nation_id = own_id
     if city_name:
         city = next((c for c in city_data if c["name"].lower() == city_name.lower()), None)
         if not city:
