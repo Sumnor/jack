@@ -1771,8 +1771,8 @@ def calculate_total_infra_cost(start_infra: int, end_infra: int, num_cities: int
 async def infra_upgrade_cost(
     interaction: discord.Interaction,
     target_infra: int,
-    current_infra: int = None,
-    city_amount: int = None,
+    current_infra: int = 0,
+    city_amount: int = 1,
     auto_calculate: bool = True,
     city_name: str = None
 ):
@@ -1858,6 +1858,7 @@ async def infra_upgrade_cost(
             cost = calculate_infra_cost_for_range(current, target_infra)
             total_cost += cost
             description_lines.append(f"**{name}:** ${cost:,.0f}")
+            city_amount += 1
 
         if not description_lines:
             await interaction.followup.send("✅ All cities are already at or above the target infrastructure.")
