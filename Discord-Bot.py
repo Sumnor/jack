@@ -24,7 +24,7 @@ from discord import app_commands, Interaction
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
-bot_ey = os.getenv("bot_key")
+bot_key = os.getenv("bot_key")
 API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
