@@ -15,23 +15,40 @@ import random
 import os
 import json
 import re
+from datetime import timezone
 import io
 from discord import File
 from io import StringIO
+import matplotlib.pyplot as plt
+import asyncio
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import discord
 from discord import app_commands, Interaction
 import asyncio
+from matplotlib.ticker import MaxNLocator, FuncFormatter
+from datetime import datetime, timedelta, timezone
+import matplotlib.dates as mdates
+from discord.ext import tasks
+from datetime import datetime, timezone
+from collections import defaultdict
 
+cached_users = {}
+cached_sheet_data = []
 
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
-bot_ky = os.getenv("bot_key")
+bot_key = os.getenv("bot_key")
 API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
+snapshots_file = "snapshots.json"
+money_snapshots = []
+
+if os.path.exists(snapshots_file):
+    with open(snapshots_file, "r") as f:
+        money_snapshots = json.load(f)
 
 UNIT_PRICES = {
     "soldiers": 5,
@@ -464,47 +481,52 @@ def calculation(name, a, b, policy, war_type):
         "loss_value": round(loss_value, 2)
     }
 
-def get_sheet():
-    import json
-    from oauth2client.service_account import ServiceAccountCredentials
-    import gspread
-    import os
 
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds_json_str = os.environ.get("GOOGLE_CREDENTIALS")
-    if not creds_json_str:
-        raise RuntimeError("Environment variable 'GOOGLE_CREDENTIALS' not found.")
-    
-    # Debug print (remove in production)
-    print("Raw GOOGLE_CREDENTIALS:", creds_json_str[:100], "...")  # Show start of string
+# Load environment variables earl
 
+def get_credentials():
+    creds_str = os.environ.get("GOOGLE_CREDENTIALS")
+    if not creds_str:
+        raise RuntimeError("GOOGLE_CREDENTIALS not found in environment.")
     try:
-        # If creds_json_str is a JSON string, parse it to dict
-        if isinstance(creds_json_str, str):
-            creds_json = json.loads(creds_json_str)
-        else:
-            creds_json = creds_json_str
-    except json.JSONDecodeError as e:
-        raise RuntimeError(f"Failed to parse GOOGLE_CREDENTIALS as JSON: {e}")
+        creds_json = json.loads(creds_str)
+        return creds_json
+    except Exception as e:
+        raise RuntimeError(f"Failed to load GOOGLE_CREDENTIALS: {e}")
 
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
+def get_sheet():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(get_credentials(), scope)
     client = gspread.authorize(creds)
-    sheet = client.open("Registrations").sheet1
-    return sheet
+    return client.open("Registrations").sheet1
 
+def get_alliance_sheet():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(get_credentials(), scope)
+    client = gspread.authorize(creds)
+    return client.open("Alliance Net").sheet1
 
-cached_sheet_data = []  # global cache for sheet data
+def save_to_alliance_net(data_row):
+    try:
+        sheet = get_alliance_sheet()
+        sheet.append_row(data_row)
+        print("✅ Data saved to Alliance Net")
+    except Exception as e:
+        print(f"❌ Failed to save to Alliance Net: {e}")
 
-cached_users = {}
-cached_sheet_data = []  # global cache for sheet data
+import traceback
 
 def load_sheet_data():
     global cached_users, cached_sheet_data
     try:
         sheet = get_sheet()
+        print(f"Sheet object: {sheet}")
+        print(f"Sheet title: {sheet.title}")
+        
         records = sheet.get_all_records()
-        cached_sheet_data = records  # For later use if needed
-
+        print(f"Records fetched: {len(records)}")
+        
+        cached_sheet_data = records
         cached_users = {
             str(record['DiscordID']): {
                 'DiscordUsername': str(record['DiscordUsername']).strip().lower(),
@@ -512,211 +534,158 @@ def load_sheet_data():
             }
             for record in records
         }
-
-        print("Sheet data loaded/refreshed")
-        print(cached_users)
+        print(f"✅ Loaded {len(cached_users)} users from sheet.")
     except Exception as e:
-        print(f"Failed to load sheet data: {e}")
+        print(f"❌ Failed to load sheet data: {e}")
+        print(traceback.format_exc())
 
+@tasks.loop(minutes=60)
+async def hourly_snapshot():
+    try:
+        totals = {
+            "money": 0,
+            "food": 0,
+            "gasoline": 0,
+            "munitions": 0,
+            "steel": 0,
+            "aluminum": 0,
+            "bauxite": 0,
+            "lead": 0,
+            "iron": 0,
+            "oil": 0,
+            "uranium": 0,
+            "num_cities": 0,
+        }
+        processed_nations = 0
+        failed = 0
+        GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
+        # Get resource prices
+        prices_query = """
+        {
+          top_trade_info {
+            resources {
+              resource
+              average_price
+            }
+          }
+        }
+        """
+        try:
+            prices_resp = requests.post(GRAPHQL_URL, json={"query": prices_query}, headers={"Content-Type": "application/json"})
+            prices_resp.raise_for_status()
+            prices_data = prices_resp.json()
+            resource_prices = {item["resource"]: float(item["average_price"]) for item in prices_data["data"]["top_trade_info"]["resources"]}
+            print(f"✅ Fetched resource prices: {resource_prices}")
+        except Exception as e:
+            print(f"❌ Error fetching resource prices: {e}")
+            print(traceback.format_exc())
+            resource_prices = {}
+
+        for user_id, user_data in cached_users.items():
+            own_id = str(user_data.get("NationID", "")).strip()
+            if not own_id:
+                failed += 1
+                continue
+
+            try:
+                (
+                    nation_name,
+                    num_cities,
+                    food,
+                    money,
+                    gasoline,
+                    munitions,
+                    steel,
+                    aluminum,
+                    bauxite,
+                    lead,
+                    iron,
+                    oil,
+                    uranium
+                ) = get_resources(own_id)
+
+                totals["money"] += money
+                totals["food"] += food
+                totals["gasoline"] += gasoline
+                totals["munitions"] += munitions
+                totals["steel"] += steel
+                totals["aluminum"] += aluminum
+                totals["bauxite"] += bauxite
+                totals["lead"] += lead
+                totals["iron"] += iron
+                totals["oil"] += oil
+                totals["uranium"] += uranium
+                totals["num_cities"] += num_cities
+                processed_nations += 1
+
+                await asyncio.sleep(1)  # API rate limit friendly
+            except Exception as e:
+                failed += 1
+                print(f"❌ Failed processing nation {own_id}: {e}")
+                print(traceback.format_exc())
+                continue
+
+        total_sell_value = totals["money"]
+        for resource in ["food", "gasoline", "munitions", "steel", "aluminum", "bauxite", "lead", "iron", "oil", "uranium"]:
+            amount = totals.get(resource, 0)
+            price = resource_prices.get(resource, 0)
+            total_sell_value += amount * price
+
+        timestamp = datetime.now(timezone.utc).isoformat()
+        money_snapshots.append({"time": timestamp, "money": total_sell_value})
+
+        try:
+            save_to_alliance_net([timestamp, total_sell_value])
+        except Exception as e:
+            print(f"❌ Failed to save snapshot to Alliance Net: {e}")
+            print(traceback.format_exc())
+
+        with open(snapshots_file, "w") as f:
+            json.dump(money_snapshots[-240:], f)
+
+        # Plot graph
+        try:
+            times = [datetime.fromisoformat(entry["time"]) for entry in money_snapshots]
+            totals_money = [entry.get("money", 0) for entry in money_snapshots]
+
+            plt.figure(figsize=(10, 5))
+            plt.axhline(0, color='black', linestyle='--', linewidth=0.5)
+            plt.plot(times, totals_money, color='magenta', marker='o')
+            plt.xticks(rotation=45)
+            plt.ylabel("Total Money ($)")
+            plt.xlabel("Time")
+            plt.title("Alliance Wealth Over Time")
+            plt.grid(True)
+            plt.tight_layout()
+            plt.savefig("money_trend_hourly.png")
+            plt.close()
+            print("✅ Saved hourly money trend graph")
+        except Exception as e:
+            print(f"❌ Failed to generate hourly money trend graph: {e}")
+            print(traceback.format_exc())
+
+        print(f"🕒 Hourly snapshot completed: Processed {processed_nations}, Failed {failed}")
+    
+    except Exception as e:
+        print(f"❌ Unexpected error in hourly_snapshot task: {e}")
+        print(traceback.format_exc())
+
+@hourly_snapshot.before_loop
+async def before_hourly():
+    print("Waiting for bot to be ready before starting hourly snapshots...")
+    await bot.wait_until_ready()
 
 @bot.event
 async def on_ready():
-    if not hasattr(bot, "persistent_views_added"):
-        bot.add_view(GrantView())
-        bot.persistent_views_added = True
+    print("Bot is ready. Loading sheet data...")
     load_sheet_data()
+    print("Starting hourly snapshot task...")
+    if not hourly_snapshot.is_running():
+        hourly_snapshot.start()
     await bot.tree.sync()
-    print(f'Logged in as {bot.user}')
+    print(f"✅ Logged in as {bot.user}")
 
-@bot.tree.command(name="res_in_m_for_a", description="Get total Alliance Members' resources and money")
-async def res_in_m_for_a(interaction: discord.Interaction):
-    await interaction.response.defer()
-    global cached_users
 
-    totals = {
-        "money": 0,
-        "food": 0,
-        "gasoline": 0,
-        "munitions": 0,
-        "steel": 0,
-        "aluminum": 0,
-        "bauxite": 0,
-        "lead": 0,
-        "iron": 0,
-        "oil": 0,
-        "uranium": 0,
-        "num_cities": 0,
-    }
-
-    processed_nations = 0
-    failed = 0
-
-    for user_id, user_data in cached_users.items():
-        own_id = str(user_data.get("NationID", "")).strip()
-        if not own_id:
-            failed += 1
-            continue
-
-        try:
-            (
-                nation_name,
-                num_cities,
-                food,
-                money,
-                gasoline,
-                munitions,
-                steel,
-                aluminum,
-                bauxite,
-                lead,
-                iron,
-                oil,
-                uranium
-            ) = get_resources(own_id)
-
-            totals["money"] += money
-            totals["food"] += food
-            totals["gasoline"] += gasoline
-            totals["munitions"] += munitions
-            totals["steel"] += steel
-            totals["aluminum"] += aluminum
-            totals["bauxite"] += bauxite
-            totals["lead"] += lead
-            totals["iron"] += iron
-            totals["oil"] += oil
-            totals["uranium"] += uranium
-            totals["num_cities"] += num_cities
-            processed_nations += 1
-
-            # Be gentle on the API — 1 second delay between calls
-            await asyncio.sleep(1)
-        except Exception:
-            failed += 1
-            continue
-
-    embed = discord.Embed(
-        title="Alliance Total Resources & Money",
-        colour=discord.Colour.dark_magenta()
-    )
-
-    embed.description = (
-        f"🧮 Nations counted: **{processed_nations}**\n"
-        f"⚠️ Failed to retrieve data for: **{failed}**\n\n"
-        f"🌆 Total Cities: **{totals['num_cities']:,}**\n"
-        f"💰 Money: **${totals['money']:,}**\n"
-        f"🍞 Food: **{totals['food']:,}**\n"
-        f"⛽ Gasoline: **{totals['gasoline']:,}**\n"
-        f"💣 Munitions: **{totals['munitions']:,}**\n"
-        f"🏗️ Steel: **{totals['steel']:,}**\n"
-        f"🧱 Aluminum: **{totals['aluminum']:,}**\n"
-        f"🪨 Bauxite: **{totals['bauxite']:,}**\n"
-        f"🧪 Lead: **{totals['lead']:,}**\n"
-        f"⚙️ Iron: **{totals['iron']:,}**\n"
-        f"🛢️ Oil: **{totals['oil']:,}**\n"
-        f"☢️ Uranium: **{totals['uranium']:,}**"
-    )
-
-    await interaction.followup.send(embed=embed)
-
-@bot.tree.command(name="res_dump", description="Dump all Alliance Members' resources and money into a .txt file")
-async def res_dump(interaction: discord.Interaction):
-    await interaction.response.defer()
-    global cached_users
-
-    lines = []
-    totals = {
-        "money": 0,
-        "food": 0,
-        "gasoline": 0,
-        "munitions": 0,
-        "steel": 0,
-        "aluminum": 0,
-        "bauxite": 0,
-        "lead": 0,
-        "iron": 0,
-        "oil": 0,
-        "uranium": 0,
-        "num_cities": 0,
-    }
-
-    processed_nations = 0
-    failed = 0
-
-    for user_id, user_data in cached_users.items():
-        own_id = str(user_data.get("NationID", "")).strip()
-        if not own_id:
-            lines.append(f"[{user_id}] ❌ Missing Nation ID")
-            failed += 1
-            continue
-
-        try:
-            (
-                nation_name,
-                num_cities,
-                food,
-                money,
-                gasoline,
-                munitions,
-                steel,
-                aluminum,
-                bauxite,
-                lead,
-                iron,
-                oil,
-                uranium
-            ) = get_resources(own_id)
-
-            lines.append(
-                f"{nation_name} (Cities: {num_cities})\n"
-                f"Money: ${money:,}\n"
-                f"Food: {food:,}, Gasoline: {gasoline:,}, Munitions: {munitions:,}\n"
-                f"Steel: {steel:,}, Aluminum: {aluminum:,}, Bauxite: {bauxite:,}\n"
-                f"Lead: {lead:,}, Iron: {iron:,}, Oil: {oil:,}, Uranium: {uranium:,}\n"
-                f"{'-'*40}"
-            )
-
-            # Totals
-            totals["money"] += money
-            totals["food"] += food
-            totals["gasoline"] += gasoline
-            totals["munitions"] += munitions
-            totals["steel"] += steel
-            totals["aluminum"] += aluminum
-            totals["bauxite"] += bauxite
-            totals["lead"] += lead
-            totals["iron"] += iron
-            totals["oil"] += oil
-            totals["uranium"] += uranium
-            totals["num_cities"] += num_cities
-            processed_nations += 1
-
-            await asyncio.sleep(1)  # Respect API limits
-
-        except Exception as e:
-            lines.append(f"[{own_id}] ❌ Failed to fetch: {e}")
-            failed += 1
-            continue
-
-    # Add totals at the bottom
-    lines.append("\nTOTALS\n" + "=" * 40)
-    lines.append(f"Nations: {processed_nations}, Cities: {totals['num_cities']}")
-    lines.append(f"Money: ${totals['money']:,}")
-    lines.append(f"Food: {totals['food']:,}, Gasoline: {totals['gasoline']:,}, Munitions: {totals['munitions']:,}")
-    lines.append(f"Steel: {totals['steel']:,}, Aluminum: {totals['aluminum']:,}, Bauxite: {totals['bauxite']:,}")
-    lines.append(f"Lead: {totals['lead']:,}, Iron: {totals['iron']:,}, Oil: {totals['oil']:,}, Uranium: {totals['uranium']:,}")
-
-    # Write to a temp file
-    filename = "resource_dump.txt"
-    with open(filename, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
-
-    # Send the file
-    await interaction.followup.send(
-        content="📄 Full Alliance Resource Dump:",
-        file=discord.File(filename)
-    )
-
-    
 @bot.tree.command(name="register", description="Register your Nation ID")
 @app_commands.describe(nation_id="Your Nation ID (numbers only, e.g., 365325)")
 async def register(interaction: discord.Interaction, nation_id: str):
@@ -774,6 +743,246 @@ async def register(interaction: discord.Interaction, nation_id: str):
 
     load_sheet_data()
     await interaction.followup.send("✅ You're registered successfully!")
+
+@bot.tree.command(name="res_in_m_for_a", description="Get total Alliance Members' resources and money")
+@app_commands.describe(
+    mode="Group data by time unit",
+    scale="Scale for Y-axis (Millions or Billions)"
+)
+@app_commands.choices(
+    mode=[
+        app_commands.Choice(name="Hourly", value="hours"),
+        app_commands.Choice(name="Daily", value="days")
+    ],
+    scale=[
+        app_commands.Choice(name="Millions", value="millions"),
+        app_commands.Choice(name="Billions", value="billions")
+    ]
+)
+async def res_in_m_for_a(
+    interaction: discord.Interaction,
+    mode: app_commands.Choice[str] = None,
+    scale: app_commands.Choice[str] = None
+):
+
+    await interaction.response.defer(thinking=True)
+    global cached_users, money_snapshots  # assuming this exists globally
+
+    totals = {
+        "money": 0,
+        "food": 0,
+        "gasoline": 0,
+        "munitions": 0,
+        "steel": 0,
+        "aluminum": 0,
+        "bauxite": 0,
+        "lead": 0,
+        "iron": 0,
+        "oil": 0,
+        "uranium": 0,
+        "num_cities": 0,
+    }
+
+    processed_nations = 0
+    failed = 0
+
+    GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
+    prices_query = """
+    {
+      top_trade_info {
+        resources {
+          resource
+          average_price
+        }
+      }
+    }
+    """
+    resource_prices = {}
+    try:
+        response = requests.post(
+            GRAPHQL_URL,
+            json={"query": prices_query},
+            headers={"Content-Type": "application/json"}
+        )
+        data = response.json()
+        for item in data["data"]["top_trade_info"]["resources"]:
+            resource_prices[item["resource"]] = float(item["average_price"])
+    except Exception as e:
+        print(f"Error fetching resource prices: {e}")
+
+    for user_id, user_data in cached_users.items():
+        own_id = str(user_data.get("NationID", "")).strip()
+        if not own_id:
+            failed += 1
+            continue
+
+        try:
+            result = get_resources(own_id)
+            if len(result) != 13:
+                raise ValueError("Invalid result length from get_resources")
+
+            (
+                nation_name,
+                num_cities,
+                food,
+                money,
+                gasoline,
+                munitions,
+                steel,
+                aluminum,
+                bauxite,
+                lead,
+                iron,
+                oil,
+                uranium
+            ) = result
+
+            totals["money"] += money
+            totals["food"] += food
+            totals["gasoline"] += gasoline
+            totals["munitions"] += munitions
+            totals["steel"] += steel
+            totals["aluminum"] += aluminum
+            totals["bauxite"] += bauxite
+            totals["lead"] += lead
+            totals["iron"] += iron
+            totals["oil"] += oil
+            totals["uranium"] += uranium
+            totals["num_cities"] += num_cities
+            processed_nations += 1
+
+            await asyncio.sleep(3)
+
+        except Exception as e:
+            print(f"Failed processing nation {own_id}: {e}")
+            failed += 1
+            continue
+
+    # Calculate theoretical total value
+    total_sell_value = totals["money"]
+    for resource in [
+        "food", "gasoline", "munitions", "steel", "aluminum",
+        "bauxite", "lead", "iron", "oil", "uranium"
+    ]:
+        amount = totals.get(resource, 0)
+        price = resource_prices.get(resource, 0)
+        total_sell_value += amount * price
+
+    embed = discord.Embed(
+        title="Alliance Total Resources & Money",
+        colour=discord.Colour.dark_magenta()
+    )
+
+    embed.description = (
+        f"🧮 Nations counted: **{processed_nations}**\n"
+        f"⚠️ Failed to retrieve data for: **{failed}**\n\n"
+        f"🌆 Total Cities: **{totals['num_cities']:,}**\n"
+        f"💰 Money: **${totals['money']:,}**\n"
+        f"🍞 Food: **{totals['food']:,}**\n"
+        f"⛽ Gasoline: **{totals['gasoline']:,}**\n"
+        f"💣 Munitions: **{totals['munitions']:,}**\n"
+        f"🏗️ Steel: **{totals['steel']:,}**\n"
+        f"🧱 Aluminum: **{totals['aluminum']:,}**\n"
+        f"🪨 Bauxite: **{totals['bauxite']:,}**\n"
+        f"🧪 Lead: **{totals['lead']:,}**\n"
+        f"⚙️ Iron: **{totals['iron']:,}**\n"
+        f"🛢️ Oil: **{totals['oil']:,}**\n"
+        f"☢️ Uranium: **{totals['uranium']:,}**\n\n"
+        f"💸 Total Money if all was sold: **${total_sell_value:,.2f}**"
+    )
+
+        # Only plot graph if snapshot data exists
+    try:
+        if money_snapshots:
+            from collections import defaultdict
+            import matplotlib.pyplot as plt
+            import matplotlib.dates as mdates
+            from datetime import datetime, timezone, timedelta
+            from matplotlib.ticker import FuncFormatter, MaxNLocator
+
+            # Select scale
+            value_scale = scale.value if scale else "billions"
+            if value_scale == "billions":
+                divisor = 1_000_000_000
+                label_suffix = "B"
+            elif value_scale == "millions":
+                divisor = 1_000_000
+                label_suffix = "M"
+            else:
+                divisor = 1
+                label_suffix = ""
+
+            def format_large_ticks(x, _):
+                return f'{x / divisor:,.0f}{label_suffix}'
+
+            # Aggregate data
+            data = defaultdict(list)
+            for entry in money_snapshots:
+                ts = datetime.fromisoformat(entry["time"]).replace(tzinfo=timezone.utc)
+                if mode and mode.value == "days":
+                    key = ts.date()
+                else:
+                    key = ts.replace(minute=0, second=0, microsecond=0)
+                data[key].append(entry.get("total", 0))
+
+            # Generate full time range
+            if mode and mode.value == "days":
+                start = min(data)
+                end = max(data)
+                full_range = [start + timedelta(days=i) for i in range((end - start).days + 1)]
+            else:
+                base_date = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+                full_range = [base_date + timedelta(hours=h) for h in range(0, 24)]
+
+            # Fill in data
+            full_data = []
+            for t in full_range:
+                values = data.get(t, [0])
+                avg = sum(values) / len(values) if values else 0
+                full_data.append((t, avg))
+
+            times, totals_list = zip(*full_data)
+            scaled_totals = [x / divisor for x in totals_list]
+
+            # Plotting
+            plt.figure(figsize=(10, 5))
+            plt.plot(times, scaled_totals, color='magenta', marker='o')
+            plt.axhline(0, color='black', linestyle='--', linewidth=0.5)
+            plt.ylabel(f"Total Money ({label_suffix})")
+            plt.xlabel("Time")
+            plt.title("Alliance Wealth Over Time")
+            plt.grid(True)
+
+            ax = plt.gca()
+            ax.yaxis.set_major_locator(MaxNLocator(nbins='auto', prune=None))
+            ax.yaxis.set_major_formatter(FuncFormatter(format_large_ticks))
+
+            if mode and mode.value == "days":
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))
+                ax.xaxis.set_major_locator(mdates.DayLocator(interval=1))
+            else:
+                ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+                ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, 2)))
+
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+            graph_file = "money_trend.png"
+            plt.savefig(graph_file)
+            plt.close()
+
+            await interaction.followup.send(embed=embed, file=discord.File(graph_file))
+        else:
+            await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        print(f"Error during plotting or sending: {e}")
+        try:
+            await interaction.followup.send(embed=embed)
+        except Exception as e:
+            print(f"Failed to send fallback embed: {e}")
+
+
+
 
 
 '''@bot.tree.command(name="register_manual", description="Manually register a nation with a given Discord username (no validation)")
