@@ -15,16 +15,20 @@ import random
 import os
 import json
 import re
+import io
+from discord import File
+from io import StringIO
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import discord
 from discord import app_commands, Interaction
+import asyncio
 
 
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
-bot_ky = os.getenv("bot_key")
+bot_key = os.getenv("Key")
 API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
@@ -387,7 +391,12 @@ def get_resources(nation_id):
                 row.get("gasoline", 0),
                 row.get("munitions", 0),
                 row.get("steel", 0),
-                row.get("aluminum", 0)
+                row.get("aluminum", 0),
+                row.get("bauxite", 0),
+                row.get("lead", 0),
+                row.get("iron", 0),
+                row.get("oil", 0),
+                row.get("uranium", 0),
             )
         except IndexError:
             return None
@@ -519,7 +528,195 @@ async def on_ready():
     await bot.tree.sync()
     print(f'Logged in as {bot.user}')
 
+@bot.tree.command(name="res_in_m_for_a", description="Get total Alliance Members' resources and money")
+async def res_in_m_for_a(interaction: discord.Interaction):
+    await interaction.response.defer()
+    global cached_users
 
+    totals = {
+        "money": 0,
+        "food": 0,
+        "gasoline": 0,
+        "munitions": 0,
+        "steel": 0,
+        "aluminum": 0,
+        "bauxite": 0,
+        "lead": 0,
+        "iron": 0,
+        "oil": 0,
+        "uranium": 0,
+        "num_cities": 0,
+    }
+
+    processed_nations = 0
+    failed = 0
+
+    for user_id, user_data in cached_users.items():
+        own_id = str(user_data.get("NationID", "")).strip()
+        if not own_id:
+            failed += 1
+            continue
+
+        try:
+            (
+                nation_name,
+                num_cities,
+                food,
+                money,
+                gasoline,
+                munitions,
+                steel,
+                aluminum,
+                bauxite,
+                lead,
+                iron,
+                oil,
+                uranium
+            ) = get_resources(own_id)
+
+            totals["money"] += money
+            totals["food"] += food
+            totals["gasoline"] += gasoline
+            totals["munitions"] += munitions
+            totals["steel"] += steel
+            totals["aluminum"] += aluminum
+            totals["bauxite"] += bauxite
+            totals["lead"] += lead
+            totals["iron"] += iron
+            totals["oil"] += oil
+            totals["uranium"] += uranium
+            totals["num_cities"] += num_cities
+            processed_nations += 1
+
+            # Be gentle on the API — 1 second delay between calls
+            await asyncio.sleep(1)
+        except Exception:
+            failed += 1
+            continue
+
+    embed = discord.Embed(
+        title="Alliance Total Resources & Money",
+        colour=discord.Colour.dark_magenta()
+    )
+
+    embed.description = (
+        f"🧮 Nations counted: **{processed_nations}**\n"
+        f"⚠️ Failed to retrieve data for: **{failed}**\n\n"
+        f"🌆 Total Cities: **{totals['num_cities']:,}**\n"
+        f"💰 Money: **${totals['money']:,}**\n"
+        f"🍞 Food: **{totals['food']:,}**\n"
+        f"⛽ Gasoline: **{totals['gasoline']:,}**\n"
+        f"💣 Munitions: **{totals['munitions']:,}**\n"
+        f"🏗️ Steel: **{totals['steel']:,}**\n"
+        f"🧱 Aluminum: **{totals['aluminum']:,}**\n"
+        f"🪨 Bauxite: **{totals['bauxite']:,}**\n"
+        f"🧪 Lead: **{totals['lead']:,}**\n"
+        f"⚙️ Iron: **{totals['iron']:,}**\n"
+        f"🛢️ Oil: **{totals['oil']:,}**\n"
+        f"☢️ Uranium: **{totals['uranium']:,}**"
+    )
+
+    await interaction.followup.send(embed=embed)
+
+@bot.tree.command(name="res_dump", description="Dump all Alliance Members' resources and money into a .txt file")
+async def res_dump(interaction: discord.Interaction):
+    await interaction.response.defer()
+    global cached_users
+
+    lines = []
+    totals = {
+        "money": 0,
+        "food": 0,
+        "gasoline": 0,
+        "munitions": 0,
+        "steel": 0,
+        "aluminum": 0,
+        "bauxite": 0,
+        "lead": 0,
+        "iron": 0,
+        "oil": 0,
+        "uranium": 0,
+        "num_cities": 0,
+    }
+
+    processed_nations = 0
+    failed = 0
+
+    for user_id, user_data in cached_users.items():
+        own_id = str(user_data.get("NationID", "")).strip()
+        if not own_id:
+            lines.append(f"[{user_id}] ❌ Missing Nation ID")
+            failed += 1
+            continue
+
+        try:
+            (
+                nation_name,
+                num_cities,
+                food,
+                money,
+                gasoline,
+                munitions,
+                steel,
+                aluminum,
+                bauxite,
+                lead,
+                iron,
+                oil,
+                uranium
+            ) = get_resources(own_id)
+
+            lines.append(
+                f"{nation_name} (Cities: {num_cities})\n"
+                f"Money: ${money:,}\n"
+                f"Food: {food:,}, Gasoline: {gasoline:,}, Munitions: {munitions:,}\n"
+                f"Steel: {steel:,}, Aluminum: {aluminum:,}, Bauxite: {bauxite:,}\n"
+                f"Lead: {lead:,}, Iron: {iron:,}, Oil: {oil:,}, Uranium: {uranium:,}\n"
+                f"{'-'*40}"
+            )
+
+            # Totals
+            totals["money"] += money
+            totals["food"] += food
+            totals["gasoline"] += gasoline
+            totals["munitions"] += munitions
+            totals["steel"] += steel
+            totals["aluminum"] += aluminum
+            totals["bauxite"] += bauxite
+            totals["lead"] += lead
+            totals["iron"] += iron
+            totals["oil"] += oil
+            totals["uranium"] += uranium
+            totals["num_cities"] += num_cities
+            processed_nations += 1
+
+            await asyncio.sleep(1)  # Respect API limits
+
+        except Exception as e:
+            lines.append(f"[{own_id}] ❌ Failed to fetch: {e}")
+            failed += 1
+            continue
+
+    # Add totals at the bottom
+    lines.append("\nTOTALS\n" + "=" * 40)
+    lines.append(f"Nations: {processed_nations}, Cities: {totals['num_cities']}")
+    lines.append(f"Money: ${totals['money']:,}")
+    lines.append(f"Food: {totals['food']:,}, Gasoline: {totals['gasoline']:,}, Munitions: {totals['munitions']:,}")
+    lines.append(f"Steel: {totals['steel']:,}, Aluminum: {totals['aluminum']:,}, Bauxite: {totals['bauxite']:,}")
+    lines.append(f"Lead: {totals['lead']:,}, Iron: {totals['iron']:,}, Oil: {totals['oil']:,}, Uranium: {totals['uranium']:,}")
+
+    # Write to a temp file
+    filename = "resource_dump.txt"
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+    # Send the file
+    await interaction.followup.send(
+        content="📄 Full Alliance Resource Dump:",
+        file=discord.File(filename)
+    )
+
+    
 @bot.tree.command(name="register", description="Register your Nation ID")
 @app_commands.describe(nation_id="Your Nation ID (numbers only, e.g., 365325)")
 async def register(interaction: discord.Interaction, nation_id: str):
