@@ -856,29 +856,30 @@ async def res_details_for_alliance(interaction: discord.Interaction):
         await interaction.followup.send(embed=embed)
 
 
-@bot.tree.command(name="res\_in\_m\_for\_a", description="Get total Alliance Members' resources and money")
-@app\_commands.describe(
-mode="Group data by time unit",
-scale="Scale for Y-axis (Millions or Billions)"
+@bot.tree.command(name="res_in_m_for_a", description="Get total Alliance Members' resources and money")
+@app_commands.describe(
+    mode="Group data by time unit",
+    scale="Scale for Y-axis (Millions or Billions)"
 )
-@app\_commands.choices(
-mode=\[
-app\_commands.Choice(name="Hourly", value="hours"),
-app\_commands.Choice(name="Daily", value="days")
-],
-scale=\[
-app\_commands.Choice(name="Millions", value="millions"),
-app\_commands.Choice(name="Billions", value="billions")
-]
+@app_commands.choices(
+    mode=[
+        app_commands.Choice(name="Hourly", value="hours"),
+        app_commands.Choice(name="Daily", value="days")
+    ],
+    scale=[
+        app_commands.Choice(name="Millions", value="millions"),
+        app_commands.Choice(name="Billions", value="billions")
+    ]
 )
-async def res\_in\_m\_for\_a(
-interaction: discord.Interaction,
-mode: app\_commands.Choice\[str] = None,
-scale: app\_commands.Choice\[str] = None
+async def res_in_m_for_a(
+    interaction: discord.Interaction,
+    mode: app_commands.Choice[str] = None,
+    scale: app_commands.Choice[str] = None
 ):
+
     await interaction.response.defer(thinking=True)
     global cached_users, money_snapshots
-    
+
     totals = {
         "money": 0,
         "food": 0,
@@ -893,10 +894,10 @@ scale: app\_commands.Choice\[str] = None
         "uranium": 0,
         "num_cities": 0,
     }
-    
+
     processed_nations = 0
     failed = 0
-    
+
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
     prices_query = """
     {
@@ -920,18 +921,18 @@ scale: app\_commands.Choice\[str] = None
             resource_prices[item["resource"]] = float(item["average_price"])
     except Exception as e:
         print(f"Error fetching resource prices: {e}")
-    
+
     for user_id, user_data in cached_users.items():
         own_id = str(user_data.get("NationID", "")).strip()
         if not own_id:
             failed += 1
             continue
-    
+
         try:
             result = get_resources(own_id)
             if len(result) != 13:
                 raise ValueError("Invalid result length from get_resources")
-    
+
             (
                 nation_name,
                 num_cities,
@@ -947,7 +948,7 @@ scale: app\_commands.Choice\[str] = None
                 oil,
                 uranium
             ) = result
-    
+
             totals["money"] += money
             totals["food"] += food
             totals["gasoline"] += gasoline
@@ -961,14 +962,14 @@ scale: app\_commands.Choice\[str] = None
             totals["uranium"] += uranium
             totals["num_cities"] += num_cities
             processed_nations += 1
-    
+
             await asyncio.sleep(3)
-    
+
         except Exception as e:
             print(f"Failed processing nation {own_id}: {e}")
             failed += 1
             continue
-    
+
     total_sell_value = totals["money"]
     for resource in [
         "food", "gasoline", "munitions", "steel", "aluminum",
@@ -977,12 +978,12 @@ scale: app\_commands.Choice\[str] = None
         amount = totals.get(resource, 0)
         price = resource_prices.get(resource, 0)
         total_sell_value += amount * price
-    
+
     embed = discord.Embed(
         title="Alliance Total Resources & Money",
         colour=discord.Colour.dark_magenta()
     )
-    
+
     embed.description = (
         f"🧮 Nations counted: **{processed_nations}**\n"
         f"⚠️ Failed to retrieve data for: **{failed}**\n\n"
@@ -1000,7 +1001,7 @@ scale: app\_commands.Choice\[str] = None
         f"☢️ Uranium: **{totals['uranium']:,}**\n\n"
         f"💸 Total Money if all was sold: **${total_sell_value:,.2f}**"
     )
-    
+
     try:
         if money_snapshots:
             import io
@@ -1011,26 +1012,26 @@ scale: app\_commands.Choice\[str] = None
             from datetime import datetime, timezone, timedelta
             import numpy as np
             from sys import platform
-    
+
             value_scale = scale.value if scale else "billions"
             divisor = {"billions": 1_000_000_000, "millions": 1_000_000}.get(value_scale, 1)
             label_suffix = {"billions": "B", "millions": "M"}.get(value_scale, "")
-    
+
             def format_large_ticks(x, _):
                 return f'{x:.0f}{label_suffix}'
-    
+
             # Aggregate snapshot data
             data = defaultdict(list)
             for entry in money_snapshots:
                 ts = datetime.fromisoformat(entry["time"]).replace(tzinfo=timezone.utc)
                 key = ts.date() if mode and mode.value == "days" else ts.replace(minute=0, second=0, microsecond=0)
                 data[key].append(entry.get("total", 0))
-    
+
             if mode and mode.value == "days":
                 today = datetime.utcnow().date()
                 start_date = today - timedelta(days=29)
                 full_range = [start_date + timedelta(days=i) for i in range(30)]
-    
+
                 times = []
                 values = []
                 for t in full_range:
@@ -1038,10 +1039,10 @@ scale: app\_commands.Choice\[str] = None
                     avg = np.mean(vs) if vs else np.nan
                     times.append(t)
                     values.append(avg)
-    
+
                 values_np = np.array(values)
                 scaled = values_np / divisor
-    
+
                 nan_mask = np.isnan(scaled)
                 if np.any(nan_mask):
                     scaled[nan_mask] = np.interp(
@@ -1049,34 +1050,34 @@ scale: app\_commands.Choice\[str] = None
                         np.flatnonzero(~nan_mask),
                         scaled[~nan_mask]
                     )
-    
+
                 plt.figure(figsize=(10, 5))
                 plt.plot(times, scaled, color='magenta', marker='o', linestyle='-')
                 plt.title("Alliance Wealth Over Last 30 Days")
                 plt.xlabel("Day of Month")
                 plt.ylabel(f"Total Money ({label_suffix})")
                 plt.grid(True)
-    
+
                 min_val = np.nanmin(scaled)
                 max_val = np.nanmax(scaled)
                 plt.ylim(bottom=max(0, min_val * 0.95), top=max_val * 1.05)
-    
+
                 ax = plt.gca()
                 ax.yaxis.set_major_locator(MaxNLocator(nbins='auto'))
                 ax.yaxis.set_major_formatter(FuncFormatter(format_large_ticks))
-    
+
                 day_fmt = '%#d' if platform.startswith('win') else '%-d'
                 ax.xaxis.set_major_formatter(mdates.DateFormatter(day_fmt))
                 ax.xaxis.set_major_locator(mdates.DayLocator(interval=1))
                 plt.xticks(rotation=45)
                 plt.tight_layout()
-    
+
             else:
                 now = datetime.utcnow().replace(minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
                 start = min(data)
                 hours = int((now - start).total_seconds() // 3600) + 1
                 full_range = [start + timedelta(hours=h) for h in range(hours)]
-    
+
                 times = []
                 values = []
                 for t in full_range:
@@ -1084,10 +1085,10 @@ scale: app\_commands.Choice\[str] = None
                     avg = np.mean(vs) if vs else np.nan
                     times.append(t)
                     values.append(avg)
-    
+
                 values_np = np.array(values)
                 scaled = values_np / divisor
-    
+
                 nan_mask = np.isnan(scaled)
                 if np.any(nan_mask):
                     scaled[nan_mask] = np.interp(
@@ -1095,36 +1096,36 @@ scale: app\_commands.Choice\[str] = None
                         np.flatnonzero(~nan_mask),
                         scaled[~nan_mask]
                     )
-    
+
                 plt.figure(figsize=(10, 5))
                 plt.plot(times, scaled, color='magenta', marker='o', linestyle='-')
                 plt.title("Alliance Wealth Over Time")
                 plt.xlabel("Time")
                 plt.ylabel(f"Total Money ({label_suffix})")
                 plt.grid(True)
-    
+
                 min_val = np.nanmin(scaled)
                 max_val = np.nanmax(scaled)
                 plt.ylim(bottom=max(0, min_val * 0.95), top=max_val * 1.05)
-    
+
                 ax = plt.gca()
                 ax.yaxis.set_major_locator(MaxNLocator(nbins='auto'))
                 ax.yaxis.set_major_formatter(FuncFormatter(format_large_ticks))
-    
+
                 ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
                 ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, 2)))
                 plt.xticks(rotation=45)
                 plt.tight_layout()
-    
+
             buf = io.BytesIO()
             plt.savefig(buf, format='png')
             plt.close()
             buf.seek(0)
-    
+
             await interaction.followup.send(embed=embed, file=discord.File(buf, filename="money_trend.png"))
         else:
             await interaction.followup.send(embed=embed)
-    
+
     except Exception as e:
         print(f"Error during plotting or sending: {e}")
         try:
