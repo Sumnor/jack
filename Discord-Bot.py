@@ -950,12 +950,28 @@ async def res_in_m_for_a(
                 avg = sum(values) / len(values) if values else 0
                 full_data.append((t, avg))
 
-            times, totals = zip(*full_data)
+                        times, totals = zip(*full_data)
             scaled_totals = [x / divisor for x in totals]
             # First, add debug prints to check your actual values:
             print("Raw values:", [x["Money"] for x in sheet_data])
             print("Processed totals:", totals)
 
+            # ===== Y-AXIS FIX STARTS HERE =====
+            # Auto-detect best scale if values are too small for current scale
+            max_raw = max(totals) if totals else 0
+            if max_raw < divisor and value_scale == "billions":
+                divisor = 1_000_000  # Switch to millions
+                label_suffix = "M"
+                scaled_totals = [x / divisor for x in totals]
+            
+            max_val = max(scaled_totals) if scaled_totals else 1  # Fallback if empty
+            
+            # Set y-axis limits with smart padding
+            if max_val == 0:
+                y_top = 1  # Show at least some range if all zeros
+            else:
+                y_top = max_val * 1.2  # 20% padding above max value
+            # ===== Y-AXIS FIX ENDS HERE =====
 
             # Plot
             plt.figure(figsize=(10, 5))
@@ -970,7 +986,8 @@ async def res_in_m_for_a(
             ax = plt.gca()
             ax.yaxis.set_major_locator(MaxNLocator(nbins='auto'))
             ax.yaxis.set_major_formatter(FuncFormatter(format_large_ticks))
-
+            
+            plt.ylim(0, y_top)  # Use the calculated y_top instead of rounded_top
             if mode and mode.value == "days":
                 ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))
                 ax.xaxis.set_major_locator(mdates.DayLocator(interval=1))
