@@ -506,13 +506,13 @@ def get_alliance_sheet():
     client = gspread.authorize(creds)
     return client.open("Alliance Net").sheet1
 
-def save_to_alliance_net(data_row):
+def save_to_alliance_net(row):
     try:
         sheet = get_alliance_sheet()
-        sheet.append_row(data_row)
-        print("✅ Data saved to Alliance Net")
+        sheet.append_row(row, value_input_option="USER_ENTERED")
     except Exception as e:
-        print(f"❌ Failed to save to Alliance Net: {e}")
+        print(f"❌ Failed to append to Google Sheet: {e}")
+
 
 import traceback
 
