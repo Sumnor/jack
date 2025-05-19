@@ -1074,11 +1074,12 @@ async def res_in_m_for_a(
 
             else:
                 from datetime import datetime, timezone
+            
                 now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
                 start = min(data)
                 hours = int((now - start).total_seconds() // 3600) + 1
                 full_range = [start + timedelta(hours=h) for h in range(hours)]
-
+            
                 times = []
                 values = []
                 for t in full_range:
@@ -1086,10 +1087,10 @@ async def res_in_m_for_a(
                     avg = np.mean(vs) if vs else np.nan
                     times.append(t)
                     values.append(avg)
-
+            
                 values_np = np.array(values)
                 scaled = values_np / divisor
-
+            
                 nan_mask = np.isnan(scaled)
                 if np.any(nan_mask):
                     scaled[nan_mask] = np.interp(
@@ -1097,38 +1098,30 @@ async def res_in_m_for_a(
                         np.flatnonzero(~nan_mask),
                         scaled[~nan_mask]
                     )
-
-                plt.figure(figsize=(10, 5))
+            
+                plt.figure(figsize=(12, 6))
                 plt.plot(times, scaled, color='magenta', marker='o', linestyle='-')
                 plt.title("Alliance Wealth Over Time")
                 plt.xlabel("Time")
                 plt.ylabel(f"Total Money ({label_suffix})")
                 plt.grid(True)
-
+            
                 min_val = np.nanmin(scaled)
                 max_val = np.nanmax(scaled)
-# Ensure the Y-axis starts at 0
                 plt.ylim(bottom=0, top=max_val * 1.05)
-                
+            
                 ax = plt.gca()
                 ax.yaxis.set_major_locator(MaxNLocator(nbins='auto'))
                 ax.yaxis.set_major_formatter(FuncFormatter(format_large_ticks))
-                
-                # Setup for 12 evenly spaced x-ticks, each 2 hours apart (even hours)
-                # Select last 24 hours for plotting
-                if len(times) > 24:
-                    times = times[-24:]
-                    scaled = scaled[-24:]
-                
-                # Set ticks every 2 hours on even-numbered hours
-                even_hours = [t for t in times if t.hour % 2 == 0]
-                if len(even_hours) > 12:
-                    even_hours = even_hours[-12:]
-                
-                ax.set_xticks(even_hours)
+            
+                # Show ticks every 2 hours (even hours only)
+                tick_locs = [t for t in times if t.hour % 2 == 0 and t.minute == 0]
+                ax.set_xticks(tick_locs)
                 ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+            
                 plt.xticks(rotation=45)
                 plt.tight_layout()
+
             buf = io.BytesIO()
             plt.savefig(buf, format='png')
             plt.close()
