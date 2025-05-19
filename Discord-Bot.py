@@ -516,6 +516,18 @@ def save_to_alliance_net(row):
 
 import traceback
 
+def load_alliance_net_data():
+    try:
+        sheet = get_alliance_sheet()
+        data = sheet.get_all_values()
+        headers = data[0]
+        rows = data[1:]
+        return [dict(zip(headers, row)) for row in rows]
+    except Exception as e:
+        print(f"❌ Failed to load data from Alliance Net sheet: {e}")
+        return []
+
+
 def load_sheet_data():
     global cached_users, cached_sheet_data
     try:
@@ -896,7 +908,8 @@ async def res_in_m_for_a(
     )
 
     try:
-        if money_snapshots:
+        sheet_data = load_alliance_net_data()
+        if sheet_data:
             import io
             from collections import defaultdict
             import matplotlib.pyplot as plt
@@ -912,10 +925,15 @@ async def res_in_m_for_a(
                 return f'{x:.0f}{label_suffix}'
 
             data = defaultdict(list)
-            for entry in money_snapshots:
-                ts = datetime.fromisoformat(entry["time"]).replace(tzinfo=timezone.utc)
-                key = ts.date() if mode and mode.value == "days" else ts.replace(minute=0, second=0, microsecond=0)
-                data[key].append(entry.get("total", 0))
+            for entry in sheet_data:
+                try:
+                    ts = datetime.fromisoformat(entry["Time"]).replace(tzinfo=timezone.utc)
+                    value = float(entry["Money"])
+                    key = ts.date() if mode and mode.value == "days" else ts.replace(minute=0, second=0, microsecond=0)
+                    data[key].append(value)
+                except Exception as e:
+                    print(f"⚠️ Skipping bad entry: {entry} — {e}")
+            )
 
             # Generate complete range
             if mode and mode.value == "days":
