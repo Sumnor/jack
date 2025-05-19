@@ -645,8 +645,12 @@ async def hourly_snapshot():
 
         # Plot graph
         try:
-            times = [datetime.fromisoformat(entry["time"]) for entry in money_snapshots]
-            totals_money = [entry.get("money", 0) for entry in money_snapshots]
+            from datetime import datetime
+            money_snapshots_sorted = sorted(money_snapshots, key=lambda x: x["time"])
+            times = [datetime.fromisoformat(entry["time"]) for entry in money_snapshots_sorted]
+            totals_money = [entry.get("money", 0) for entry in money_snapshots_sorted]
+            scaled_totals = [x / divisor for x in totals_money]
+
 
             plt.figure(figsize=(10, 5))
             plt.axhline(0, color='black', linestyle='--', linewidth=0.5)
@@ -939,7 +943,11 @@ async def res_in_m_for_a(
             plt.ylabel(f"Total Money ({label_suffix})")
             plt.axhline(0, color='black', linestyle='--', linewidth=0.5)
             plt.grid(True)
-
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+            max_val = max(scaled_totals)
+            rounded_top = (int(max_val * 10) + 1) / 10  # Each 0.1B = 100M
+            plt.ylim(0, rounded_top)
             ax = plt.gca()
             ax.yaxis.set_major_locator(MaxNLocator(nbins='auto'))
             ax.yaxis.set_major_formatter(FuncFormatter(format_large_ticks))
@@ -950,9 +958,6 @@ async def res_in_m_for_a(
             else:
                 ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
                 ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, 2)))
-
-            plt.xticks(rotation=45)
-            plt.tight_layout()
 
             # Save to buffer
             buf = io.BytesIO()
