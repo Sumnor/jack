@@ -1107,17 +1107,28 @@ async def res_in_m_for_a(
 
                 min_val = np.nanmin(scaled)
                 max_val = np.nanmax(scaled)
-                plt.ylim(bottom=max(0, min_val * 0.95), top=max_val * 1.05)
-
+# Ensure the Y-axis starts at 0
+                plt.ylim(bottom=0, top=max_val * 1.05)
+                
                 ax = plt.gca()
                 ax.yaxis.set_major_locator(MaxNLocator(nbins='auto'))
                 ax.yaxis.set_major_formatter(FuncFormatter(format_large_ticks))
-
+                
+                # Setup for 12 evenly spaced x-ticks, each 2 hours apart (even hours)
+                # Select last 24 hours for plotting
+                if len(times) > 24:
+                    times = times[-24:]
+                    scaled = scaled[-24:]
+                
+                # Set ticks every 2 hours on even-numbered hours
+                even_hours = [t for t in times if t.hour % 2 == 0]
+                if len(even_hours) > 12:
+                    even_hours = even_hours[-12:]
+                
+                ax.set_xticks(even_hours)
                 ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-                ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, 2)))
                 plt.xticks(rotation=45)
                 plt.tight_layout()
-
             buf = io.BytesIO()
             plt.savefig(buf, format='png')
             plt.close()
