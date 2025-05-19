@@ -39,7 +39,7 @@ cached_sheet_data = []
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
-bo_key = os.getenv("bot_key")
+bot_key = os.getenv("bot_key")
 API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
@@ -632,7 +632,7 @@ async def hourly_snapshot():
             total_sell_value += amount * price
 
         timestamp = datetime.now(timezone.utc).isoformat()
-        money_snapshots.append({"time": timestamp, "money": total_sell_value})
+        money_snapshots.append({"time": timestamp, "total": total_sell_value})
 
         try:
             save_to_alliance_net([timestamp, total_sell_value])
@@ -891,70 +891,57 @@ async def res_in_m_for_a(
         f"💸 Total Money if all was sold: **${total_sell_value:,.2f}**"
     )
 
-        # Only plot graph if snapshot data exists
     try:
         if money_snapshots:
+            import io
             from collections import defaultdict
             import matplotlib.pyplot as plt
             import matplotlib.dates as mdates
-            from datetime import datetime, timezone, timedelta
             from matplotlib.ticker import FuncFormatter, MaxNLocator
+            from datetime import datetime, timezone, timedelta
 
-            # Select scale
             value_scale = scale.value if scale else "billions"
-            if value_scale == "billions":
-                divisor = 1_000_000_000
-                label_suffix = "B"
-            elif value_scale == "millions":
-                divisor = 1_000_000
-                label_suffix = "M"
-            else:
-                divisor = 1
-                label_suffix = ""
+            divisor = {"billions": 1_000_000_000, "millions": 1_000_000}.get(value_scale, 1)
+            label_suffix = {"billions": "B", "millions": "M"}.get(value_scale, "")
 
             def format_large_ticks(x, _):
-                return f'{x / divisor:,.0f}{label_suffix}'
+                return f'{x:.0f}{label_suffix}'
 
-            # Aggregate data
             data = defaultdict(list)
             for entry in money_snapshots:
                 ts = datetime.fromisoformat(entry["time"]).replace(tzinfo=timezone.utc)
-                if mode and mode.value == "days":
-                    key = ts.date()
-                else:
-                    key = ts.replace(minute=0, second=0, microsecond=0)
+                key = ts.date() if mode and mode.value == "days" else ts.replace(minute=0, second=0, microsecond=0)
                 data[key].append(entry.get("total", 0))
 
-            # Generate full time range
+            # Generate complete range
             if mode and mode.value == "days":
-                start = min(data)
-                end = max(data)
+                start, end = min(data), max(data)
                 full_range = [start + timedelta(days=i) for i in range((end - start).days + 1)]
             else:
-                base_date = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
-                full_range = [base_date + timedelta(hours=h) for h in range(0, 24)]
+                now = datetime.utcnow().replace(minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+                full_range = [now.replace(hour=0) + timedelta(hours=h) for h in range(24)]
 
-            # Fill in data
+            # Fill in missing with 0s
             full_data = []
             for t in full_range:
-                values = data.get(t, [0])
+                values = data.get(t, [])
                 avg = sum(values) / len(values) if values else 0
                 full_data.append((t, avg))
 
-            times, totals_list = zip(*full_data)
-            scaled_totals = [x / divisor for x in totals_list]
+            times, totals = zip(*full_data)
+            scaled_totals = [x / divisor for x in totals]
 
-            # Plotting
+            # Plot
             plt.figure(figsize=(10, 5))
             plt.plot(times, scaled_totals, color='magenta', marker='o')
-            plt.axhline(0, color='black', linestyle='--', linewidth=0.5)
-            plt.ylabel(f"Total Money ({label_suffix})")
-            plt.xlabel("Time")
             plt.title("Alliance Wealth Over Time")
+            plt.xlabel("Time")
+            plt.ylabel(f"Total Money ({label_suffix})")
+            plt.axhline(0, color='black', linestyle='--', linewidth=0.5)
             plt.grid(True)
 
             ax = plt.gca()
-            ax.yaxis.set_major_locator(MaxNLocator(nbins='auto', prune=None))
+            ax.yaxis.set_major_locator(MaxNLocator(nbins='auto'))
             ax.yaxis.set_major_formatter(FuncFormatter(format_large_ticks))
 
             if mode and mode.value == "days":
@@ -966,13 +953,18 @@ async def res_in_m_for_a(
 
             plt.xticks(rotation=45)
             plt.tight_layout()
-            graph_file = "money_trend.png"
-            plt.savefig(graph_file)
-            plt.close()
 
-            await interaction.followup.send(embed=embed, file=discord.File(graph_file))
+            # Save to buffer
+            buf = io.BytesIO()
+            plt.savefig(buf, format='png')
+            plt.close()
+            buf.seek(0)
+
+            await interaction.followup.send(embed=embed, file=discord.File(buf, filename="money_trend.png"))
+
         else:
             await interaction.followup.send(embed=embed)
+
 
     except Exception as e:
         print(f"Error during plotting or sending: {e}")
