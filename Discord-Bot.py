@@ -945,9 +945,6 @@ async def res_in_m_for_a(
             plt.grid(True)
             plt.xticks(rotation=45)
             plt.tight_layout()
-            max_val = max(scaled_totals)
-            rounded_top = (int(max_val * 10) + 1) / 10  # Each 0.1B = 100M
-            plt.ylim(0, rounded_top)
             ax = plt.gca()
             ax.yaxis.set_major_locator(MaxNLocator(nbins='auto'))
             ax.yaxis.set_major_formatter(FuncFormatter(format_large_ticks))
@@ -959,6 +956,9 @@ async def res_in_m_for_a(
                 ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
                 ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, 2)))
 
+            max_val = max(scaled_totals)
+            rounded_top = (int(max_val * 10) + 1) / 10  # Each 0.1B = 100M
+            plt.ylim(0, rounded_top)
             # Save to buffer
             buf = io.BytesIO()
             plt.savefig(buf, format='png')
