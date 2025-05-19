@@ -876,7 +876,6 @@ async def res_in_m_for_a(
     mode: app_commands.Choice[str] = None,
     scale: app_commands.Choice[str] = None
 ):
-
     await interaction.response.defer(thinking=True)
     global cached_users, money_snapshots
 
@@ -1010,8 +1009,8 @@ async def res_in_m_for_a(
             import matplotlib.dates as mdates
             from matplotlib.ticker import FuncFormatter, MaxNLocator
             from datetime import datetime, timezone, timedelta
-            import numpy as np
             from sys import platform
+            import numpy as np
 
             value_scale = scale.value if scale else "billions"
             divisor = {"billions": 1_000_000_000, "millions": 1_000_000}.get(value_scale, 1)
@@ -1020,7 +1019,7 @@ async def res_in_m_for_a(
             def format_large_ticks(x, _):
                 return f'{x:.0f}{label_suffix}'
 
-            # Aggregate snapshot data
+            # Process snapshots
             data = defaultdict(list)
             for entry in money_snapshots:
                 ts = datetime.fromisoformat(entry["time"]).replace(tzinfo=timezone.utc)
@@ -1028,99 +1027,66 @@ async def res_in_m_for_a(
                 data[key].append(entry.get("total", 0))
 
             if mode and mode.value == "days":
+                # 30-day daily mode, ending with today
                 today = datetime.utcnow().date()
                 start_date = today - timedelta(days=29)
                 full_range = [start_date + timedelta(days=i) for i in range(30)]
 
-                times = []
-                values = []
-                for t in full_range:
-                    vs = data.get(t, [])
-                    avg = np.mean(vs) if vs else np.nan
-                    times.append(t)
-                    values.append(avg)
-
-                values_np = np.array(values)
-                scaled = values_np / divisor
-
-                nan_mask = np.isnan(scaled)
-                if np.any(nan_mask):
-                    scaled[nan_mask] = np.interp(
-                        np.flatnonzero(nan_mask),
-                        np.flatnonzero(~nan_mask),
-                        scaled[~nan_mask]
-                    )
-
-                plt.figure(figsize=(10, 5))
-                plt.plot(times, scaled, color='magenta', marker='o', linestyle='-')
-                plt.title("Alliance Wealth Over Last 30 Days")
-                plt.xlabel("Day of Month")
-                plt.ylabel(f"Total Money ({label_suffix})")
-                plt.grid(True)
-
-                min_val = np.nanmin(scaled)
-                max_val = np.nanmax(scaled)
-                plt.ylim(bottom=max(0, min_val * 0.95), top=max_val * 1.05)
-
-                ax = plt.gca()
-                ax.yaxis.set_major_locator(MaxNLocator(nbins='auto'))
-                ax.yaxis.set_major_formatter(FuncFormatter(format_large_ticks))
-
+                # X-axis format
                 day_fmt = '%#d' if platform.startswith('win') else '%-d'
-                ax.xaxis.set_major_formatter(mdates.DateFormatter(day_fmt))
-                ax.xaxis.set_major_locator(mdates.DayLocator(interval=1))
-                plt.xticks(rotation=45)
-                plt.tight_layout()
-
             else:
-                from datetime import datetime, timezone
-            
-                now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+                # Hourly mode (unchanged)
+                now = datetime.utcnow().replace(minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
                 start = min(data)
                 hours = int((now - start).total_seconds() // 3600) + 1
                 full_range = [start + timedelta(hours=h) for h in range(hours)]
-            
-                times = []
-                values = []
-                for t in full_range:
-                    vs = data.get(t, [])
-                    avg = np.mean(vs) if vs else np.nan
-                    times.append(t)
-                    values.append(avg)
-            
-                values_np = np.array(values)
-                scaled = values_np / divisor
-            
-                nan_mask = np.isnan(scaled)
-                if np.any(nan_mask):
-                    scaled[nan_mask] = np.interp(
-                        np.flatnonzero(nan_mask),
-                        np.flatnonzero(~nan_mask),
-                        scaled[~nan_mask]
-                    )
-            
-                plt.figure(figsize=(12, 6))
-                plt.plot(times, scaled, color='magenta', marker='o', linestyle='-')
-                plt.title("Alliance Wealth Over Time")
-                plt.xlabel("Time")
-                plt.ylabel(f"Total Money ({label_suffix})")
-                plt.grid(True)
-            
-                min_val = np.nanmin(scaled)
-                max_val = np.nanmax(scaled)
-                plt.ylim(bottom=0, top=max_val * 1.05)
-            
-                ax = plt.gca()
-                ax.yaxis.set_major_locator(MaxNLocator(nbins='auto'))
-                ax.yaxis.set_major_formatter(FuncFormatter(format_large_ticks))
-            
-                # Show ticks every 2 hours (even hours only)
-                tick_locs = [t for t in times if t.hour % 2 == 0 and t.minute == 0]
-                ax.set_xticks(tick_locs)
+
+            # Fill in values for full range
+            times = []
+            values = []
+            for t in full_range:
+                vs = data.get(t, [])
+                avg = np.mean(vs) if vs else np.nan
+                times.append(t)
+                values.append(avg)
+
+            values_np = np.array(values)
+            scaled = values_np / divisor
+
+            nan_mask = np.isnan(scaled)
+            if np.any(nan_mask):
+                scaled[nan_mask] = np.interp(
+                    np.flatnonzero(nan_mask),
+                    np.flatnonzero(~nan_mask),
+                    scaled[~nan_mask]
+                )
+
+            # Plotting
+            plt.figure(figsize=(10, 5))
+            plt.plot(times, scaled, color='magenta', marker='o', linestyle='-')
+            title = "Alliance Wealth Over Last 30 Days" if mode and mode.value == "days" else "Alliance Wealth Over Time"
+            plt.title(title)
+            plt.xlabel("Time")
+            plt.ylabel(f"Total Money ({label_suffix})")
+            plt.grid(True)
+
+            min_val = np.nanmin(scaled)
+            max_val = np.nanmax(scaled)
+            plt.ylim(bottom=max(0, min_val * 0.95), top=max_val * 1.05)
+
+            ax = plt.gca()
+            ax.yaxis.set_major_locator(MaxNLocator(nbins='auto'))
+            ax.yaxis.set_major_formatter(FuncFormatter(format_large_ticks))
+
+            if mode and mode.value == "days":
+                ax.xaxis.set_major_formatter(mdates.DateFormatter(day_fmt))
+                ax.xaxis.set_major_locator(mdates.DayLocator(interval=1))
+            else:
                 ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-            
-                plt.xticks(rotation=45)
-                plt.tight_layout()
+                ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, 2)))
+
+            plt.xticks(rotation=45)
+            plt.tight_layout()
 
             buf = io.BytesIO()
             plt.savefig(buf, format='png')
@@ -1137,6 +1103,7 @@ async def res_in_m_for_a(
             await interaction.followup.send(embed=embed)
         except Exception as e:
             print(f"Failed to send fallback embed: {e}")
+
 
 
 
