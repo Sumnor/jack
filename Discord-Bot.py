@@ -259,7 +259,8 @@ class GrantView(View):
                 "Uranium": "-u",
                 "Lead": "-l",
                 "Iron": "-I",
-                "Bauxite": "-b"
+                "Bauxite": "-b",
+                "Coal": "-c",
             }
 
             command_parts = [f"$tfo -t https://politicsandwar.com/nation/id={nation_id}"]
