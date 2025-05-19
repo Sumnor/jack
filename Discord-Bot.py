@@ -1073,7 +1073,7 @@ async def res_in_m_for_a(
                 plt.tight_layout()
 
             else:
-                now = datetime.utcnow().replace(minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+                now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
                 start = min(data)
                 hours = int((now - start).total_seconds() // 3600) + 1
                 full_range = [start + timedelta(hours=h) for h in range(hours)]
