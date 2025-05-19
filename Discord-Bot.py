@@ -950,7 +950,7 @@ async def res_in_m_for_a(
                 avg = sum(values) / len(values) if values else 0
                 full_data.append((t, avg))
 
-                        times, totals = zip(*full_data)
+            times, totals = zip(*full_data)
             scaled_totals = [x / divisor for x in totals]
             # First, add debug prints to check your actual values:
             print("Raw values:", [x["Money"] for x in sheet_data])
