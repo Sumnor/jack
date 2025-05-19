@@ -933,7 +933,7 @@ async def res_in_m_for_a(
                     data[key].append(value)
                 except Exception as e:
                     print(f"⚠️ Skipping bad entry: {entry} — {e}")
-            )
+            
 
             # Generate complete range
             if mode and mode.value == "days":
