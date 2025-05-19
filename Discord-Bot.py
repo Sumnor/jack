@@ -952,6 +952,10 @@ async def res_in_m_for_a(
 
             times, totals = zip(*full_data)
             scaled_totals = [x / divisor for x in totals]
+            # First, add debug prints to check your actual values:
+            print("Raw values:", [x["Money"] for x in sheet_data])
+            print("Processed totals:", totals)
+
 
             # Plot
             plt.figure(figsize=(10, 5))
