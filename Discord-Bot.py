@@ -1122,6 +1122,14 @@ async def res_in_m_for_a(
         except Exception as e:
             print(f"Failed to send fallback embed: {e}")
 
+import asyncio
+import requests
+import json
+import matplotlib.pyplot as plt
+from io import BytesIO
+import discord
+from discord import app_commands
+
 API_URL = f'https://api.politicsandwar.com/graphql?api_key={API_KEY}'
 
 # Util: convert losses to money
@@ -1134,6 +1142,68 @@ def calculate_cost(losses):
         losses["nuclear_damage"]
     )
 
+# Helper function to fetch wars in paginated batches
+async def fetch_wars(headers, batch_size=3, max_batches=2):
+    all_wars = []
+    for i in range(max_batches):
+        paginated_query = f"""
+        {{
+            wars(first: {batch_size}, page: {i + 1}, sort: "start_date", order: "desc") {{
+                id
+                start_date
+                winner
+                attacker {{
+                    id
+                    name
+                    alliance {{
+                        id
+                        name
+                    }}
+                }}
+                defender {{
+                    id
+                    name
+                    alliance {{
+                        id
+                        name
+                    }}
+                }}
+                airstrikes {{
+                    attackerAircraftLost
+                    defenderAircraftLost
+                }}
+                groundAttacks {{
+                    attackerCasualties
+                    defenderCasualties
+                }}
+                navalAttacks {{
+                    attackerShipsLost
+                    defenderShipsLost
+                }}
+                missileAttacks {{
+                    damage
+                }}
+                nuclearAttacks {{
+                    damage
+                }}
+            }}
+        }}
+        """
+
+        response = requests.post(API_URL, json={"query": paginated_query}, headers=headers)
+        if response.status_code != 200:
+            break
+
+        data = response.json()
+        wars_batch = data.get("data", {}).get("wars", [])
+        if not wars_batch:
+            break
+
+        all_wars.extend(wars_batch)
+        await asyncio.sleep(1.5)  # Respect rate limit
+
+    return all_wars
+
 # Command
 @bot.tree.command(name="war_losses", description="Show recent war losses for a nation or alliance.")
 @app_commands.describe(nation_id="Nation ID", alliance_id="Alliance ID")
@@ -1145,69 +1215,12 @@ async def war_losses(interaction: discord.Interaction, nation_id: int = None, al
         "Content-Type": "application/json"
     }
 
-    query = """
-    {
-        wars(first: 5, sort: "start_date", order: "desc") {
-            id
-            start_date
-            winner
-            attacker {
-                id
-                name
-                alliance {
-                    id
-                    name
-                }
-            }
-            defender {
-                id
-                name
-                alliance {
-                    id
-                    name
-                }
-            }
-            airstrikes {
-                attackerAircraftLost
-                defenderAircraftLost
-            }
-            groundAttacks {
-                attackerCasualties
-                defenderCasualties
-            }
-            navalAttacks {
-                attackerShipsLost
-                defenderShipsLost
-            }
-            missileAttacks {
-                damage
-            }
-            nuclearAttacks {
-                damage
-            }
-        }
-    }
-    """
-
-    response = requests.post(API_URL, json={"query": query}, headers=headers)
-    print(response.status_code)
-    print(json.dumps(response.json(), indent=2))
-
-
-
-    if response.status_code != 200:
-        await interaction.followup.send("❌ Failed to fetch war data.")
-        return
-
-    data = response.json()
-
-    recent_wars = data.get("data", {}).get("wars", [])
+    recent_wars = await fetch_wars(headers)
 
     if not recent_wars:
         await interaction.followup.send("ℹ️ No wars found.")
         return
 
-    wars = response.json().get("data", {}).get("wars", {}).get("data", [])
     your_side_losses = {"aircraft": 0, "casualties": 0, "ships": 0, "missile_damage": 0, "nuclear_damage": 0}
     enemy_losses = {"aircraft": 0, "casualties": 0, "ships": 0, "missile_damage": 0, "nuclear_damage": 0}
     war_results = []
@@ -1258,41 +1271,33 @@ async def war_losses(interaction: discord.Interaction, nation_id: int = None, al
         your_side_losses["nuclear_damage"] += sum(n.get("damage", 0) for n in war["nuclearAttacks"])
         enemy_losses["nuclear_damage"] += sum(n.get("damage", 0) for n in war["nuclearAttacks"])
 
-
     # Prepare plots
     fig, ax = plt.subplots(figsize=(8, 6))
 
     if nation_id and not alliance_id:
-        # Line graph of war outcomes
         x_vals = list(range(1, len(war_results) + 1))
         y_vals = war_results
 
         ax.plot(x_vals, y_vals, marker='o', color='blue')
-        ax.set_title(f"Nation {nation_id} War Outcomes (Last 30 Days)")
+        ax.set_title(f"Nation {nation_id} War Outcomes (Recent Wars)")
         ax.set_xlabel("War #")
         ax.set_ylabel("Outcome")
-        ax.set_xticks(x_vals)  # Ensures integer steps on x-axis
-        ax.set_yticks([-1, 0, 1])  # Loss, draw, win
+        ax.set_xticks(x_vals)
+        ax.set_yticks([-1, 0, 1])
         ax.set_yticklabels(["Loss", "Draw", "Win"])
         ax.axhline(0, color='gray', linestyle='--', linewidth=0.8)
         ax.grid(True)
-
-
-
     else:
-        # Bar chart for loss value comparison
         y_cost = calculate_cost(your_side_losses)
         e_cost = calculate_cost(enemy_losses)
         bars = ax.bar(["Your Side", "Enemy Side"], [y_cost, e_cost], color=["blue", "red"])
         for bar in bars:
             yval = bar.get_height()
             ax.text(bar.get_x() + bar.get_width()/2, yval + 1e6, f"${yval:,.0f}", ha='center')
-        ax.set_title("💸 War Losses in the Last 30 Days")
+        ax.set_title("💸 War Losses Comparison")
         ax.set_ylabel("Estimated Cost in $")
         ax.grid(axis='y')
 
-
-    # Save plot to buffer
     buffer = BytesIO()
     plt.tight_layout()
     plt.savefig(buffer, format='png')
