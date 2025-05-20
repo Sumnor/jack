@@ -1018,8 +1018,10 @@ async def res_in_m_for_a(
             label_suffix = {"billions": "B", "millions": "M"}.get(value_scale, "")
 
             def format_large_ticks(x, _):
-                return f'{x:.0f}{label_suffix}'
-
+                if value_scale == "billions":
+                    return f'{x:.1f}{label_suffix}'
+                else:
+                    return f'{x:.0f}{label_suffix}'
             # Process snapshots
             data = defaultdict(list)
             for entry in money_snapshots:
