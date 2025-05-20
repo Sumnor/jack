@@ -1143,6 +1143,18 @@ def calculate_cost(losses):
     )
 
 # Query template for paginated wars
+import requests
+import json
+import asyncio
+
+API_KEY = 'your_api_key_here'
+API_URL = 'https://api.politicsandwar.com/graphql'
+
+headers = {
+    "Authorization": f"Bearer {API_KEY}",
+    "Content-Type": "application/json"
+}
+
 def build_query(offset=0, limit=3):
     return f"""
     {{
@@ -1188,7 +1200,6 @@ def build_query(offset=0, limit=3):
     }}
     """
 
-
 async def fetch_wars(headers, limit=3, batches=2):
     all_wars = []
     for i in range(batches):
@@ -1214,6 +1225,10 @@ async def fetch_wars(headers, limit=3, batches=2):
         await asyncio.sleep(1.2)
 
     return all_wars
+
+# Example usage
+# asyncio.run(fetch_wars(headers))
+
 
 # Command
 @bot.tree.command(name="war_losses", description="Show recent war losses for a nation or alliance.")
