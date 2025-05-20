@@ -1123,14 +1123,15 @@ async def res_in_m_for_a(
             print(f"Failed to send fallback embed: {e}")
 
 import asyncio
-import requests
 import json
 import matplotlib.pyplot as plt
 from io import BytesIO
 import discord
 from discord import app_commands
+import httpx
 
-API_URL = f'https://api.politicsandwar.com/graphql?api_key={API_KEY}'
+API_KEY = 'your_api_key_here'
+API_URL = 'https://api.politicsandwar.com/graphql'
 
 # Util: convert losses to money
 def calculate_cost(losses):
@@ -1141,19 +1142,6 @@ def calculate_cost(losses):
         losses["missile_damage"] +
         losses["nuclear_damage"]
     )
-
-# Query template for paginated wars
-import requests
-import json
-import asyncio
-
-API_KEY = 'your_api_key_here'
-API_URL = 'https://api.politicsandwar.com/graphql'
-
-headers = {
-    "Authorization": f"Bearer {API_KEY}",
-    "Content-Type": "application/json"
-}
 
 def build_query(offset=0, limit=3):
     return f"""
@@ -1202,50 +1190,43 @@ def build_query(offset=0, limit=3):
 
 async def fetch_wars(headers, limit=3, batches=2):
     all_wars = []
-    for i in range(batches):
-        offset = i * limit
-        query = build_query(offset=offset, limit=limit)
+    async with httpx.AsyncClient() as client:
+        for i in range(batches):
+            offset = i * limit
+            query = build_query(offset=offset, limit=limit)
+            try:
+                response = await client.post(API_URL, json={"query": query}, headers=headers, timeout=10.0)
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                print(f"HTTP error: {exc.response.status_code} - {exc}")
+                if exc.response.status_code == 429:
+                    print("Rate limited, sleeping longer...")
+                    await asyncio.sleep(10)
+                    continue
+                break
+            except Exception as e:
+                print(f"Request failed: {e}")
+                break
 
-        response = requests.post(API_URL, json={"query": query}, headers=headers)
+            data = response.json()
 
-        print(f"Status: {response.status_code}")
-        print(json.dumps(response.json(), indent=2))  # Debug
+            if "data" not in data or "wars" not in data["data"]:
+                print("❌ Unexpected API response structure")
+                break
 
-        if response.status_code != 200:
-            print("❌ Failed GraphQL call.")
-            break
+            recent_wars = data["data"]["wars"]
+            if not recent_wars:
+                print("ℹ️ No wars returned by API.")
+                break
 
-        data = response.json()
-
-        # Debug: print the raw response to console/logs
-        print("Full API Response:")
-        print(json.dumps(data, indent=2))
-
-        # Defensive structure check
-        if "data" not in data:
-            print("❌ No 'data' field in API response.")
-            break
-
-        if "wars" not in data["data"]:
-            print("❌ No 'wars' field in API response.")
-            break
-
-        recent_wars = data["data"]["wars"]
-
-        if not recent_wars:
-            print("ℹ️ No wars returned by the API.")
-            break
-
-        all_wars.extend(recent_wars)
-        await asyncio.sleep(1.2)  # Rate limit buffer
+            all_wars.extend(recent_wars)
+            await asyncio.sleep(1.5)  # Safe delay between requests
 
     return all_wars
 
-# Example usage
-# asyncio.run(fetch_wars(headers))
+# Discord bot setup assumed to exist
+# bot = discord.Bot() or commands.Bot()
 
-
-# Command
 @bot.tree.command(name="war_losses", description="Show recent war losses for a nation or alliance.")
 @app_commands.describe(nation_id="Nation ID", alliance_id="Alliance ID")
 async def war_losses(interaction: discord.Interaction, nation_id: int = None, alliance_id: int = None):
@@ -1256,7 +1237,11 @@ async def war_losses(interaction: discord.Interaction, nation_id: int = None, al
         "Content-Type": "application/json"
     }
 
-    recent_wars = await fetch_wars(headers)
+    try:
+        recent_wars = await fetch_wars(headers)
+    except Exception as e:
+        await interaction.followup.send(f"⚠️ Error fetching wars: {e}")
+        return
 
     if not recent_wars:
         await interaction.followup.send("ℹ️ No wars found.")
@@ -1267,18 +1252,21 @@ async def war_losses(interaction: discord.Interaction, nation_id: int = None, al
     war_results = []
 
     for war in recent_wars:
-        atk = war["attacker"]
-        def_ = war["defender"]
+        atk = war.get("attacker")
+        def_ = war.get("defender")
+
+        if not atk or not def_:
+            continue  # Skip incomplete war data
 
         # Determine your side based on inputs
         atk_is_us = False
         def_is_us = False
         if alliance_id:
-            atk_is_us = atk["alliance"] and int(atk["alliance"]["id"]) == alliance_id
-            def_is_us = def_["alliance"] and int(def_["alliance"]["id"]) == alliance_id
+            atk_is_us = atk.get("alliance") and int(atk["alliance"]["id"]) == alliance_id
+            def_is_us = def_.get("alliance") and int(def_["alliance"]["id"]) == alliance_id
         elif nation_id:
-            atk_is_us = int(atk["id"]) == nation_id
-            def_is_us = int(def_["id"]) == nation_id
+            atk_is_us = int(atk.get("id", -1)) == nation_id
+            def_is_us = int(def_.get("id", -1)) == nation_id
 
         if not atk_is_us and not def_is_us:
             continue
@@ -1288,29 +1276,30 @@ async def war_losses(interaction: discord.Interaction, nation_id: int = None, al
 
         # Track war outcome for nation
         if nation_id and not alliance_id:
-            if war['winner'] is None:
+            winner = war.get('winner')
+            if winner is None:
                 war_results.append(0)
             else:
-                won = war['winner'] == our_side
+                won = winner == our_side
                 war_results.append(1 if won else -1)
 
-        # Loss tracking
-        for air in war["airstrikes"]:
+        # Loss tracking - safely get lists, default to empty
+        for air in war.get("airstrikes", []):
             your_side_losses["aircraft"] += air.get(f"{our_side}AircraftLost", 0) or 0
             enemy_losses["aircraft"] += air.get(f"{their_side}AircraftLost", 0) or 0
 
-        for ground in war["groundAttacks"]:
+        for ground in war.get("groundAttacks", []):
             your_side_losses["casualties"] += ground.get(f"{our_side}Casualties", 0) or 0
             enemy_losses["casualties"] += ground.get(f"{their_side}Casualties", 0) or 0
 
-        for naval in war["navalAttacks"]:
+        for naval in war.get("navalAttacks", []):
             your_side_losses["ships"] += naval.get(f"{our_side}ShipsLost", 0) or 0
             enemy_losses["ships"] += naval.get(f"{their_side}ShipsLost", 0) or 0
 
-        your_side_losses["missile_damage"] += sum(m.get("damage", 0) for m in war["missileAttacks"])
-        enemy_losses["missile_damage"] += sum(m.get("damage", 0) for m in war["missileAttacks"])
-        your_side_losses["nuclear_damage"] += sum(n.get("damage", 0) for n in war["nuclearAttacks"])
-        enemy_losses["nuclear_damage"] += sum(n.get("damage", 0) for n in war["nuclearAttacks"])
+        your_side_losses["missile_damage"] += sum(m.get("damage", 0) for m in war.get("missileAttacks", []))
+        enemy_losses["missile_damage"] += sum(m.get("damage", 0) for m in war.get("missileAttacks", []))
+        your_side_losses["nuclear_damage"] += sum(n.get("damage", 0) for n in war.get("nuclearAttacks", []))
+        enemy_losses["nuclear_damage"] += sum(n.get("damage", 0) for n in war.get("nuclearAttacks", []))
 
     # Prepare plots
     fig, ax = plt.subplots(figsize=(8, 6))
@@ -1334,7 +1323,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int = None, al
         bars = ax.bar(["Your Side", "Enemy Side"], [y_cost, e_cost], color=["blue", "red"])
         for bar in bars:
             yval = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2, yval + 1e6, f"${yval:,.0f}", ha='center')
+            ax.text(bar.get_x() + bar.get_width() / 2, yval + 1e6, f"${yval:,.0f}", ha='center')
         ax.set_title("💸 War Losses Comparison")
         ax.set_ylabel("Estimated Cost in $")
         ax.grid(axis='y')
