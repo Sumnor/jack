@@ -1148,7 +1148,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int = None, al
         return
 
     # Fetch wars from last 30 days
-    start_date = (datetime.utcnow() - timedelta(days=30)).strftime('%Y-%m-%d')
+    start_date = (datetime.now(timezone.utc) - timedelta(days=30)).strftime('%Y-%m-%d')
     query = f"""
     query {{
       wars(first: 100, date_gte: '{start_date}') {{
@@ -1240,14 +1240,21 @@ async def war_losses(interaction: discord.Interaction, nation_id: int = None, al
     # Prepare plots
     fig, ax = plt.subplots(figsize=(8, 6))
 
-    if nation_id and not alliance_id:
+        if nation_id and not alliance_id:
         # Line graph of war outcomes
-        ax.plot(range(1, len(war_results) + 1), war_results, marker='o', color='blue')
-        ax.axhline(0, color='gray', linestyle='--')
-        ax.set_title(f"Nation {nation_id} War Outcomes")
-        ax.set_xlabel("War Index")
-        ax.set_ylabel("+1 = Win, -1 = Loss, 0 = Timeout")
-        ax.grid(True)
+            x_vals = list(range(1, len(war_results) + 1))
+            y_vals = war_results
+
+            ax.plot(x_vals, y_vals, marker='o', color='blue')
+            ax.set_title(f"Nation {nation_id} War Outcomes (Last 30 Days)")
+            ax.set_xlabel("War #")
+            ax.set_ylabel("Outcome")
+            ax.set_xticks(x_vals)  # Ensures integer steps on x-axis
+            ax.set_yticks([-1, 0, 1])  # Loss, draw, win
+            ax.set_yticklabels(["❌ Loss", "⏳ Draw", "✅ Win"])
+            ax.axhline(0, color='gray', linestyle='--', linewidth=0.8)
+            ax.grid(True)
+
 
     else:
         # Bar chart for loss value comparison
