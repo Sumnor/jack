@@ -1252,7 +1252,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int = None, al
         ax.set_ylabel("Outcome")
         ax.set_xticks(x_vals)  # Ensures integer steps on x-axis
         ax.set_yticks([-1, 0, 1])  # Loss, draw, win
-        ax.set_yticklabels(["❌ Loss", "⏳ Draw", "✅ Win"])
+        ax.set_yticklabels(["Loss", "Draw", "Win"])
         ax.axhline(0, color='gray', linestyle='--', linewidth=0.8)
         ax.grid(True)
 
