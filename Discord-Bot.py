@@ -817,7 +817,7 @@ async def res_details_for_alliance(interaction: discord.Interaction):
                 f"Lead={lead:,}, Iron={iron:,}, Oil={oil:,}, Uranium={uranium:,}"
             )
 
-            await asyncio.sleep(3)  # to respect rate limits
+            await asyncio.sleep(5)  # to respect rate limits
 
         except Exception as e:
             print(f"Failed processing nation {own_id}: {e}")
@@ -963,7 +963,7 @@ async def res_in_m_for_a(
             totals["num_cities"] += num_cities
             processed_nations += 1
 
-            await asyncio.sleep(3)
+            await asyncio.sleep(5)
 
         except Exception as e:
             print(f"Failed processing nation {own_id}: {e}")
