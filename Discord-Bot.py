@@ -1142,65 +1142,76 @@ def calculate_cost(losses):
         losses["nuclear_damage"]
     )
 
-# Helper function to fetch wars in paginated batches
-async def fetch_wars(headers, batch_size=3, max_batches=2):
-    all_wars = []
-    for i in range(max_batches):
-        paginated_query = f"""
-        {{
-            wars(first: {batch_size}, page: {i + 1}, sort: "start_date", order: "desc") {{
+# Query template for paginated wars
+def build_query(offset=0, limit=3):
+    return f"""
+    {{
+        wars(limit: {limit}, offset: {offset}, sort: "start_date", order: "desc") {{
+            id
+            start_date
+            winner
+            attacker {{
                 id
-                start_date
-                winner
-                attacker {{
+                name
+                alliance {{
                     id
                     name
-                    alliance {{
-                        id
-                        name
-                    }}
-                }}
-                defender {{
-                    id
-                    name
-                    alliance {{
-                        id
-                        name
-                    }}
-                }}
-                airstrikes {{
-                    attackerAircraftLost
-                    defenderAircraftLost
-                }}
-                groundAttacks {{
-                    attackerCasualties
-                    defenderCasualties
-                }}
-                navalAttacks {{
-                    attackerShipsLost
-                    defenderShipsLost
-                }}
-                missileAttacks {{
-                    damage
-                }}
-                nuclearAttacks {{
-                    damage
                 }}
             }}
+            defender {{
+                id
+                name
+                alliance {{
+                    id
+                    name
+                }}
+            }}
+            airstrikes {{
+                attackerAircraftLost
+                defenderAircraftLost
+            }}
+            groundAttacks {{
+                attackerCasualties
+                defenderCasualties
+            }}
+            navalAttacks {{
+                attackerShipsLost
+                defenderShipsLost
+            }}
+            missileAttacks {{
+                damage
+            }}
+            nuclearAttacks {{
+                damage
+            }}
         }}
-        """
+    }}
+    """
 
-        response = requests.post(API_URL, json={"query": paginated_query}, headers=headers)
+
+async def fetch_wars(headers, limit=3, batches=2):
+    all_wars = []
+    for i in range(batches):
+        offset = i * limit
+        query = build_query(offset=offset, limit=limit)
+
+        response = requests.post(API_URL, json={"query": query}, headers=headers)
+
+        print(f"Status: {response.status_code}")
+        print(json.dumps(response.json(), indent=2))  # Debug
+
         if response.status_code != 200:
+            print("❌ Failed GraphQL call.")
             break
 
         data = response.json()
-        wars_batch = data.get("data", {}).get("wars", [])
-        if not wars_batch:
+        wars = data.get("data", {}).get("wars", [])
+        if not wars:
+            print("ℹ️ No wars in this batch.")
             break
 
-        all_wars.extend(wars_batch)
-        await asyncio.sleep(1.5)  # Respect rate limit
+        all_wars.extend(wars)
+        await asyncio.sleep(1.2)
 
     return all_wars
 
