@@ -1122,7 +1122,7 @@ async def res_in_m_for_a(
         except Exception as e:
             print(f"Failed to send fallback embed: {e}")
 
-URL = f'https://api.politicsandwar.com/graphql?api_key={API_KEY}'
+API_URL = f'https://api.politicsandwar.com/graphql?api_key={API_KEY}'
 
 # Util: convert losses to money
 def calculate_cost(losses):
@@ -1184,12 +1184,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int = None, al
     }
     """
 
-    headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    response = requests.post(API_URL, json={"query": query}, headers=headers)
+    response = requests.post(API_URL, json={"query": query})
 
     if response.status_code != 200:
         await interaction.followup.send("❌ Failed to fetch war data.")
