@@ -556,6 +556,7 @@ async def hourly_snapshot():
             "oil": 0,
             "uranium": 0,
             "num_cities": 0,
+            "coal": 0,
         }
         processed_nations = 0
         failed = 0
@@ -602,6 +603,7 @@ async def hourly_snapshot():
                     lead,
                     iron,
                     oil,
+                    coal,
                     uranium
                 ) = get_resources(own_id)
 
@@ -615,6 +617,7 @@ async def hourly_snapshot():
                 totals["lead"] += lead
                 totals["iron"] += iron
                 totals["oil"] += oil
+                totals["coal"] += coal
                 totals["uranium"] += uranium
                 totals["num_cities"] += num_cities
                 processed_nations += 1
@@ -627,7 +630,7 @@ async def hourly_snapshot():
                 continue
 
         total_sell_value = totals["money"]
-        for resource in ["food", "gasoline", "munitions", "steel", "aluminum", "bauxite", "lead", "iron", "oil", "uranium"]:
+        for resource in ["food", "gasoline", "munitions", "steel", "aluminum", "bauxite", "lead", "iron", "oil", "coal", "uranium"]:
             amount = totals.get(resource, 0)
             price = resource_prices.get(resource, 0)
             total_sell_value += amount * price
@@ -765,6 +768,7 @@ async def res_details_for_alliance(interaction: discord.Interaction):
         "lead": 0,
         "iron": 0,
         "oil": 0,
+        "coal": 0,
         "uranium": 0,
         "num_cities": 0,
     }
@@ -793,6 +797,7 @@ async def res_details_for_alliance(interaction: discord.Interaction):
                 lead,
                 iron,
                 oil,
+                coal,
                 uranium
             ) = result
 
@@ -806,6 +811,7 @@ async def res_details_for_alliance(interaction: discord.Interaction):
             totals["lead"] += lead
             totals["iron"] += iron
             totals["oil"] += oil
+            totals["coal"] += coal
             totals["uranium"] += uranium
             totals["num_cities"] += num_cities
             processed_nations += 1
@@ -814,7 +820,7 @@ async def res_details_for_alliance(interaction: discord.Interaction):
                 f"{nation_name} (ID: {own_id}): Cities={num_cities}, Money=${money:,}, "
                 f"Food={food:,}, Gasoline={gasoline:,}, Munitions={munitions:,}, "
                 f"Steel={steel:,}, Aluminum={aluminum:,}, Bauxite={bauxite:,}, "
-                f"Lead={lead:,}, Iron={iron:,}, Oil={oil:,}, Uranium={uranium:,}"
+                f"Lead={lead:,}, Iron={iron:,}, Oil={oil:,}, Coal={coal:,}, Uranium={uranium:,}"
             )
 
             await asyncio.sleep(5)  # to respect rate limits
@@ -837,6 +843,7 @@ async def res_details_for_alliance(interaction: discord.Interaction):
         f"Lead: {totals['lead']:,}\n"
         f"Iron: {totals['iron']:,}\n"
         f"Oil: {totals['oil']:,}\n"
+        f"Coal: {totals['coal']:,}\n"
         f"Uranium: {totals['uranium']:,}\n"
     )
 
@@ -892,6 +899,7 @@ async def res_in_m_for_a(
         "iron": 0,
         "oil": 0,
         "uranium": 0,
+        "coal": 0,
         "num_cities": 0,
     }
 
@@ -946,6 +954,7 @@ async def res_in_m_for_a(
                 lead,
                 iron,
                 oil,
+                coal,
                 uranium
             ) = result
 
@@ -959,6 +968,7 @@ async def res_in_m_for_a(
             totals["lead"] += lead
             totals["iron"] += iron
             totals["oil"] += oil
+            totals["coal"] += coal
             totals["uranium"] += uranium
             totals["num_cities"] += num_cities
             processed_nations += 1
@@ -973,7 +983,7 @@ async def res_in_m_for_a(
     total_sell_value = totals["money"]
     for resource in [
         "food", "gasoline", "munitions", "steel", "aluminum",
-        "bauxite", "lead", "iron", "oil", "uranium"
+        "bauxite", "lead", "iron", "oil", "coal", "uranium"
     ]:
         amount = totals.get(resource, 0)
         price = resource_prices.get(resource, 0)
@@ -998,6 +1008,7 @@ async def res_in_m_for_a(
         f"🧪 Lead: **{totals['lead']:,}**\n"
         f"⚙️ Iron: **{totals['iron']:,}**\n"
         f"🛢️ Oil: **{totals['oil']:,}**\n"
+        f"🏭 Coal: **{totals['coal']:,}**\n"
         f"☢️ Uranium: **{totals['uranium']:,}**\n\n"
         f"💸 Total Money if all was sold: **${total_sell_value:,.2f}**"
     )
