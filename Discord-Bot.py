@@ -619,7 +619,7 @@ async def hourly_snapshot():
                 totals["num_cities"] += num_cities
                 processed_nations += 1
 
-                await asyncio.sleep(1)  # API rate limit friendly
+                await asyncio.sleep(5)  # API rate limit friendly
             except Exception as e:
                 failed += 1
                 print(f"❌ Failed processing nation {own_id}: {e}")
