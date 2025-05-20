@@ -414,6 +414,7 @@ def get_resources(nation_id):
                 row.get("lead", 0),
                 row.get("iron", 0),
                 row.get("oil", 0),
+                row.get("coal", 0),
                 row.get("uranium", 0),
             )
         except IndexError:
