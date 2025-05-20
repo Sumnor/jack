@@ -1240,20 +1240,21 @@ async def war_losses(interaction: discord.Interaction, nation_id: int = None, al
     # Prepare plots
     fig, ax = plt.subplots(figsize=(8, 6))
 
-        if nation_id and not alliance_id:
+    if nation_id and not alliance_id:
         # Line graph of war outcomes
-            x_vals = list(range(1, len(war_results) + 1))
-            y_vals = war_results
+        x_vals = list(range(1, len(war_results) + 1))
+        y_vals = war_results
 
-            ax.plot(x_vals, y_vals, marker='o', color='blue')
-            ax.set_title(f"Nation {nation_id} War Outcomes (Last 30 Days)")
-            ax.set_xlabel("War #")
-            ax.set_ylabel("Outcome")
-            ax.set_xticks(x_vals)  # Ensures integer steps on x-axis
-            ax.set_yticks([-1, 0, 1])  # Loss, draw, win
-            ax.set_yticklabels(["❌ Loss", "⏳ Draw", "✅ Win"])
-            ax.axhline(0, color='gray', linestyle='--', linewidth=0.8)
-            ax.grid(True)
+        ax.plot(x_vals, y_vals, marker='o', color='blue')
+        ax.set_title(f"Nation {nation_id} War Outcomes (Last 30 Days)")
+        ax.set_xlabel("War #")
+        ax.set_ylabel("Outcome")
+        ax.set_xticks(x_vals)  # Ensures integer steps on x-axis
+        ax.set_yticks([-1, 0, 1])  # Loss, draw, win
+        ax.set_yticklabels(["❌ Loss", "⏳ Draw", "✅ Win"])
+        ax.axhline(0, color='gray', linestyle='--', linewidth=0.8)
+        ax.grid(True)
+
 
 
     else:
