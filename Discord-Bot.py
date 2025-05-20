@@ -1195,7 +1195,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int = None, al
     enemy_losses = {"aircraft": 0, "casualties": 0, "ships": 0, "missile_damage": 0, "nuclear_damage": 0}
     war_results = []
 
-    for war in wars:
+    for war in recent_wars:
         atk = war["attacker"]
         def_ = war["defender"]
 
@@ -1225,18 +1225,22 @@ async def war_losses(interaction: discord.Interaction, nation_id: int = None, al
 
         # Loss tracking
         for air in war["airstrikes"]:
-            your_side_losses["aircraft"] += air[f"{our_side}AircraftLost"] or 0
-            enemy_losses["aircraft"] += air[f"{their_side}AircraftLost"] or 0
+            your_side_losses["aircraft"] += air.get(f"{our_side}AircraftLost", 0) or 0
+            enemy_losses["aircraft"] += air.get(f"{their_side}AircraftLost", 0) or 0
+
         for ground in war["groundAttacks"]:
-            your_side_losses["casualties"] += ground[f"{our_side}Casualties"] or 0
-            enemy_losses["casualties"] += ground[f"{their_side}Casualties"] or 0
+            your_side_losses["casualties"] += ground.get(f"{our_side}Casualties", 0) or 0
+            enemy_losses["casualties"] += ground.get(f"{their_side}Casualties", 0) or 0
+
         for naval in war["navalAttacks"]:
-            your_side_losses["ships"] += naval[f"{our_side}ShipsLost"] or 0
-            enemy_losses["ships"] += naval[f"{their_side}ShipsLost"] or 0
-        your_side_losses["missile_damage"] += sum(m["damage"] for m in war["missileAttacks"])
-        enemy_losses["missile_damage"] += sum(m["damage"] for m in war["missileAttacks"])
-        your_side_losses["nuclear_damage"] += sum(n["damage"] for n in war["nuclearAttacks"])
-        enemy_losses["nuclear_damage"] += sum(n["damage"] for n in war["nuclearAttacks"])
+            your_side_losses["ships"] += naval.get(f"{our_side}ShipsLost", 0) or 0
+            enemy_losses["ships"] += naval.get(f"{their_side}ShipsLost", 0) or 0
+
+        your_side_losses["missile_damage"] += sum(m.get("damage", 0) for m in war["missileAttacks"])
+        enemy_losses["missile_damage"] += sum(m.get("damage", 0) for m in war["missileAttacks"])
+        your_side_losses["nuclear_damage"] += sum(n.get("damage", 0) for n in war["nuclearAttacks"])
+        enemy_losses["nuclear_damage"] += sum(n.get("damage", 0) for n in war["nuclearAttacks"])
+
 
     # Prepare plots
     fig, ax = plt.subplots(figsize=(8, 6))
