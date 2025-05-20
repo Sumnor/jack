@@ -1219,11 +1219,7 @@ def get_data(nation_id):
             return None
 
 
-# Assuming you already have a bot instance
-import discord
-from discord import app_commands
-import matplotlib.pyplot as plt
-from io import BytesIO
+# Assuming you already have a bot instanc
 
 # Assuming API_KEY is already defined somewhere above
 # Also assuming your bot instance is called `bot`
