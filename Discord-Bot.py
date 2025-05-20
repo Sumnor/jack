@@ -1185,7 +1185,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int = None, al
     }}
     """
     response = requests.post(URL, json={"query": query}, headers={"Content-Type": "application/json"})
-    print(response)
+    print(response.json())
     if response.status_code != 200:
         await interaction.followup.send(f"❌ API error: {response.status_code}")
         return
