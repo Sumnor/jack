@@ -13,6 +13,7 @@ from discord.ui import View, Modal, TextInput, button
 from discord.ui import Button, View
 import random
 import os
+from io import BytesIO
 import json
 import re
 from datetime import timezone
@@ -1119,7 +1120,152 @@ async def res_in_m_for_a(
         except Exception as e:
             print(f"Failed to send fallback embed: {e}")
 
+URL = f'https://api.politicsandwar.com/graphql?api_key={API_KEY}'
 
+# Util: convert losses to money
+def calculate_cost(losses):
+    return (
+        losses["aircraft"] * 200_000 +
+        losses["casualties"] * 1_000 +
+        losses["ships"] * 5_000_000 +
+        losses["missile_damage"] +
+        losses["nuclear_damage"]
+    )
+
+# Command
+@bot.tree.command(name="war_losses", description="Compare war losses for a nation or alliance")
+@app_commands.describe(
+    nation_id="Nation ID to analyze",
+    alliance_id="Alliance ID to analyze"
+)
+async def war_losses(interaction: discord.Interaction, nation_id: int = None, alliance_id: int = None):
+    await interaction.response.defer()
+
+    if not nation_id and not alliance_id:
+        await interaction.followup.send("⚠️ Please provide at least a nation ID or an alliance ID.")
+        return
+
+    # Fetch wars from last 30 days
+    start_date = (datetime.datetime.utcnow() - datetime.timedelta(days=30)).strftime('%Y-%m-%d')
+    query = f"""
+    query {{
+      wars(first: 100, date_gte: '{start_date}') {{
+        data {{
+          id
+          date
+          winner
+          attacker {{
+            id
+            nationName
+            alliance {{ id }}
+          }}
+          defender {{
+            id
+            nationName
+            alliance {{ id }}
+          }}
+          airstrikes {{
+            attackerAircraftLost
+            defenderAircraftLost
+          }}
+          groundAttacks {{
+            attackerCasualties
+            defenderCasualties
+          }}
+          navalAttacks {{
+            attackerShipsLost
+            defenderShipsLost
+          }}
+          missileAttacks {{ damage }}
+          nuclearAttacks {{ damage }}
+        }}
+      }}
+    }}
+    """
+    response = requests.post(URL, json={"query": query}, headers={"Content-Type": "application/json"})
+    if response.status_code != 200:
+        await interaction.followup.send(f"❌ API error: {response.status_code}")
+        return
+
+    wars = response.json().get("data", {}).get("wars", {}).get("data", [])
+    your_side_losses = {"aircraft": 0, "casualties": 0, "ships": 0, "missile_damage": 0, "nuclear_damage": 0}
+    enemy_losses = {"aircraft": 0, "casualties": 0, "ships": 0, "missile_damage": 0, "nuclear_damage": 0}
+    war_results = []
+
+    for war in wars:
+        atk = war["attacker"]
+        def_ = war["defender"]
+
+        # Determine your side based on inputs
+        atk_is_us = False
+        def_is_us = False
+        if alliance_id:
+            atk_is_us = atk["alliance"] and int(atk["alliance"]["id"]) == alliance_id
+            def_is_us = def_["alliance"] and int(def_["alliance"]["id"]) == alliance_id
+        elif nation_id:
+            atk_is_us = int(atk["id"]) == nation_id
+            def_is_us = int(def_["id"]) == nation_id
+
+        if not atk_is_us and not def_is_us:
+            continue
+
+        our_side = "attacker" if atk_is_us else "defender"
+        their_side = "defender" if atk_is_us else "attacker"
+
+        # Track war outcome for nation
+        if nation_id and not alliance_id:
+            if war['winner'] is None:
+                war_results.append(0)
+            else:
+                won = war['winner'] == our_side
+                war_results.append(1 if won else -1)
+
+        # Loss tracking
+        for air in war["airstrikes"]:
+            your_side_losses["aircraft"] += air[f"{our_side}AircraftLost"] or 0
+            enemy_losses["aircraft"] += air[f"{their_side}AircraftLost"] or 0
+        for ground in war["groundAttacks"]:
+            your_side_losses["casualties"] += ground[f"{our_side}Casualties"] or 0
+            enemy_losses["casualties"] += ground[f"{their_side}Casualties"] or 0
+        for naval in war["navalAttacks"]:
+            your_side_losses["ships"] += naval[f"{our_side}ShipsLost"] or 0
+            enemy_losses["ships"] += naval[f"{their_side}ShipsLost"] or 0
+        your_side_losses["missile_damage"] += sum(m["damage"] for m in war["missileAttacks"])
+        enemy_losses["missile_damage"] += sum(m["damage"] for m in war["missileAttacks"])
+        your_side_losses["nuclear_damage"] += sum(n["damage"] for n in war["nuclearAttacks"])
+        enemy_losses["nuclear_damage"] += sum(n["damage"] for n in war["nuclearAttacks"])
+
+    # Prepare plots
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    if nation_id and not alliance_id:
+        # Line graph of war outcomes
+        ax.plot(range(1, len(war_results) + 1), war_results, marker='o', color='blue')
+        ax.axhline(0, color='gray', linestyle='--')
+        ax.set_title(f"Nation {nation_id} War Outcomes")
+        ax.set_xlabel("War Index")
+        ax.set_ylabel("+1 = Win, -1 = Loss, 0 = Timeout")
+        ax.grid(True)
+
+    else:
+        # Bar chart for loss value comparison
+        y_cost = calculate_cost(your_side_losses)
+        e_cost = calculate_cost(enemy_losses)
+        bars = ax.bar(["Your Side", "Enemy Side"], [y_cost, e_cost], color=["blue", "red"])
+        for bar in bars:
+            yval = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2, yval + 1e6, f"${yval:,.0f}", ha='center')
+        ax.set_title("💸 War Losses in the Last 30 Days")
+        ax.set_ylabel("Estimated Cost in $")
+        ax.grid(axis='y')
+
+    # Save plot to buffer
+    buffer = BytesIO()
+    plt.tight_layout()
+    plt.savefig(buffer, format='png')
+    buffer.seek(0)
+    file = discord.File(fp=buffer, filename="war_losses.png")
+    await interaction.followup.send(file=file)
 
 
 '''@bot.tree.command(name="register_manual", description="Manually register a nation with a given Discord username (no validation)")
