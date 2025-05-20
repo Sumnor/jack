@@ -782,7 +782,7 @@ async def res_details_for_alliance(interaction: discord.Interaction):
 
         try:
             result = get_resources(own_id)
-            if len(result) != 13:
+            if len(result) != 14:
                 raise ValueError("Invalid result length from get_resources")
 
             (
@@ -939,7 +939,7 @@ async def res_in_m_for_a(
 
         try:
             result = get_resources(own_id)
-            if len(result) != 13:
+            if len(result) != 14:
                 raise ValueError("Invalid result length from get_resources")
 
             (
