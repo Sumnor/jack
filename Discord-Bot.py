@@ -1130,8 +1130,7 @@ import discord
 from discord import app_commands
 import httpx
 
-API_KEY = 'your_api_key_here'
-API_URL = 'https://api.politicsandwar.com/graphql'
+API_URL = 'https://api.politicsandwar.com/graphql?api_key={API_KEY}'
 
 # Util: convert losses to money
 def calculate_cost(losses):
