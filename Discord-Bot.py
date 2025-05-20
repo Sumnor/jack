@@ -1135,59 +1135,73 @@ def calculate_cost(losses):
     )
 
 # Command
-@bot.tree.command(name="war_losses", description="Compare war losses for a nation or alliance")
-@app_commands.describe(
-    nation_id="Nation ID to analyze",
-    alliance_id="Alliance ID to analyze"
-)
-async def war_losses(interaction: discord.Interaction, nation_id: int = None, alliance_id: int = None):
+d
+@bot.tree.command(name="war_losses", description="Show recent war losses for a nation or alliance.")
+@app_commands.describe(nation_id="Nation ID", alliance_id="Alliance ID")
+async def war_losses(interaction: discord.Interaction, nation_id: Optional[int] = None, alliance_id: Optional[int] = None):
     await interaction.response.defer()
 
-    if not nation_id and not alliance_id:
-        await interaction.followup.send("⚠️ Please provide at least a nation ID or an alliance ID.")
+    query = """
+    {
+      wars(first: 100, sort: "start_date", order: "desc") {
+        id
+        start_date
+        winner
+        attacker {
+          id
+          name
+          alliance {
+            id
+            name
+          }
+        }
+        defender {
+          id
+          name
+          alliance {
+            id
+            name
+          }
+        }
+        airstrikes {
+          attackerAircraftLost
+          defenderAircraftLost
+        }
+        groundAttacks {
+          attackerCasualties
+          defenderCasualties
+        }
+        navalAttacks {
+          attackerShipsLost
+          defenderShipsLost
+        }
+        missileAttacks {
+          damage
+        }
+        nuclearAttacks {
+          damage
+        }
+      }
+    }
+    """
+
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(API_URL, json={"query": query}, headers=headers)
+
+    if response.status_code != 200:
+        await interaction.followup.send("❌ Failed to fetch war data.")
         return
 
-    # Fetch wars from last 30 days
-    start_date = (datetime.now(timezone.utc) - timedelta(days=30)).strftime('%Y-%m-%d')
-    query = f"""
-    query {{
-      wars(first: 100, date_gte: '{start_date}') {{
-        data {{
-          id
-          date
-          winner
-          attacker {{
-            id
-            nationName
-            alliance {{ id }}
-          }}
-          defender {{
-            id
-            nationName
-            alliance {{ id }}
-          }}
-          airstrikes {{
-            attackerAircraftLost
-            defenderAircraftLost
-          }}
-          groundAttacks {{
-            attackerCasualties
-            defenderCasualties
-          }}
-          navalAttacks {{
-            attackerShipsLost
-            defenderShipsLost
-          }}
-          missileAttacks {{ damage }}
-          nuclearAttacks {{ damage }}
-        }}
-      }}
-    }}
-    """
-    response = requests.post(URL, json={"query": query}, headers={"Content-Type": "application/json"})
-    print(response.json())
-    if response.status_code != 200:
-        await interaction.followup.send(f"❌ API error: {response.status_code}")
+    data = response.json()
+
+    recent_wars = data.get("data", {}).get("wars", [])
+
+    if not recent_wars:
+        await interaction.followup.send("ℹ️ No wars found.")
         return
 
     wars = response.json().get("data", {}).get("wars", {}).get("data", [])
