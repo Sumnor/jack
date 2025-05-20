@@ -1,6 +1,7 @@
 import discord
 import json
 import math
+import datetime
 import pandas as pd
 from pandas import json_normalize
 from discord import app_commands, Interaction, ButtonStyle
@@ -1147,7 +1148,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int = None, al
         return
 
     # Fetch wars from last 30 days
-    start_date = (datetime.datetime.utcnow() - datetime.timedelta(days=30)).strftime('%Y-%m-%d')
+    start_date = (datetime.utcnow() - timedelta(days=30)).strftime('%Y-%m-%d')
     query = f"""
     query {{
       wars(first: 100, date_gte: '{start_date}') {{
@@ -1259,6 +1260,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int = None, al
         ax.set_title("💸 War Losses in the Last 30 Days")
         ax.set_ylabel("Estimated Cost in $")
         ax.grid(axis='y')
+
 
     # Save plot to buffer
     buffer = BytesIO()
