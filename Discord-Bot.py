@@ -1216,13 +1216,28 @@ async def fetch_wars(headers, limit=3, batches=2):
             break
 
         data = response.json()
-        wars = data.get("data", {}).get("wars", [])
-        if not wars:
-            print("ℹ️ No wars in this batch.")
+
+        # Debug: print the raw response to console/logs
+        print("Full API Response:")
+        print(json.dumps(data, indent=2))
+
+        # Defensive structure check
+        if "data" not in data:
+            print("❌ No 'data' field in API response.")
             break
 
-        all_wars.extend(wars)
-        await asyncio.sleep(1.2)
+        if "wars" not in data["data"]:
+            print("❌ No 'wars' field in API response.")
+            break
+
+        recent_wars = data["data"]["wars"]
+
+        if not recent_wars:
+            print("ℹ️ No wars returned by the API.")
+            break
+
+        all_wars.extend(recent_wars)
+        await asyncio.sleep(1.2)  # Rate limit buffer
 
     return all_wars
 
