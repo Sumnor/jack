@@ -1140,51 +1140,59 @@ def calculate_cost(losses):
 async def war_losses(interaction: discord.Interaction, nation_id: int = None, alliance_id: int = None):
     await interaction.response.defer()
 
-    query = """
-    {
-      wars(first: 100, sort: "start_date", order: "desc") {
-        id
-        start_date
-        winner
-        attacker {
-          id
-          name
-          alliance {
-            id
-            name
-          }
-        }
-        defender {
-          id
-          name
-          alliance {
-            id
-            name
-          }
-        }
-        airstrikes {
-          attackerAircraftLost
-          defenderAircraftLost
-        }
-        groundAttacks {
-          attackerCasualties
-          defenderCasualties
-        }
-        navalAttacks {
-          attackerShipsLost
-          defenderShipsLost
-        }
-        missileAttacks {
-          damage
-        }
-        nuclearAttacks {
-          damage
-        }
-      }
-    }
-    """
+	headers = {
+		"Authorization": f"Bearer {API_KEY}",
+		"Content-Type": "application/json"
+	}
 
-    response = requests.post(API_URL, json={"query": query})
+	query = """
+	{
+		wars(first: 5, sort: "start_date", order: "desc") {
+			id
+			start_date
+			winner
+			attacker {
+				id
+				name
+				alliance {
+					id
+					name
+				}
+			}
+			defender {
+				id
+				name
+				alliance {
+					id
+					name
+				}
+			}
+			airstrikes {
+				attackerAircraftLost
+				defenderAircraftLost
+			}
+			groundAttacks {
+				attackerCasualties
+				defenderCasualties
+			}
+			navalAttacks {
+				attackerShipsLost
+				defenderShipsLost
+			}
+			missileAttacks {
+				damage
+			}
+			nuclearAttacks {
+				damage
+			}
+		}
+	}
+	"""
+
+	response = requests.post(API_URL, json={"query": query}, headers=headers)
+	print(response.status_code)
+	print(json.dumps(response.json(), indent=2))
+
 
     if response.status_code != 200:
         await interaction.followup.send("❌ Failed to fetch war data.")
