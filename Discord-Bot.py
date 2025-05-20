@@ -1135,7 +1135,6 @@ def calculate_cost(losses):
     )
 
 # Command
-d
 @bot.tree.command(name="war_losses", description="Show recent war losses for a nation or alliance.")
 @app_commands.describe(nation_id="Nation ID", alliance_id="Alliance ID")
 async def war_losses(interaction: discord.Interaction, nation_id: Optional[int] = None, alliance_id: Optional[int] = None):
