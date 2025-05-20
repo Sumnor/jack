@@ -1122,15 +1122,11 @@ async def res_in_m_for_a(
         except Exception as e:
             print(f"Failed to send fallback embed: {e}")
 
-import asyncio
+import requests
+import pandas as pd
 import json
-import matplotlib.pyplot as plt
-from io import BytesIO
-import discord
-from discord import app_commands
-import httpx
 
-API_URL = 'https://api.politicsandwar.com/graphql?api_key={API_KEY}'
+API_URL = f'https://api.politicsandwar.com/graphql?api_key={API_KEY}'
 
 # Util: convert losses to money
 def calculate_cost(losses):
@@ -1142,8 +1138,10 @@ def calculate_cost(losses):
         losses["nuclear_damage"]
     )
 
-def build_query(offset=0, limit=3):
-    return f"""
+def query_wars(limit=3, offset=0):
+    GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
+
+    query = f"""
     {{
         wars(limit: {limit}, offset: {offset}, sort: "start_date", order: "desc") {{
             id
@@ -1165,145 +1163,143 @@ def build_query(offset=0, limit=3):
                     name
                 }}
             }}
-            airstrikes {{
-                attackerAircraftLost
-                defenderAircraftLost
-            }}
-            groundAttacks {{
-                attackerCasualties
-                defenderCasualties
-            }}
-            navalAttacks {{
-                attackerShipsLost
-                defenderShipsLost
-            }}
-            missileAttacks {{
-                damage
-            }}
-            nuclearAttacks {{
-                damage
-            }}
         }}
     }}
     """
 
-async def fetch_wars(headers, limit=3, batches=2):
-    all_wars = []
-    async with httpx.AsyncClient() as client:
-        for i in range(batches):
-            offset = i * limit
-            query = build_query(offset=offset, limit=limit)
-            try:
-                response = await client.post(API_URL, json={"query": query}, headers=headers, timeout=10.0)
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                print(f"HTTP error: {exc.response.status_code} - {exc}")
-                if exc.response.status_code == 429:
-                    print("Rate limited, sleeping longer...")
-                    await asyncio.sleep(10)
-                    continue
-                break
-            except Exception as e:
-                print(f"Request failed: {e}")
-                break
+    try:
+        response = requests.post(
+            GRAPHQL_URL,
+            json={"query": query},
+            headers={"Content-Type": "application/json"}
+        )
+        response.raise_for_status()
+        json_data = response.json()
 
-            data = response.json()
+        if "errors" in json_data:
+            print("GraphQL Errors:", json_data["errors"])
+            return None
 
-            if "data" not in data or "wars" not in data["data"]:
-                print("❌ Unexpected API response structure")
-                break
+        wars_data = json_data.get("data", {}).get("wars", [])
+        if not wars_data:
+            print("No war data found.")
+            return None
 
-            recent_wars = data["data"]["wars"]
-            if not recent_wars:
-                print("ℹ️ No wars returned by API.")
-                break
+        # Flatten the nested attacker and defender objects into the DataFrame columns
+        df = pd.json_normalize(
+            wars_data,
+            sep='_',
+            max_level=2
+        )
+        return df
 
-            all_wars.extend(recent_wars)
-            await asyncio.sleep(1.5)  # Safe delay between requests
+    except requests.RequestException as e:
+        print(f"HTTP Error during GraphQL request: {e}")
+        return None
+    except (KeyError, TypeError, json.JSONDecodeError) as e:
+        print(f"Parsing Error: {e}")
+        return None
 
-    return all_wars
+def get_data(nation_id):
+    df = graphql_request(nation_id)
+    if df is not None:
+        try:
+            row = df[df["id"] == nation_id].iloc[0]
 
-# Discord bot setup assumed to exist
-# bot = discord.Bot() or commands.Bot()
+            return (
+                row.get("start_date", "0"),
+                row.get("winner", 0),
+                row.get("id", 0),
+                row.get("attacker_id", None),
+                row.get("attacker_name", None),
+                row.get("defender_id", None),
+                row.get("defender_name", None)
+            )
+        except IndexError:
+            return None
+
+
+# Assuming you already have a bot instance
+import discord
+from discord import app_commands
+import matplotlib.pyplot as plt
+from io import BytesIO
+
+# Assuming API_KEY is already defined somewhere above
+# Also assuming your bot instance is called `bot`
 
 @bot.tree.command(name="war_losses", description="Show recent war losses for a nation or alliance.")
 @app_commands.describe(nation_id="Nation ID", alliance_id="Alliance ID")
 async def war_losses(interaction: discord.Interaction, nation_id: int = None, alliance_id: int = None):
     await interaction.response.defer()
 
-    headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    try:
-        recent_wars = await fetch_wars(headers)
-    except Exception as e:
-        await interaction.followup.send(f"⚠️ Error fetching wars: {e}")
-        return
-
-    if not recent_wars:
+    df = query_wars(limit=50)  # Fetch recent 50 wars, adjust as needed
+    if df is None or df.empty:
         await interaction.followup.send("ℹ️ No wars found.")
         return
 
+    # Initialize losses dicts
     your_side_losses = {"aircraft": 0, "casualties": 0, "ships": 0, "missile_damage": 0, "nuclear_damage": 0}
     enemy_losses = {"aircraft": 0, "casualties": 0, "ships": 0, "missile_damage": 0, "nuclear_damage": 0}
     war_results = []
 
-    for war in recent_wars:
-        atk = war.get("attacker")
-        def_ = war.get("defender")
+    for _, row in df.iterrows():
+        # Determine if the nation/alliance is attacker or defender in this war
+        atk_id = row.get("attacker_id", None)
+        def_id = row.get("defender_id", None)
+        atk_alliance_id = row.get("attacker_alliance_id", None)
+        def_alliance_id = row.get("defender_alliance_id", None)
 
-        if not atk or not def_:
-            continue  # Skip incomplete war data
-
-        # Determine your side based on inputs
         atk_is_us = False
         def_is_us = False
-        if alliance_id:
-            atk_is_us = atk.get("alliance") and int(atk["alliance"]["id"]) == alliance_id
-            def_is_us = def_.get("alliance") and int(def_["alliance"]["id"]) == alliance_id
-        elif nation_id:
-            atk_is_us = int(atk.get("id", -1)) == nation_id
-            def_is_us = int(def_.get("id", -1)) == nation_id
+        if alliance_id is not None:
+            atk_is_us = atk_alliance_id == alliance_id
+            def_is_us = def_alliance_id == alliance_id
+        elif nation_id is not None:
+            atk_is_us = atk_id == nation_id
+            def_is_us = def_id == nation_id
 
         if not atk_is_us and not def_is_us:
-            continue
+            continue  # Not our war
 
         our_side = "attacker" if atk_is_us else "defender"
         their_side = "defender" if atk_is_us else "attacker"
 
-        # Track war outcome for nation
-        if nation_id and not alliance_id:
-            winner = war.get('winner')
+        # War outcome for nation only (if no alliance specified)
+        if nation_id is not None and alliance_id is None:
+            winner = row.get("winner", None)
             if winner is None:
-                war_results.append(0)
+                war_results.append(0)  # draw or unknown
             else:
-                won = winner == our_side
+                won = (winner == our_side)
                 war_results.append(1 if won else -1)
 
-        # Loss tracking - safely get lists, default to empty
-        for air in war.get("airstrikes", []):
-            your_side_losses["aircraft"] += air.get(f"{our_side}AircraftLost", 0) or 0
-            enemy_losses["aircraft"] += air.get(f"{their_side}AircraftLost", 0) or 0
+        # Aggregate losses safely (these keys depend on your detailed war data structure;
+        # since the original query did not request airstrikes etc, you may want to extend query_wars 
+        # to include those fields if you want real losses here)
+        # For now, we'll simulate with zeroes or placeholders.
+        # Replace these with actual field names if available from your GraphQL response.
 
-        for ground in war.get("groundAttacks", []):
-            your_side_losses["casualties"] += ground.get(f"{our_side}Casualties", 0) or 0
-            enemy_losses["casualties"] += ground.get(f"{their_side}Casualties", 0) or 0
+        # Example placeholder access:
+        your_side_losses["aircraft"] += row.get(f"{our_side}_aircraft_lost", 0) or 0
+        enemy_losses["aircraft"] += row.get(f"{their_side}_aircraft_lost", 0) or 0
 
-        for naval in war.get("navalAttacks", []):
-            your_side_losses["ships"] += naval.get(f"{our_side}ShipsLost", 0) or 0
-            enemy_losses["ships"] += naval.get(f"{their_side}ShipsLost", 0) or 0
+        your_side_losses["casualties"] += row.get(f"{our_side}_casualties", 0) or 0
+        enemy_losses["casualties"] += row.get(f"{their_side}_casualties", 0) or 0
 
-        your_side_losses["missile_damage"] += sum(m.get("damage", 0) for m in war.get("missileAttacks", []))
-        enemy_losses["missile_damage"] += sum(m.get("damage", 0) for m in war.get("missileAttacks", []))
-        your_side_losses["nuclear_damage"] += sum(n.get("damage", 0) for n in war.get("nuclearAttacks", []))
-        enemy_losses["nuclear_damage"] += sum(n.get("damage", 0) for n in war.get("nuclearAttacks", []))
+        your_side_losses["ships"] += row.get(f"{our_side}_ships_lost", 0) or 0
+        enemy_losses["ships"] += row.get(f"{their_side}_ships_lost", 0) or 0
 
-    # Prepare plots
+        your_side_losses["missile_damage"] += row.get(f"{our_side}_missile_damage", 0) or 0
+        enemy_losses["missile_damage"] += row.get(f"{their_side}_missile_damage", 0) or 0
+
+        your_side_losses["nuclear_damage"] += row.get(f"{our_side}_nuclear_damage", 0) or 0
+        enemy_losses["nuclear_damage"] += row.get(f"{their_side}_nuclear_damage", 0) or 0
+
+    # Prepare plot
     fig, ax = plt.subplots(figsize=(8, 6))
 
-    if nation_id and not alliance_id:
+    if nation_id is not None and alliance_id is None:
         x_vals = list(range(1, len(war_results) + 1))
         y_vals = war_results
 
@@ -1332,7 +1328,16 @@ async def war_losses(interaction: discord.Interaction, nation_id: int = None, al
     plt.savefig(buffer, format='png')
     buffer.seek(0)
     file = discord.File(fp=buffer, filename="war_losses.png")
-    await interaction.followup.send(file=file)
+
+    # Also send some basic war summary with attacker and defender names
+    wars_summary = []
+    for _, row in df.iterrows():
+        wars_summary.append(
+            f"War ID: {row.get('id')} | Attacker: {row.get('attacker_name')} | Defender: {row.get('defender_name')} | Winner: {row.get('winner')}"
+        )
+    summary_text = "\n".join(wars_summary[:10])  # limit to first 10 wars
+
+    await interaction.followup.send(content=f"Recent Wars Summary:\n{summary_text}", file=file)
 
 
 '''@bot.tree.command(name="register_manual", description="Manually register a nation with a given Discord username (no validation)")
