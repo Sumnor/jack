@@ -1199,10 +1199,12 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
     
     if "errors" in result:
         print(f"API errors: {result['errors']}")
+        return
     else:
         wars = result.get("data", {}).get("wars", {}).get("data", [])
         if not wars:
             print("No wars found for this nation.")
+            return
         else:
             for war in wars:
                 print(f"War ID: {war['id']}, Reason: {war['reason']}")
