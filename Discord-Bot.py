@@ -42,7 +42,7 @@ cached_sheet_data = []
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
-bot_ey = os.getenv("bot_key")
+bot_key = os.getenv("Key")
 API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
@@ -591,11 +591,13 @@ def load_conflict_data():
         print(f"❌ Failed to load conflict data sheet: {e}")
         print(traceback.format_exc())
 
+
 # --- Daily Refresh Task ---
 
 async def daily_refresh_loop():
     while True:
-        now = datetime.datetime.utcnow()
+        import datetime
+        now = datetime.datetime.utcnow().date()
         next_midnight = (now + datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         wait_seconds = (next_midnight - now).total_seconds()
         await asyncio.sleep(wait_seconds)
@@ -628,6 +630,12 @@ def get_latest_open_conflict():
             # return conflict and its row number in the sheet (needed for updates)
             return conflict, len(conflicts) - i + 2  # +2 because sheet rows start at 1, and header is row 1
     return None, None
+
+def get_sheet():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(get_credentials(), scope)
+    client = gspread.authorize(creds)
+    return client.open("Registrations").sheet1
 
 def load_sheet_data():
     global cached_users, cached_sheet_data
@@ -1500,6 +1508,11 @@ async def conflict(interaction: discord.Interaction, action: str, name: str = No
         await interaction.followup.send("Unknown action. Use: start, add, end, warloss")
 
 
+from datetime import datetime
+import matplotlib.pyplot as plt
+from io import BytesIO
+import discord
+
 @bot.tree.command(name="war_losses_alliance", description="Show recent wars for an alliance with optional detailed stats and conflict mode.")
 @app_commands.describe(
     alliance_id="Alliance ID",
@@ -1516,7 +1529,6 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
 
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
 
-    # Find conflict by name if given
     conflict = None
     if conflict_name:
         for c in cached_conflicts:
@@ -1527,59 +1539,50 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
             await interaction.followup.send(f"❌ Conflict '{conflict_name}' not found.")
             return
 
-    # Determine war query variables
-    first = 100  # get more if conflict mode to cover longer period
-    page = 1
+    first = 100 if conflict else 30
     orderBy = [{"column": "ID", "order": "DESC"}]
 
     query = """
-    query (
-      $alliance_id: Int, 
-      $first: Int, 
-      $page: Int, 
-      $orderBy: [QueryWarsOrderByOrderByClause!]
+        query (
+    $id: [Int], 
+    $limit: Int, 
+    $orderBy: [AllianceWarsOrderByOrderByClause!]
     ) {
-      alliance(id: $alliance_id) {
+    alliances(id: $id) {
+        data {
         id
         name
-        wars(first: $first, page: $page, orderBy: $orderBy) {
-          id
-          date
-          end_date
-          reason
-          war_type
-          winner_id
-          attacker {
+        wars(limit: $limit, orderBy: $orderBy) {
             id
+            date
+            end_date
+            reason
+            war_type
+            winner_id
+            attacker {
             nation_name
-          }
-          defender {
             id
+            }
+            defender {
             nation_name
-          }
-          att_infra_destroyed
-          def_infra_destroyed
-          att_money_looted
-          def_money_looted
-          def_soldiers_lost
-          att_soldiers_lost
-          attacks {
             id
-            infra_destroyed
-            money_stolen
-            att_soldiers_lost
+            }
+            att_infra_destroyed
+            def_infra_destroyed
+            att_money_looted
+            def_money_looted
             def_soldiers_lost
-          }
+            att_soldiers_lost
         }
-      }
+        }
+    }
     }
     """
 
     variables = {
-        "alliance_id": alliance_id,
-        "first": first,
-        "page": page,
-        "orderBy": orderBy
+        "id": [alliance_id],
+        "limit": 100,
+        "orderBy": [{"column": "ID", "order": "DESC"}],
     }
 
     headers = {"Content-Type": "application/json"}
@@ -1596,179 +1599,169 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
         return
 
     result = response.json()
-
     if "errors" in result:
         await interaction.followup.send(f"API errors: {result['errors']}")
         return
 
-    alliance = result.get("data", {}).get("alliance")
-    if not alliance or not alliance.get("wars"):
-        await interaction.followup.send("No wars found for this alliance.")
+    alliances_data = result.get("data", {}).get("alliances", {}).get("data", [])
+    if not alliances_data:
+        await interaction.followup.send("No alliance data found.")
         return
 
-    wars = alliance["wars"]
-
-    # If no conflict specified, show last 30 wars as normal
-    if not conflict:
-        wars = wars[:30]  # last 30 wars
-
-        lines = []
-        war_results = []
-
-        for war in wars:
-            war_id = war.get("id")
-            winner_id = str(war.get("winner_id"))
-
-            attacker = war.get("attacker", {})
-            defender = war.get("defender", {})
-
-            atk_name = attacker.get("nation_name", "Unknown")
-            def_name = defender.get("nation_name", "Unknown")
-
-            outcome = 0  # draw default
-
-            war_results.append(outcome)
-
-            result_text = "Win" if outcome == 1 else "Loss" if outcome == -1 else "Draw"
-            line = f"War ID: {war_id} | Attacker: {atk_name} | Defender: {def_name} | Outcome: {result_text}"
-
-            if detail == "infra":
-                infra_atk = war.get("att_infra_destroyed", 0)
-                infra_def = war.get("def_infra_destroyed", 0)
-                line += f" | Infra Destroyed - Attacker: {infra_atk}, Defender: {infra_def}"
-            elif detail == "money":
-                money_atk = war.get("att_money_looted", 0)
-                money_def = war.get("def_money_looted", 0)
-                line += f" | Money Looted - Attacker: {money_atk}, Defender: {money_def}"
-            elif detail == "soldiers":
-                soldiers_atk = war.get("att_soldiers_lost", 0)
-                soldiers_def = war.get("def_soldiers_lost", 0)
-                line += f" | Soldiers Lost - Attacker: {soldiers_atk}, Defender: {soldiers_def}"
-
-            lines.append(line)
-
-        plt.figure(figsize=(8, 6))
-        x = list(range(1, len(war_results) + 1))
-        y = war_results
-        plt.plot(x, y, marker='o', color='green')
-        plt.title(f"Alliance {alliance_id} Recent War Outcomes")
-        plt.xlabel("War Number (Recent First)")
-        plt.ylabel("Outcome")
-        plt.yticks([-1, 0, 1], ["Loss", "Draw", "Win"])
-        plt.grid(True)
-        plt.axhline(0, linestyle='--', color='gray')
-
-        buf = BytesIO()
-        plt.tight_layout()
-        plt.savefig(buf, format='png')
-        plt.close()
-        buf.seek(0)
-
-        file = discord.File(fp=buf, filename="alliance_war_outcomes.png")
-
-        summary_text = "\n".join(lines[:10])
-        await interaction.followup.send(content=f"Recent Wars Summary for Alliance {alliance_id}:\n{summary_text}", file=file)
-        return
-
-    # --- Conflict mode below ---
-
-    # Extract conflict dates from cached_conflicts
-    start_date = conflict.get("StartDate")
-    end_date = conflict.get("EndDate")  # could be None if still open
-
-    # Convert dates to datetime.date objects for filtering
-    from datetime import datetime, timedelta
-    date_format = "%Y-%m-%d"
-    try:
-        start_dt = datetime.strptime(start_date, date_format).date()
-        end_dt = datetime.strptime(end_date, date_format).date() if end_date else datetime.utcnow().date()
-    except Exception:
-        await interaction.followup.send("❌ Invalid conflict dates.")
-        return
-
-    # Filter wars by date range
-    def war_in_range(war):
-        war_date_str = war.get("date", "")[:10]
-        try:
-            war_date = datetime.strptime(war_date_str, date_format).date()
-            return start_dt <= war_date <= end_dt
-        except Exception:
-            return False
-
-    conflict_wars = [w for w in wars if war_in_range(w)]
-
-    if not conflict_wars:
-        await interaction.followup.send("No wars found for this conflict period.")
-        return
-
-    # Aggregate daily data: money lost, money looted, wars won count per alliance
+    from datetime import datetime
     from collections import defaultdict
+    import matplotlib.ticker as ticker
+    import matplotlib.pyplot as plt
+    from io import BytesIO
+    import discord
 
-    daily_money_lost = defaultdict(int)
-    daily_money_looted = defaultdict(int)
-    daily_wars_won = defaultdict(lambda: defaultdict(int))  # day -> alliance_name -> wins count
+    alliance = alliances_data[0]
+    wars = alliance.get("wars", [])
 
-    for war in conflict_wars:
-        war_date = war.get("date", "")[:10]
-        winner_id = str(war.get("winner_id", ""))
-        attacker = war.get("attacker", {})
-        defender = war.get("defender", {})
+    if conflict:
+        date_format = "%Y-%m-%d"
+        try:
+            start_dt = datetime.strptime(conflict.get("StartDate"), date_format).date()
+            end_date = conflict.get("EndDate")
+            end_dt = datetime.strptime(end_date, date_format).date() if end_date else datetime.now().date()
+        except Exception:
+            await interaction.followup.send("❌ Invalid conflict dates.")
+            return
 
-        att_loot = war.get("att_money_looted", 0) or 0
-        def_loot = war.get("def_money_looted", 0) or 0
+        def war_in_range(war):
+            try:
+                war_date = datetime.strptime(war.get("date", "")[:10], date_format).date()
+                return start_dt <= war_date <= end_dt
+            except Exception:
+                return False
 
-        # Total money lost by attacker = defender loot, and vice versa
-        money_lost = def_loot + att_loot  # both sides total loot (approximate)
+        wars = [w for w in wars if war_in_range(w)]
+        if not wars:
+            await interaction.followup.send("No wars found for this conflict period.")
+            return
 
-        daily_money_lost[war_date] += money_lost
-        daily_money_looted[war_date] += (att_loot + def_loot)
+    # Sort wars ascending by date for cumulative plot (oldest first)
+    wars_sorted = sorted(wars, key=lambda w: w.get("date", ""))
 
-        # Count war wins by alliance - assume alliance = attacker or defender alliance name, we only have nation names here though
-        # For demo, just count attacker or defender wins by nation name (could enhance if you map nation to alliance)
-        if winner_id == str(attacker.get("id")):
-            daily_wars_won[war_date][attacker.get("nation_name", "Unknown")] += 1
-        elif winner_id == str(defender.get("id")):
-            daily_wars_won[war_date][defender.get("nation_name", "Unknown")] += 1
+    nation_id_str = str(alliance_id)
+    war_results = []
+    cumulative = 0
+    lines = []
+    money_stats = defaultdict(lambda: {'given': 0, 'received': 0})
 
-    # Sort dates
-    sorted_dates = sorted(daily_money_lost.keys())
-    x = [datetime.strptime(d, date_format).date() for d in sorted_dates]
+    for war in wars_sorted:
+        war_id = war.get("id")
+        winner_id = str(war.get("winner_id"))
+        active = war.get("end_date") is None
 
-    # Plotting
-    plt.figure(figsize=(12, 8))
+        attacker = war.get("attacker") or {}
+        defender = war.get("defender") or {}
 
-    # Money lost and looted as bar chart
-    money_lost_vals = [daily_money_lost[d] for d in sorted_dates]
-    money_looted_vals = [daily_money_looted[d] for d in sorted_dates]
-    plt.bar(x, money_lost_vals, alpha=0.5, label="Money Lost")
-    plt.bar(x, money_looted_vals, alpha=0.5, label="Money Looted")
+        atk_name = attacker.get("nation_name", "Unknown")
+        def_name = defender.get("nation_name", "Unknown")
 
-    # Wars won lines per alliance (flattened to top 3 alliances to avoid clutter)
-    # Collect all alliances in conflict_wars winners
-    alliance_names = set()
-    for day in daily_wars_won.values():
-        alliance_names.update(day.keys())
-    alliance_names = list(alliance_names)[:3]  # top 3 for visibility
+        atk_id = str(attacker.get("id", "0"))
+        def_id = str(defender.get("id", "0"))
 
-    for alliance_name in alliance_names:
-        y_vals = [daily_wars_won[d].get(alliance_name, 0) for d in sorted_dates]
-        plt.plot(x, y_vals, marker='o', label=f"Wars won - {alliance_name}")
 
-    plt.title(f"Conflict '{conflict_name}' War Stats for Alliance {alliance_id}")
-    plt.xlabel("Date")
-    plt.ylabel("Count / Money")
-    plt.legend()
+        war_date = datetime.strptime(war.get("date", "")[:10], "%Y-%m-%d").date()
+        date_key = war_date.strftime("%Y-%m-%d")
+
+        # Outcome calculation:
+        # 0 if active or draw (no change)
+        # +1 if alliance wins
+        # -1 if alliance loses
+        if active:
+            outcome = 0
+        elif winner_id == nation_id_str:
+            outcome = 1
+        elif winner_id in [atk_id, def_id] and winner_id != nation_id_str:
+            outcome = -1
+        else:
+            outcome = 0
+
+        if outcome != 0:
+            cumulative += outcome
+
+        war_results.append(cumulative)
+
+        if not active:
+            money_given = war.get("att_money_looted", 0) if atk_id == nation_id_str else war.get("def_money_looted", 0)
+            money_received = war.get("def_money_looted", 0) if atk_id == nation_id_str else war.get("att_money_looted", 0)
+            money_stats[date_key]['given'] += money_given
+            money_stats[date_key]['received'] += money_received
+
+        result_text = "Win" if outcome == 1 else "Loss" if outcome == -1 else "Draw"
+        line = f"War ID: {war_id} | Attacker: {atk_name} | Defender: {def_name} | Outcome: {result_text} | Active: {active}"
+
+        if detail == "infra":
+            line += f" | Infra Destroyed - Attacker: {war.get('att_infra_destroyed', 0)}, Defender: {war.get('def_infra_destroyed', 0)}"
+        elif detail == "money":
+            line += f" | Money Looted - Attacker: {war.get('att_money_looted', 0)}, Defender: {war.get('def_money_looted', 0)}"
+        elif detail == "soldiers":
+            line += f" | Soldiers Lost - Attacker: {war.get('att_soldiers_lost', 0)}, Defender: {war.get('def_soldiers_lost', 0)}"
+
+        lines.append(line)
+
+    summary = f"Summary: {len(wars[:30] if not conflict else wars)} Wars shown."
+
+    # Cumulative War Outcomes Chart
+    import matplotlib.pyplot as plt
+    import matplotlib.ticker as ticker
+
+    plt.figure(figsize=(8, 6))
+    x = list(range(1, len(war_results) + 1))
+    y = war_results
+    plt.plot(x, y, marker='o', color='green')
+    plt.title(f"Alliance {alliance_id} Cumulative War Outcomes")
+    plt.xlabel("War Number (Oldest First)")
+    plt.ylabel("Outcome Score")
+    plt.axhline(0, linestyle='--', color='gray')
     plt.grid(True)
+
+    min_wars_display = max(10, len(war_results))
+    plt.xlim(1, min_wars_display)
+    plt.gca().xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
 
     buf = BytesIO()
     plt.tight_layout()
     plt.savefig(buf, format='png')
     plt.close()
     buf.seek(0)
+    file1 = discord.File(fp=buf, filename="alliance_war_outcomes.png")
 
-    file = discord.File(fp=buf, filename="conflict_war_stats.png")
+    # Money Damage Chart
+    if money_stats:
+        dates = sorted(money_stats.keys())
+        given = [money_stats[date]['given'] / 1_000_000 for date in dates]
+        received = [money_stats[date]['received'] / 1_000_000 for date in dates]
 
-    await interaction.followup.send(content=f"War stats for Alliance {alliance_id} during conflict '{conflict_name}' ({start_date} to {end_date or 'ongoing'}).", file=file)
+        plt.figure(figsize=(10, 6))
+        bar_width = 0.35
+        indices = list(range(len(dates)))
+
+        plt.bar([i - bar_width/2 for i in indices], given, width=bar_width, label='Damage Given (M)', color='blue')
+        plt.bar([i + bar_width/2 for i in indices], received, width=bar_width, label='Damage Received (M)', color='red')
+
+        plt.xlabel('Date')
+        plt.ylabel('Damage (Million $)')
+        plt.title(f"Alliance {alliance_id} Daily Money Damage")
+        plt.xticks(indices, dates, rotation=45, ha='right')
+        plt.legend()
+        plt.tight_layout()
+
+        buf2 = BytesIO()
+        plt.savefig(buf2, format='png')
+        plt.close()
+        buf2.seek(0)
+        file2 = discord.File(fp=buf2, filename="money_damage.png")
+
+        summary_text = "\n".join(lines[:10]) + "\n" + summary
+        await interaction.followup.send(content=f"Recent Wars Summary for Alliance {alliance_id}:\n{summary_text}", files=[file1, file2])
+    else:
+        summary_text = "\n".join(lines[:10]) + "\nCould not load money data.\n" + summary
+        await interaction.followup.send(content=f"Recent Wars Summary for Alliance {alliance_id}:\n{summary_text}", file=file1)
+
 
 
 
