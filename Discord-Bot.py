@@ -1122,57 +1122,55 @@ async def res_in_m_for_a(
         except Exception as e:
             print(f"Failed to send fallback embed: {e}")
 
-import requests
-import pandas as pd
-import json
-
 API_URL = f'https://api.politicsandwar.com/graphql?api_key={API_KEY}'
 
 # Util: convert losses to money
 def calculate_cost(losses):
     return (
-        losses["aircraft"] * 200_000 +
-        losses["casualties"] * 1_000 +
-        losses["ships"] * 5_000_000 +
-        losses["missile_damage"] +
-        losses["nuclear_damage"]
+        losses.get("aircraft", 0) * 200_000 +
+        losses.get("casualties", 0) * 1_000 +
+        losses.get("ships", 0) * 5_000_000 +
+        losses.get("missile_damage", 0) +
+        losses.get("nuclear_damage", 0)
     )
 
-def query_wars(nation_id):
-    limit=3
-    offset=0
-    GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
-
-    query = f"""
-    {{
-        nation(id: [{nation_id}], limit: {limit}, offset: {offset}, sort: "start_date", order: "desc") {{
-            id
-            start_date
-            winner
-            attacker {{
+def query_wars(nation_id=None, alliance_id=None):
+    query = """
+    query($nation_id: [Int], $alliance_id: [Int]) {
+        wars(nation_id: $nation_id, alliance_id: $alliance_id, first: 50, active: true, orderBy: [{column: START_DATE, order: DESC}]) {
+            data {
                 id
-                name
-                alliance {{
+                start_date
+                end_date
+                winner
+                attacker {
                     id
                     name
-                }}
-            }}
-            defender {{
-                id
-                name
-                alliance {{
+                    alliance {
+                        id
+                        name
+                    }
+                }
+                defender {
                     id
                     name
-                }}
-            }}
-        }}
-    }}
+                    alliance {
+                        id
+                        name
+                    }
+                }
+            }
+        }
+    }
     """
+
+    variables = {"nation_id": [nation_id] if nation_id else None,
+                 "alliance_id": [alliance_id] if alliance_id else None}
 
     try:
         response = requests.post(
-            GRAPHQL_URL,
-            json={"query": query},
+            API_URL,
+            json={"query": query, "variables": variables},
             headers={"Content-Type": "application/json"}
         )
         response.raise_for_status()
@@ -1182,101 +1180,69 @@ def query_wars(nation_id):
             print("GraphQL Errors:", json_data["errors"])
             return None
 
-        wars_data = json_data.get("data", {}).get("wars", [])
+        wars_data = json_data.get("data", {}).get("wars", {}).get("data", [])
         if not wars_data:
             print("No war data found.")
             return None
 
-        # Flatten the nested attacker and defender objects into the DataFrame columns
-        df = pd.json_normalize(
-            wars_data,
-            sep='_',
-            max_level=2
-        )
+        df = pd.json_normalize(wars_data, sep='_', max_level=2)
         return df
 
     except requests.RequestException as e:
-        print(f"HTTP Error during GraphQL request: {e}")
+        print(f"HTTP Error: {e}")
         return None
     except (KeyError, TypeError, json.JSONDecodeError) as e:
         print(f"Parsing Error: {e}")
         return None
-
-def get_data(nation_id):
-    df = graphql_request(nation_id)
-    if df is not None:
-        try:
-            row = df[df["id"] == nation_id].iloc[0]
-
-            return (
-                row.get("start_date", "0"),
-                row.get("winner", 0),
-                row.get("id", 0),
-                row.get("attacker_id", None),
-                row.get("attacker_name", None),
-                row.get("defender_id", None),
-                row.get("defender_name", None)
-            )
-        except IndexError:
-            return None
-
-
-# Assuming you already have a bot instanc
-
-# Assuming API_KEY is already defined somewhere above
-# Also assuming your bot instance is called `bot`
 
 @bot.tree.command(name="war_losses", description="Show recent war losses for a nation or alliance.")
 @app_commands.describe(nation_id="Nation ID", alliance_id="Alliance ID")
 async def war_losses(interaction: discord.Interaction, nation_id: int = None, alliance_id: int = None):
     await interaction.response.defer()
 
-    df = query_wars(nation_id)  # Fetch recent 50 wars, adjust as needed
+    df = query_wars(nation_id=nation_id, alliance_id=alliance_id)
     if df is None or df.empty:
-        await interaction.followup.send("ℹ️ No wars found.")
+        await interaction.followup.send("\u2139\ufe0f No wars found.")
         return
 
-    # Initialize losses dicts
     your_side_losses = {"aircraft": 0, "casualties": 0, "ships": 0, "missile_damage": 0, "nuclear_damage": 0}
     enemy_losses = {"aircraft": 0, "casualties": 0, "ships": 0, "missile_damage": 0, "nuclear_damage": 0}
     war_results = []
 
     for _, row in df.iterrows():
-        # Determine if the nation/alliance is attacker or defender in this war
-        atk_id, def_id, atk_alliance_id, def_alliance_id, winner = get_data(nation_id)
+        atk = row.get("attacker_id")
+        defn = row.get("defender_id")
+        atk_all = row.get("attacker_alliance_id")
+        def_all = row.get("defender_alliance_id")
+        winner = row.get("winner")
 
-        atk_is_us = False
-        def_is_us = False
-        if alliance_id is not None:
-            atk_is_us = atk_alliance_id == alliance_id
-            def_is_us = def_alliance_id == alliance_id
-        elif nation_id is not None:
-            atk_is_us = atk_id == nation_id
-            def_is_us = def_id == nation_id
+        atk_is_us = def_is_us = False
+        if alliance_id:
+            atk_is_us = atk_all == alliance_id
+            def_is_us = def_all == alliance_id
+        elif nation_id:
+            atk_is_us = atk == nation_id
+            def_is_us = defn == nation_id
 
         if not atk_is_us and not def_is_us:
-            continue  # Not our war
+            continue
 
         our_side = "attacker" if atk_is_us else "defender"
-        their_side = "defender" if atk_is_us else "attacker"
 
-        # War outcome for nation only (if no alliance specified)
-        if nation_id is not None and alliance_id is None:
+        if nation_id and not alliance_id:
             if winner is None:
-                war_results.append(0)  # draw or unknown
+                war_results.append(0)
             else:
                 won = (winner == our_side)
                 war_results.append(1 if won else -1)
 
-    # Prepare plot
     fig, ax = plt.subplots(figsize=(8, 6))
 
-    if nation_id is not None and alliance_id is None:
+    if nation_id and not alliance_id:
         x_vals = list(range(1, len(war_results) + 1))
         y_vals = war_results
-
         ax.plot(x_vals, y_vals, marker='o', color='blue')
-        ax.set_title(f"Nation {nation_id} War Outcomes (Recent Wars)")
+        ax.set_title(f"Nation {nation_id} War Outcomes")
         ax.set_xlabel("War #")
         ax.set_ylabel("Outcome")
         ax.set_xticks(x_vals)
@@ -1291,7 +1257,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int = None, al
         for bar in bars:
             yval = bar.get_height()
             ax.text(bar.get_x() + bar.get_width() / 2, yval + 1e6, f"${yval:,.0f}", ha='center')
-        ax.set_title("💸 War Losses Comparison")
+        ax.set_title("\U0001f4b8 War Losses Comparison")
         ax.set_ylabel("Estimated Cost in $")
         ax.grid(axis='y')
 
@@ -1301,15 +1267,11 @@ async def war_losses(interaction: discord.Interaction, nation_id: int = None, al
     buffer.seek(0)
     file = discord.File(fp=buffer, filename="war_losses.png")
 
-    # Also send some basic war summary with attacker and defender names
-    wars_summary = []
-    for _, row in df.iterrows():
-        wars_summary.append(
-            f"War ID: {row.get('id')} | Attacker: {row.get('attacker_name')} | Defender: {row.get('defender_name')} | Winner: {row.get('winner')}"
-        )
-    summary_text = "\n".join(wars_summary[:10])  # limit to first 10 wars
-
-    await interaction.followup.send(content=f"Recent Wars Summary:\n{summary_text}", file=file)
+    summary = [
+        f"War ID: {r.get('id')} | Attacker: {r.get('attacker_name')} | Defender: {r.get('defender_name')} | Winner: {r.get('winner')}"
+        for _, r in df.iterrows()
+    ]
+    await interaction.followup.send(content=f"Recent Wars Summary:\n" + "\n".join(summary[:10]), file=file)
 
 
 '''@bot.tree.command(name="register_manual", description="Manually register a nation with a given Discord username (no validation)")
