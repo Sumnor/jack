@@ -1199,19 +1199,28 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
         )
         response.raise_for_status()
         result = response.json()
+    
+        # Debug: print or send the raw result to verify structure
+        print("Raw API result:", result)
+    
     except Exception as e:
         await interaction.followup.send(f"API request failed: {e}")
         return
-
-
+    
     if "errors" in result:
         await interaction.followup.send(f"API errors: {result['errors']}")
         return
-
-    wars = result.get("data", {}).get("wars", {}).get("data", [])
+    
+    wars = result.get("data", {}).get("wars", {}).get("data")
+    
+    if wars is None:
+        await interaction.followup.send("API response format changed: no wars data found.")
+        return
+    
     if not wars:
         await interaction.followup.send("No wars found for this nation.")
         return
+
 
     lines = []
     war_results = []
