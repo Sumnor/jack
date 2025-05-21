@@ -1231,15 +1231,22 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
         attacker = war.get("attacker", {})
         defender = war.get("defender", {})
 
-        atk_name = attacker.get("nation_name", "Unknown")
-        def_name = defender.get("nation_name", "Unknown")
+        atk_id = war["attacker"]["id"]
+        def_id = war["defender"]["id"]
+        
+        # Determine if this nation was attacker or defender
+        was_attacker = (atk_id == nation_id)
+        was_defender = (def_id == nation_id)
+        
+        # Default: draw
+        outcome = 0
+        
+        if winner_id is not None:
+            if winner_id == nation_id:
+                outcome = 1  # Win
+            else:
+                outcome = -1  # Loss
 
-        # Outcome: 1=win, -1=loss, 0=draw
-        if winner_id is None:
-            outcome = 0
-        else:
-            outcome = 1 if winner_id == nation_id else -1
-        war_results.append(outcome)
 
         line = (
             f"War ID: {war_id} | Attacker: {atk_name} | Defender: {def_name} | "
