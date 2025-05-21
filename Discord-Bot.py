@@ -1224,8 +1224,8 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
 
         atk_id = attacker.get("id")
         def_id = defender.get("id")
-        atk_name = attacker.get("name", "Unknown")
-        def_name = defender.get("name", "Unknown")
+        atk_name = attacker.get("nation_name", "Unknown")
+        def_name = defender.get("nation_name", "Unknown")
 
         # Determine win/loss/draw from winner_id
         if winner_id is None:
