@@ -1138,7 +1138,9 @@ def calculate_cost(losses):
         losses["nuclear_damage"]
     )
 
-def query_wars(limit=3, offset=0, nation_id):
+def query_wars(nation_id):
+    limit=3
+    offset=0
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
 
     query = f"""
@@ -1229,7 +1231,7 @@ def get_data(nation_id):
 async def war_losses(interaction: discord.Interaction, nation_id: int = None, alliance_id: int = None):
     await interaction.response.defer()
 
-    df = query_wars(limit=3, offset=0, nation_id)  # Fetch recent 50 wars, adjust as needed
+    df = query_wars(nation_id)  # Fetch recent 50 wars, adjust as needed
     if df is None or df.empty:
         await interaction.followup.send("ℹ️ No wars found.")
         return
