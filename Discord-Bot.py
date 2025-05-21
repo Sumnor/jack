@@ -1223,8 +1223,9 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
         await interaction.followup.send("No wars found for this nation.")
         return
 
-    lines = []
-    war_results = []
+lines = []
+war_results = []
+
 for war in wars:
     war_id = war.get("id")
     winner_id = str(war.get("winner_id"))
@@ -1277,29 +1278,29 @@ total_draws = war_results.count(0)
 summary = f"Summary: ✅ {total_wins} Wins | ❌ {total_losses} Losses | ⚖️ {total_draws} Draws"
 lines.append(summary)
 
-    # Plot outcomes graph
-    plt.figure(figsize=(8, 6))
-    x = list(range(1, len(war_results) + 1))
-    y = war_results
-    plt.plot(x, y, marker='o', color='blue')
-    plt.title(f"Nation {nation_id} Recent War Outcomes")
-    plt.xlabel("War Number (Recent First)")
-    plt.ylabel("Outcome")
-    plt.yticks([-1, 0, 1], ["Loss", "Draw", "Win"])
-    plt.grid(True)
-    plt.axhline(0, linestyle='--', color='gray')
+# Plot outcomes graph
+plt.figure(figsize=(8, 6))
+x = list(range(1, len(war_results) + 1))
+y = war_results
+plt.plot(x, y, marker='o', color='blue')
+plt.title(f"Nation {nation_id} Recent War Outcomes")
+plt.xlabel("War Number (Recent First)")
+plt.ylabel("Outcome")
+plt.yticks([-1, 0, 1], ["Loss", "Draw", "Win"])
+plt.grid(True)
+plt.axhline(0, linestyle='--', color='gray')
 
-    buf = BytesIO()
-    plt.tight_layout()
-    plt.savefig(buf, format='png')
-    plt.close()
-    buf.seek(0)
+buf = BytesIO()
+plt.tight_layout()
+plt.savefig(buf, format='png')
+plt.close()
+buf.seek(0)
 
-    file = discord.File(fp=buf, filename="war_outcomes.png")
+file = discord.File(fp=buf, filename="war_outcomes.png")
 
-    summary_text = "\n".join(lines[:10])
+summary_text = "\n".join(lines[:10])
 
-    await interaction.followup.send(content=f"Recent Wars Summary:\n{summary_text}", file=file)
+await interaction.followup.send(content=f"Recent Wars Summary:\n{summary_text}", file=file)
 
 
 '''@bot.tree.command(name="register_manual", description="Manually register a nation with a given Discord username (no validation)")
