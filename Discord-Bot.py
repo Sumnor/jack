@@ -1128,7 +1128,7 @@ import requests
 import matplotlib.pyplot as plt
 from io import BytesIO
 
-GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
+GRAPHQL_URL = "https://api.politicsandwar.com/graphql"
 
 @bot.tree.command(name="war_losses", description="Show recent wars for a nation with optional detailed stats.")
 @app_commands.describe(
@@ -1190,12 +1190,14 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
         "page": 1,
         "orderBy": [{"column": "DATE", "order": "DESC"}]
     }
-
     try:
         response = requests.post(
             GRAPHQL_URL,
             json={"query": query, "variables": variables},
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {API_KEY}"  # Use API key here!
+            },
         )
         response.raise_for_status()
         result = response.json()
