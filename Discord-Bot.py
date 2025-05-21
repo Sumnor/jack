@@ -1198,7 +1198,8 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
     except requests.RequestException as e:
         await interaction.followup.send(f"Error fetching data: {e}")
         return
-
+    print("Status code:", response.status_code)
+    print("Response text:", response.text)
     result = response.json()
 
     if "errors" in result:
