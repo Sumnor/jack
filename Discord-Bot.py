@@ -1138,7 +1138,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
     
     query = """
-    query ($nation_id: [Int], $first: Int, $page: Int, $orderBy: [QueryWarsOrderByOrderByClause!]) {
+    query ($nation_id: [680627], $first: Int, $page: Int, $orderBy: [QueryWarsOrderByOrderByClause!]) {
       wars(
         nation_id: $nation_id,
         first: $first,
@@ -1179,7 +1179,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
     """
     
     variables = {
-        "nation_id": [int(nation_id)],
+        "nation_id": [int(680627)],
         "first": 10,
         "page": 1,
         "orderBy": [{"column": "DATE", "order": "DESC"}]
