@@ -1160,11 +1160,9 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
           winner_id
           attacker {
             id
-            name
           }
           defender {
             id
-            name
           }
           att_infra_destroyed
           def_infra_destroyed
@@ -1202,6 +1200,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
     except Exception as e:
         await interaction.followup.send(f"API request failed: {e}")
         return
+
 
     if "errors" in result:
         await interaction.followup.send(f"API errors: {result['errors']}")
