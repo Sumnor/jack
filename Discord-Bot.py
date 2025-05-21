@@ -1138,12 +1138,12 @@ def calculate_cost(losses):
         losses["nuclear_damage"]
     )
 
-def query_wars(limit=3, offset=0):
+def query_wars(limit=3, offset=0, nation_id):
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
 
     query = f"""
     {{
-        wars(limit: {limit}, offset: {offset}, sort: "start_date", order: "desc") {{
+        nation(id: [{nation_id}], offset: {offset}, sort: "start_date", order: "desc") {{
             id
             start_date
             winner
@@ -1241,10 +1241,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int = None, al
 
     for _, row in df.iterrows():
         # Determine if the nation/alliance is attacker or defender in this war
-        atk_id = row.get("attacker_id", None)
-        def_id = row.get("defender_id", None)
-        atk_alliance_id = row.get("attacker_alliance_id", None)
-        def_alliance_id = row.get("defender_alliance_id", None)
+        atk_id, def_id, atk_alliance_id, def_alliance_id, winner = get_data(nation_id)
 
         atk_is_us = False
         def_is_us = False
@@ -1263,34 +1260,11 @@ async def war_losses(interaction: discord.Interaction, nation_id: int = None, al
 
         # War outcome for nation only (if no alliance specified)
         if nation_id is not None and alliance_id is None:
-            winner = row.get("winner", None)
             if winner is None:
                 war_results.append(0)  # draw or unknown
             else:
                 won = (winner == our_side)
                 war_results.append(1 if won else -1)
-
-        # Aggregate losses safely (these keys depend on your detailed war data structure;
-        # since the original query did not request airstrikes etc, you may want to extend query_wars 
-        # to include those fields if you want real losses here)
-        # For now, we'll simulate with zeroes or placeholders.
-        # Replace these with actual field names if available from your GraphQL response.
-
-        # Example placeholder access:
-        your_side_losses["aircraft"] += row.get(f"{our_side}_aircraft_lost", 0) or 0
-        enemy_losses["aircraft"] += row.get(f"{their_side}_aircraft_lost", 0) or 0
-
-        your_side_losses["casualties"] += row.get(f"{our_side}_casualties", 0) or 0
-        enemy_losses["casualties"] += row.get(f"{their_side}_casualties", 0) or 0
-
-        your_side_losses["ships"] += row.get(f"{our_side}_ships_lost", 0) or 0
-        enemy_losses["ships"] += row.get(f"{their_side}_ships_lost", 0) or 0
-
-        your_side_losses["missile_damage"] += row.get(f"{our_side}_missile_damage", 0) or 0
-        enemy_losses["missile_damage"] += row.get(f"{their_side}_missile_damage", 0) or 0
-
-        your_side_losses["nuclear_damage"] += row.get(f"{our_side}_nuclear_damage", 0) or 0
-        enemy_losses["nuclear_damage"] += row.get(f"{their_side}_nuclear_damage", 0) or 0
 
     # Prepare plot
     fig, ax = plt.subplots(figsize=(8, 6))
