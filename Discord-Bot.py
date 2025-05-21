@@ -1224,8 +1224,8 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
 
     lines = []
     war_results = []
-
-   for war in wars:
+    
+    for war in wars:
         war_id = war.get("id")
         winner_id = war.get("winner_id")
     
