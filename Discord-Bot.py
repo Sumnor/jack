@@ -1237,6 +1237,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
         atk_name = attacker.get("nation_name", "Unknown")
         def_name = defender.get("nation_name", "Unknown")
     
+        # Determine war outcome
         if winner_id is None:
             outcome = 0  # Draw
         elif winner_id == nation_id:
@@ -1244,8 +1245,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
         elif (atk_id == nation_id and winner_id == def_id) or (def_id == nation_id and winner_id == atk_id):
             outcome = -1  # You lost
         else:
-            outcome = 0  # Winner is not you or your opponent — treat as draw
-
+            outcome = 0  # Third-party win, treat as draw
     
         war_results.append(outcome)
     
@@ -1254,7 +1254,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
             f"Outcome: {'Win' if outcome == 1 else 'Loss' if outcome == -1 else 'Draw'}"
         )
     
-        # Add details
+        # Add extra details based on `detail` mode
         if detail == "infra":
             infra_atk = war.get("att_infra_destroyed", 0)
             infra_def = war.get("def_infra_destroyed", 0)
