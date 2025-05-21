@@ -1223,84 +1223,84 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
         await interaction.followup.send("No wars found for this nation.")
         return
 
-lines = []
-war_results = []
-
-for war in wars:
-    war_id = war.get("id")
-    winner_id = str(war.get("winner_id"))
-
-    attacker = war.get("attacker", {})
-    defender = war.get("defender", {})
-
-    atk_id = str(attacker.get("id"))
-    def_id = str(defender.get("id"))
-    atk_name = attacker.get("nation_name", "Unknown")
-    def_name = defender.get("nation_name", "Unknown")
-
-    nation_id_str = str(nation_id)
-
-    # Determine war outcome
-    if winner_id == nation_id_str:
-        outcome = 1  # You won
-    elif winner_id in [atk_id, def_id] and winner_id != nation_id_str:
-        outcome = -1  # You lost
-    else:
-        outcome = 0  # Draw
-
-    war_results.append(outcome)
-
-    # Build readable result line
-    result_text = "Win" if outcome == 1 else "Loss" if outcome == -1 else "Draw"
-    line = f"War ID: {war_id} | Attacker: {atk_name} | Defender: {def_name} | Outcome: {result_text}"
-
-    # Optional details
-    if detail == "infra":
-        infra_atk = war.get("att_infra_destroyed", 0)
-        infra_def = war.get("def_infra_destroyed", 0)
-        line += f" | Infra Destroyed - Attacker: {infra_atk}, Defender: {infra_def}"
-    elif detail == "money":
-        money_atk = war.get("att_money_looted", 0)
-        money_def = war.get("def_money_looted", 0)
-        line += f" | Money Looted - Attacker: {money_atk}, Defender: {money_def}"
-    elif detail == "soldiers":
-        soldiers_atk = war.get("att_soldiers_lost", 0)
-        soldiers_def = war.get("def_soldiers_lost", 0)
-        line += f" | Soldiers Lost - Attacker: {soldiers_atk}, Defender: {soldiers_def}"
-
-    lines.append(line)
-
-# Optional: Summary
-total_wins = war_results.count(1)
-total_losses = war_results.count(-1)
-total_draws = war_results.count(0)
-
-summary = f"Summary: ✅ {total_wins} Wins | ❌ {total_losses} Losses | ⚖️ {total_draws} Draws"
-lines.append(summary)
-
-# Plot outcomes graph
-plt.figure(figsize=(8, 6))
-x = list(range(1, len(war_results) + 1))
-y = war_results
-plt.plot(x, y, marker='o', color='blue')
-plt.title(f"Nation {nation_id} Recent War Outcomes")
-plt.xlabel("War Number (Recent First)")
-plt.ylabel("Outcome")
-plt.yticks([-1, 0, 1], ["Loss", "Draw", "Win"])
-plt.grid(True)
-plt.axhline(0, linestyle='--', color='gray')
-
-buf = BytesIO()
-plt.tight_layout()
-plt.savefig(buf, format='png')
-plt.close()
-buf.seek(0)
-
-file = discord.File(fp=buf, filename="war_outcomes.png")
-
-summary_text = "\n".join(lines[:10])
-
-await interaction.followup.send(content=f"Recent Wars Summary:\n{summary_text}", file=file)
+    lines = []
+    war_results = []
+    
+    for war in wars:
+        war_id = war.get("id")
+        winner_id = str(war.get("winner_id"))
+    
+        attacker = war.get("attacker", {})
+        defender = war.get("defender", {})
+    
+        atk_id = str(attacker.get("id"))
+        def_id = str(defender.get("id"))
+        atk_name = attacker.get("nation_name", "Unknown")
+        def_name = defender.get("nation_name", "Unknown")
+    
+        nation_id_str = str(nation_id)
+    
+        # Determine war outcome
+        if winner_id == nation_id_str:
+            outcome = 1  # You won
+        elif winner_id in [atk_id, def_id] and winner_id != nation_id_str:
+            outcome = -1  # You lost
+        else:
+            outcome = 0  # Draw
+    
+        war_results.append(outcome)
+    
+        # Build readable result line
+        result_text = "Win" if outcome == 1 else "Loss" if outcome == -1 else "Draw"
+        line = f"War ID: {war_id} | Attacker: {atk_name} | Defender: {def_name} | Outcome: {result_text}"
+    
+        # Optional details
+        if detail == "infra":
+            infra_atk = war.get("att_infra_destroyed", 0)
+            infra_def = war.get("def_infra_destroyed", 0)
+            line += f" | Infra Destroyed - Attacker: {infra_atk}, Defender: {infra_def}"
+        elif detail == "money":
+            money_atk = war.get("att_money_looted", 0)
+            money_def = war.get("def_money_looted", 0)
+            line += f" | Money Looted - Attacker: {money_atk}, Defender: {money_def}"
+        elif detail == "soldiers":
+            soldiers_atk = war.get("att_soldiers_lost", 0)
+            soldiers_def = war.get("def_soldiers_lost", 0)
+            line += f" | Soldiers Lost - Attacker: {soldiers_atk}, Defender: {soldiers_def}"
+    
+        lines.append(line)
+    
+    # Optional: Summary
+    total_wins = war_results.count(1)
+    total_losses = war_results.count(-1)
+    total_draws = war_results.count(0)
+    
+    summary = f"Summary: ✅ {total_wins} Wins | ❌ {total_losses} Losses | ⚖️ {total_draws} Draws"
+    lines.append(summary)
+    
+    # Plot outcomes graph
+    plt.figure(figsize=(8, 6))
+    x = list(range(1, len(war_results) + 1))
+    y = war_results
+    plt.plot(x, y, marker='o', color='blue')
+    plt.title(f"Nation {nation_id} Recent War Outcomes")
+    plt.xlabel("War Number (Recent First)")
+    plt.ylabel("Outcome")
+    plt.yticks([-1, 0, 1], ["Loss", "Draw", "Win"])
+    plt.grid(True)
+    plt.axhline(0, linestyle='--', color='gray')
+    
+    buf = BytesIO()
+    plt.tight_layout()
+    plt.savefig(buf, format='png')
+    plt.close()
+    buf.seek(0)
+    
+    file = discord.File(fp=buf, filename="war_outcomes.png")
+    
+    summary_text = "\n".join(lines[:10])
+    
+    await interaction.followup.send(content=f"Recent Wars Summary:\n{summary_text}", file=file)
 
 
 '''@bot.tree.command(name="register_manual", description="Manually register a nation with a given Discord username (no validation)")
