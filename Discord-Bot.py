@@ -1122,6 +1122,7 @@ async def res_in_m_for_a(
         except Exception as e:
             print(f"Failed to send fallback embed: {e}")
 
+
 @bot.tree.command(name="war_losses", description="Show recent wars for a nation with optional detailed stats.")
 @app_commands.describe(
     nation_id="Nation ID",
@@ -1136,7 +1137,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
     await interaction.response.defer()
 
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
-    
+
     query = """
     query ($nation_id: [Int], $first: Int, $page: Int, $orderBy: [QueryWarsOrderByOrderByClause!]) {
       wars(
@@ -1177,38 +1178,37 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
       }
     }
     """
-    
+
     variables = {
-        "nation_id": [int(nation_id)],
+        "nation_id": [nation_id],
         "first": 10,
         "page": 1,
         "orderBy": [{"column": "DATE", "order": "DESC"}]
     }
-    
-    headers = {
-        "Content-Type": "application/json"
-    }
-    
-    response = requests.post(
-        GRAPHQL_URL,
-        json={"query": query, "variables": variables},
-        headers=headers,
-    )
-    response.raise_for_status()
-    result = response.json()
-    
-    if "errors" in result:
-        print(f"API errors: {result['errors']}")
-        return
-    else:
-        wars = result.get("data", {}).get("wars", {}).get("data", [])
-        if not wars:
-            print("No wars found for this nation.")
-            return
-        else:
-            for war in wars:
-                print(f"War ID: {war['id']}, Reason: {war['reason']}")
 
+    headers = {"Content-Type": "application/json"}
+
+    try:
+        response = requests.post(
+            GRAPHQL_URL,
+            json={"query": query, "variables": variables},
+            headers=headers,
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        await interaction.followup.send(f"Error fetching data: {e}")
+        return
+
+    result = response.json()
+
+    if "errors" in result:
+        await interaction.followup.send(f"API errors: {result['errors']}")
+        return
+
+    wars = result.get("data", {}).get("wars", {}).get("data", [])
+    if not wars:
+        await interaction.followup.send("No wars found for this nation.")
+        return
 
     lines = []
     war_results = []
@@ -1219,33 +1219,29 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
         attacker = war.get("attacker", {})
         defender = war.get("defender", {})
 
-        atk_id = attacker.get("id")
-        def_id = defender.get("id")
         atk_name = attacker.get("nation_name", "Unknown")
         def_name = defender.get("nation_name", "Unknown")
 
-        # Determine win/loss/draw from winner_id
+        # Outcome: 1=win, -1=loss, 0=draw
         if winner_id is None:
             outcome = 0
         else:
-            won = (winner_id == nation_id)
-            outcome = 1 if won else -1
+            outcome = 1 if winner_id == nation_id else -1
         war_results.append(outcome)
 
-        # Basic line info
-        line = f"War ID: {war_id} | Attacker: {atk_name} | Defender: {def_name} | Outcome: {'Win' if outcome == 1 else 'Loss' if outcome == -1 else 'Draw'}"
+        line = (
+            f"War ID: {war_id} | Attacker: {atk_name} | Defender: {def_name} | "
+            f"Outcome: {'Win' if outcome == 1 else 'Loss' if outcome == -1 else 'Draw'}"
+        )
 
-        # Add requested detail info if any
         if detail == "infra":
             infra_atk = war.get("att_infra_destroyed", 0)
             infra_def = war.get("def_infra_destroyed", 0)
             line += f" | Infra Destroyed - Attacker: {infra_atk}, Defender: {infra_def}"
-
         elif detail == "money":
             money_atk = war.get("att_money_looted", 0)
             money_def = war.get("def_money_looted", 0)
             line += f" | Money Looted - Attacker: {money_atk}, Defender: {money_def}"
-
         elif detail == "soldiers":
             soldiers_atk = war.get("att_soldiers_lost", 0)
             soldiers_def = war.get("def_soldiers_lost", 0)
@@ -1253,7 +1249,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
 
         lines.append(line)
 
-    # Plot war outcomes graph regardless of detail
+    # Plot outcomes graph
     plt.figure(figsize=(8, 6))
     x = list(range(1, len(war_results) + 1))
     y = war_results
@@ -1272,13 +1268,10 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
     buf.seek(0)
 
     file = discord.File(fp=buf, filename="war_outcomes.png")
+
     summary_text = "\n".join(lines[:10])
 
     await interaction.followup.send(content=f"Recent Wars Summary:\n{summary_text}", file=file)
-
-
-
-
 
 
 '''@bot.tree.command(name="register_manual", description="Manually register a nation with a given Discord username (no validation)")
