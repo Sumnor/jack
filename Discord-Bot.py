@@ -1253,6 +1253,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
             f"Outcome: {'Win' if outcome == 1 else 'Loss' if outcome == -1 else 'Draw'}"
         )
 
+
         if detail == "infra":
             infra_atk = war.get("att_infra_destroyed", 0)
             infra_def = war.get("def_infra_destroyed", 0)
