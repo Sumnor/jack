@@ -1183,7 +1183,8 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
         "nation_id": [nation_id],
         "first": 10,
         "page": 1,
-        "orderBy": [{"column": "ID", "order": "DESC"}]
+        "orderBy": [{"column": "ID", "order": "DESC"}],
+        "active": False
     }
 
     headers = {"Content-Type": "application/json"}
