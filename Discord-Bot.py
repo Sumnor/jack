@@ -1122,14 +1122,6 @@ async def res_in_m_for_a(
         except Exception as e:
             print(f"Failed to send fallback embed: {e}")
 
-import discord
-from discord import app_commands
-import requests
-import matplotlib.pyplot as plt
-from io import BytesIO
-
-GRAPHQL_URL = "https://api.politicsandwar.com/graphql"
-
 @bot.tree.command(name="war_losses", description="Show recent wars for a nation with optional detailed stats.")
 @app_commands.describe(
     nation_id="Nation ID",
@@ -1187,7 +1179,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
     """
     
     variables = {
-        "nation_id": [nation_id],
+        "nation_id": [int(nation_id)],
         "first": 10,
         "page": 1,
         "orderBy": [{"column": "DATE", "order": "DESC"}]
