@@ -1183,7 +1183,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
     """
 
     variables = {
-        "nation_id": [nation_id],
+        "nation_id": nation_id,
         "first": 10,
         "page": 1,
         "orderBy": [{"column": "DATE", "order": "DESC"}]
