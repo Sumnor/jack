@@ -1225,50 +1225,52 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
 
     lines = []
     war_results = []
-    for war in wars:
-        war_id = war.get("id")
-        winner_id = war.get("winner_id")
-    
-        attacker = war.get("attacker", {})
-        defender = war.get("defender", {})
-    
-        atk_id = attacker.get("id")
-        def_id = defender.get("id")
-        atk_name = attacker.get("nation_name", "Unknown")
-        def_name = defender.get("nation_name", "Unknown")
-    
-        # Determine war outcome
-        if winner_id is None:
-            outcome = 0  # Draw
-        elif winner_id == nation_id:
-            outcome = 1  # You won
-        elif (atk_id == nation_id and winner_id == def_id) or (def_id == nation_id and winner_id == atk_id):
-            outcome = -1  # You lost
-        else:
-            outcome = 0  # Third-party win, treat as draw
-    
-        war_results.append(outcome)
-    
-        line = (
-            f"War ID: {war_id} | Attacker: {atk_name} | Defender: {def_name} | "
-            f"Outcome: {'Win' if outcome == 1 else 'Loss' if outcome == -1 else 'Draw'}"
-        )
-    
-        # Add extra details based on `detail` mode
-        if detail == "infra":
-            infra_atk = war.get("att_infra_destroyed", 0)
-            infra_def = war.get("def_infra_destroyed", 0)
-            line += f" | Infra Destroyed - Attacker: {infra_atk}, Defender: {infra_def}"
-        elif detail == "money":
-            money_atk = war.get("att_money_looted", 0)
-            money_def = war.get("def_money_looted", 0)
-            line += f" | Money Looted - Attacker: {money_atk}, Defender: {money_def}"
-        elif detail == "soldiers":
-            soldiers_atk = war.get("att_soldiers_lost", 0)
-            soldiers_def = war.get("def_soldiers_lost", 0)
-            line += f" | Soldiers Lost - Attacker: {soldiers_atk}, Defender: {soldiers_def}"
-    
-        lines.append(line)
+for war in wars:
+    war_id = war.get("id")
+    winner_id = str(war.get("winner_id"))
+
+    attacker = war.get("attacker", {})
+    defender = war.get("defender", {})
+
+    atk_id = str(attacker.get("id"))
+    def_id = str(defender.get("id"))
+    atk_name = attacker.get("nation_name", "Unknown")
+    def_name = defender.get("nation_name", "Unknown")
+    nation_id_str = str(nation_id)
+
+    # Determine outcome
+    if winner_id == "None" or winner_id == "null" or winner_id == "":  # Handle bad nulls
+        outcome = 0  # Draw
+    elif winner_id == nation_id_str:
+        outcome = 1  # Win
+    elif nation_id_str in (atk_id, def_id) and winner_id in (atk_id, def_id) and winner_id != nation_id_str:
+        outcome = -1  # Loss
+    else:
+        outcome = 0  # Not involved or unclear → draw
+
+    war_results.append(outcome)
+
+    # Format output line
+    line = (
+        f"War ID: {war_id} | Attacker: {atk_name} | Defender: {def_name} | "
+        f"Outcome: {'Win' if outcome == 1 else 'Loss' if outcome == -1 else 'Draw'}"
+    )
+
+    # Add extra detail if requested
+    if detail == "infra":
+        infra_atk = war.get("att_infra_destroyed", 0)
+        infra_def = war.get("def_infra_destroyed", 0)
+        line += f" | Infra Destroyed - Attacker: {infra_atk}, Defender: {infra_def}"
+    elif detail == "money":
+        money_atk = war.get("att_money_looted", 0)
+        money_def = war.get("def_money_looted", 0)
+        line += f" | Money Looted - Attacker: {money_atk}, Defender: {money_def}"
+    elif detail == "soldiers":
+        soldiers_atk = war.get("att_soldiers_lost", 0)
+        soldiers_def = war.get("def_soldiers_lost", 0)
+        line += f" | Soldiers Lost - Attacker: {soldiers_atk}, Defender: {soldiers_def}"
+
+    lines.append(line)
 
     # Plot outcomes graph
     plt.figure(figsize=(8, 6))
