@@ -1143,6 +1143,8 @@ GRAPHQL_URL = "https://api.politicsandwar.com/graphql"
 async def war_losses(interaction: discord.Interaction, nation_id: int, detail: str = None):
     await interaction.response.defer()
 
+    GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
+    
     query = """
     query ($nation_id: [Int], $first: Int, $page: Int, $orderBy: [QueryWarsOrderByOrderByClause!]) {
       wars(
@@ -1183,45 +1185,35 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
       }
     }
     """
-
+    
     variables = {
         "nation_id": [nation_id],
         "first": 10,
         "page": 1,
         "orderBy": [{"column": "DATE", "order": "DESC"}]
     }
-    try:
-        response = requests.post(
-            GRAPHQL_URL,
-            json={"query": query, "variables": variables},
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {API_KEY}"  # Use API key here!
-            },
-        )
-        response.raise_for_status()
-        result = response.json()
     
-        # Debug: print or send the raw result to verify structure
-        print("Raw API result:", result)
+    headers = {
+        "Content-Type": "application/json"
+    }
     
-    except Exception as e:
-        await interaction.followup.send(f"API request failed: {e}")
-        return
+    response = requests.post(
+        GRAPHQL_URL,
+        json={"query": query, "variables": variables},
+        headers=headers,
+    )
+    response.raise_for_status()
+    result = response.json()
     
     if "errors" in result:
-        await interaction.followup.send(f"API errors: {result['errors']}")
-        return
-    
-    wars = result.get("data", {}).get("wars", {}).get("data")
-    
-    if wars is None:
-        await interaction.followup.send("API response format changed: no wars data found.")
-        return
-    
-    if not wars:
-        await interaction.followup.send("No wars found for this nation.")
-        return
+        print(f"API errors: {result['errors']}")
+    else:
+        wars = result.get("data", {}).get("wars", {}).get("data", [])
+        if not wars:
+            print("No wars found for this nation.")
+        else:
+            for war in wars:
+                print(f"War ID: {war['id']}, Reason: {war['reason']}")
 
 
     lines = []
