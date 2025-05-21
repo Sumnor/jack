@@ -685,7 +685,8 @@ async def before_hourly():
 
 @bot.event
 async def on_ready():
-    print("Bot is ready. Loading sheet data...")
+    bot.add_view(GrantView())   # Register persistent view
+    bot.add_view(BlueGuy()) 
     load_sheet_data()
     print("Starting hourly snapshot task...")
     if not hourly_snapshot.is_running():
@@ -1240,10 +1241,16 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
         was_defender = (def_id == nation_id)
     
         # Determine win/loss/draw
+# Determine win/loss/draw
         if winner_id is None:
-            outcome = 0
+            outcome = 0  # Draw
+        elif winner_id == nation_id:
+            outcome = 1  # Win
+        elif winner_id == (def_id if atk_id == nation_id else atk_id):
+            outcome = -1  # Lost to opponent
         else:
-            outcome = 1 if winner_id == nation_id else -1
+            outcome = 0  # Draw (won by third party or expired)
+
     
         war_results.append(outcome)
     
