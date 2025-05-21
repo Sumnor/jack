@@ -1122,117 +1122,162 @@ async def res_in_m_for_a(
         except Exception as e:
             print(f"Failed to send fallback embed: {e}")
 
-    GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
-    
-    @bot.tree.command(name="war_losses", description="Show recent wars for a nation.")
-    @app_commands.describe(nation_id="Nation ID")
-    async def war_losses(interaction: discord.Interaction, nation_id: int):
-        await interaction.response.defer()
-    
-        query = """
-        query ($nation_id: [Int], $first: Int, $page: Int, $orderBy: [QueryWarsOrderByOrderByClause!]) {
-          wars(
-            nation_id: $nation_id,
-            first: $first,
-            page: $page,
-            orderBy: $orderBy
-          ) {
-            data {
-              id
-              winner
-              attacker {
-                id
-                name
-              }
-              defender {
-                id
-                name
-              }
-            }
+import discord
+from discord import app_commands
+import requests
+import matplotlib.pyplot as plt
+from io import BytesIO
+
+GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
+
+@bot.tree.command(name="war_losses", description="Show recent wars for a nation with optional detailed stats.")
+@app_commands.describe(
+    nation_id="Nation ID",
+    detail="Optional detail to show: infra, money, soldiers"
+)
+@app_commands.choices(detail=[
+    app_commands.Choice(name="infra", value="infra"),
+    app_commands.Choice(name="money", value="money"),
+    app_commands.Choice(name="soldiers", value="soldiers"),
+])
+async def war_losses(interaction: discord.Interaction, nation_id: int, detail: str = None):
+    await interaction.response.defer()
+
+    query = """
+    query ($nation_id: [Int], $first: Int, $page: Int, $orderBy: [QueryWarsOrderByOrderByClause!]) {
+      wars(
+        nation_id: $nation_id,
+        first: $first,
+        page: $page,
+        orderBy: $orderBy
+      ) {
+        data {
+          id
+          date
+          end_date
+          reason
+          war_type
+          winner_id
+          attacker {
+            id
+            name
+          }
+          defender {
+            id
+            name
+          }
+          att_infra_destroyed
+          def_infra_destroyed
+          att_money_looted
+          def_money_looted
+          def_soldiers_lost
+          att_soldiers_lost
+          attacks {
+            id
+            infra_destroyed
+            money_stolen
+            att_soldiers_lost
+            def_soldiers_lost
           }
         }
-        """
-    
-        variables = {
-            "nation_id": [nation_id],
-            "first": 10,
-            "page": 1,
-            "orderBy": [{"column": "START_DATE", "order": "DESC"}]
-        }
-    
-        try:
-            response = requests.post(
-                GRAPHQL_URL,
-                json={"query": query, "variables": variables},
-                headers={"Content-Type": "application/json"},
-            )
-            response.raise_for_status()
-            result = response.json()
-        except Exception as e:
-            await interaction.followup.send(f"API request failed: {e}")
-            return
-    
-        if "errors" in result:
-            await interaction.followup.send(f"API errors: {result['errors']}")
-            return
-    
-        wars = result.get("data", {}).get("wars", {}).get("data", [])
-        if not wars:
-            await interaction.followup.send("No wars found for this nation.")
-            return
-    
-        war_results = []
-        summary_lines = []
-    
-        for war in wars:
-            war_id = war.get("id")
-            winner = war.get("winner")
-            attacker = war.get("attacker", {})
-            defender = war.get("defender", {})
-    
-            atk_id = attacker.get("id")
-            def_id = defender.get("id")
-            atk_name = attacker.get("name", "Unknown")
-            def_name = defender.get("name", "Unknown")
-    
-            if winner is None:
-                outcome = 0  # Draw or unknown
-            else:
-                if winner == "attacker":
-                    won = (nation_id == atk_id)
-                elif winner == "defender":
-                    won = (nation_id == def_id)
-                else:
-                    won = False
-                outcome = 1 if won else -1
-    
-            war_results.append(outcome)
-            summary_lines.append(
-                f"War ID: {war_id} | Attacker: {atk_name} | Defender: {def_name} | Outcome: {'Win' if outcome == 1 else 'Loss' if outcome == -1 else 'Draw'}"
-            )
-    
-        # Plot war outcomes
-        plt.figure(figsize=(8, 6))
-        x = list(range(1, len(war_results) + 1))
-        y = war_results
-        plt.plot(x, y, marker='o', color='blue')
-        plt.title(f"Nation {nation_id} Recent War Outcomes")
-        plt.xlabel("War Number (Recent First)")
-        plt.ylabel("Outcome")
-        plt.yticks([-1, 0, 1], ["Loss", "Draw", "Win"])
-        plt.grid(True)
-        plt.axhline(0, linestyle='--', color='gray')
-    
-        buf = BytesIO()
-        plt.tight_layout()
-        plt.savefig(buf, format='png')
-        plt.close()
-        buf.seek(0)
-    
-        file = discord.File(fp=buf, filename="war_outcomes.png")
-        summary_text = "\n".join(summary_lines[:10])
-    
-        await interaction.followup.send(content=f"Recent Wars Summary:\n{summary_text}", file=file)
+      }
+    }
+    """
+
+    variables = {
+        "nation_id": [nation_id],
+        "first": 10,
+        "page": 1,
+        "orderBy": [{"column": "START_DATE", "order": "DESC"}]
+    }
+
+    try:
+        response = requests.post(
+            GRAPHQL_URL,
+            json={"query": query, "variables": variables},
+            headers={"Content-Type": "application/json"},
+        )
+        response.raise_for_status()
+        result = response.json()
+    except Exception as e:
+        await interaction.followup.send(f"API request failed: {e}")
+        return
+
+    if "errors" in result:
+        await interaction.followup.send(f"API errors: {result['errors']}")
+        return
+
+    wars = result.get("data", {}).get("wars", {}).get("data", [])
+    if not wars:
+        await interaction.followup.send("No wars found for this nation.")
+        return
+
+    lines = []
+    war_results = []
+
+    for war in wars:
+        war_id = war.get("id")
+        winner_id = war.get("winner_id")
+        attacker = war.get("attacker", {})
+        defender = war.get("defender", {})
+
+        atk_id = attacker.get("id")
+        def_id = defender.get("id")
+        atk_name = attacker.get("name", "Unknown")
+        def_name = defender.get("name", "Unknown")
+
+        # Determine win/loss/draw from winner_id
+        if winner_id is None:
+            outcome = 0
+        else:
+            won = (winner_id == nation_id)
+            outcome = 1 if won else -1
+        war_results.append(outcome)
+
+        # Basic line info
+        line = f"War ID: {war_id} | Attacker: {atk_name} | Defender: {def_name} | Outcome: {'Win' if outcome == 1 else 'Loss' if outcome == -1 else 'Draw'}"
+
+        # Add requested detail info if any
+        if detail == "infra":
+            infra_atk = war.get("att_infra_destroyed", 0)
+            infra_def = war.get("def_infra_destroyed", 0)
+            line += f" | Infra Destroyed - Attacker: {infra_atk}, Defender: {infra_def}"
+
+        elif detail == "money":
+            money_atk = war.get("att_money_looted", 0)
+            money_def = war.get("def_money_looted", 0)
+            line += f" | Money Looted - Attacker: {money_atk}, Defender: {money_def}"
+
+        elif detail == "soldiers":
+            soldiers_atk = war.get("att_soldiers_lost", 0)
+            soldiers_def = war.get("def_soldiers_lost", 0)
+            line += f" | Soldiers Lost - Attacker: {soldiers_atk}, Defender: {soldiers_def}"
+
+        lines.append(line)
+
+    # Plot war outcomes graph regardless of detail
+    plt.figure(figsize=(8, 6))
+    x = list(range(1, len(war_results) + 1))
+    y = war_results
+    plt.plot(x, y, marker='o', color='blue')
+    plt.title(f"Nation {nation_id} Recent War Outcomes")
+    plt.xlabel("War Number (Recent First)")
+    plt.ylabel("Outcome")
+    plt.yticks([-1, 0, 1], ["Loss", "Draw", "Win"])
+    plt.grid(True)
+    plt.axhline(0, linestyle='--', color='gray')
+
+    buf = BytesIO()
+    plt.tight_layout()
+    plt.savefig(buf, format='png')
+    plt.close()
+    buf.seek(0)
+
+    file = discord.File(fp=buf, filename="war_outcomes.png")
+    summary_text = "\n".join(lines[:10])
+
+    await interaction.followup.send(content=f"Recent Wars Summary:\n{summary_text}", file=file)
+
 
 
 
