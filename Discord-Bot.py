@@ -1653,60 +1653,53 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
         war_id = war.get("id")
         winner_id = str(war.get("winner_id"))
         active = war.get("end_date") is None
-
+    
         attacker = war.get("attacker") or {}
         defender = war.get("defender") or {}
-
+    
         atk_name = attacker.get("nation_name", "Unknown")
         def_name = defender.get("nation_name", "Unknown")
-
+    
         atk_id = str(attacker.get("id", "0"))
         def_id = str(defender.get("id", "0"))
-
-
-        war_date = datetime.strptime(war.get("date", "")[:10], "%Y-%m-%d").date()
-        date_key = war_date.strftime("%Y-%m-%d")
-
-        # Outcome calculation:
-        # 0 if active or draw (no change)
-        # +1 if alliance wins
-        # -1 if alliance loses
+    
         atk_alliance_id = attacker.get("alliance_id")
         def_alliance_id = defender.get("alliance_id")
-        
-        outcome = 0  # Default to draw
+    
+        war_date = datetime.strptime(war.get("date", "")[:10], "%Y-%m-%d").date()
+        date_key = war_date.strftime("%Y-%m-%d")
+    
+        # Determine win/loss/draw (1 = win, 0 = draw, -1 = loss)
+        outcome = 0  # default draw
+        if not active and winner_id != "0":
+            if (atk_alliance_id == alliance_id and winner_id == atk_id) or \
+               (def_alliance_id == alliance_id and winner_id == def_id):
+                outcome = 1  # Win
+            elif (atk_alliance_id == alliance_id and winner_id == def_id) or \
+                 (def_alliance_id == alliance_id and winner_id == atk_id):
+                outcome = -1  # Loss
+    
+        war_results.append(outcome)
+    
+        # Money stats
         if not active:
-            if winner_id == atk_id:
-                if atk_alliance_id == alliance_id:
-                    outcome = 1
-                elif def_alliance_id == alliance_id:
-                    outcome = -1
-            elif winner_id == def_id:
-                if def_alliance_id == alliance_id:
-                    outcome = 1
-                elif atk_alliance_id == alliance_id:
-                    outcome = -1
-
-        cumulative += outcome
-
-        war_results.append(cumulative)
-
-        if not active:
-            money_given = war.get("att_money_looted", 0) if atk_id == nation_id_str else war.get("def_money_looted", 0)
-            money_received = war.get("def_money_looted", 0) if atk_id == nation_id_str else war.get("att_money_looted", 0)
-            money_stats[date_key]['given'] += money_given
-            money_stats[date_key]['received'] += money_received
-
+            if atk_alliance_id == alliance_id:
+                money_stats[date_key]['given'] += war.get("att_money_looted", 0)
+                money_stats[date_key]['received'] += war.get("def_money_looted", 0)
+            elif def_alliance_id == alliance_id:
+                money_stats[date_key]['given'] += war.get("def_money_looted", 0)
+                money_stats[date_key]['received'] += war.get("att_money_looted", 0)
+    
         result_text = "Win" if outcome == 1 else "Loss" if outcome == -1 else "Draw"
         line = f"War ID: {war_id} | Attacker: {atk_name} | Defender: {def_name} | Outcome: {result_text} | Active: {active}"
-
+    
         if detail == "infra":
             line += f" | Infra Destroyed - Attacker: {war.get('att_infra_destroyed', 0)}, Defender: {war.get('def_infra_destroyed', 0)}"
         elif detail == "money":
             line += f" | Money Looted - Attacker: {war.get('att_money_looted', 0)}, Defender: {war.get('def_money_looted', 0)}"
         elif detail == "soldiers":
             line += f" | Soldiers Lost - Attacker: {war.get('att_soldiers_lost', 0)}, Defender: {war.get('def_soldiers_lost', 0)}"
-
+    
         lines.append(line)
 
     summary = f"Summary: {len(wars[:30] if not conflict else wars)} Wars shown."
