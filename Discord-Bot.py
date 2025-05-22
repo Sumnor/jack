@@ -1717,10 +1717,10 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
     
         # Money stats
         if not active:
-            if atk_alliance_id == alliance_id:
+            if attacker_belongs == alliance_id:
                 money_stats[date_key]['given'] += war.get("att_money_looted", 0)
                 money_stats[date_key]['received'] += war.get("def_money_looted", 0)
-            elif def_alliance_id == alliance_id:
+            elif defender_belongs == alliance_id:
                 money_stats[date_key]['given'] += war.get("def_money_looted", 0)
                 money_stats[date_key]['received'] += war.get("att_money_looted", 0)
     
