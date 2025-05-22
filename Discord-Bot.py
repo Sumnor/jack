@@ -1577,7 +1577,6 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
             await interaction.followup.send(f"❌ Conflict '{conflict_name}' not found.")
             return
 
-    first = 100 if conflict else 30
     orderBy = [{"column": "ID", "order": "DESC"}]
 
     query = """
@@ -1679,6 +1678,8 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
         description=f"Showing last {len(wars_sorted)} wars{f' during {conflict_name}' if conflict_name else ''}."
     )
 
+    text_lines = []
+
     for idx, war in enumerate(wars_sorted):
         war_id = war.get("id")
         winner_id = str(war.get("winner_id"))
@@ -1708,35 +1709,36 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
             outcome = 0
 
         war_results.append(outcome)
-        result_text = "✅ **Win**" if outcome == 1 else "❌ **Loss**" if outcome == -1 else "⚖️ **Draw**"
+        result_text = "✅ Win" if outcome == 1 else "❌ Loss" if outcome == -1 else "⚖️ Draw"
 
+        # ✅ Fixed money logic
         if is_attacker:
-            money_stats[date_key]['given'] += war.get("def_money_looted", 0)
-            money_stats[date_key]['received'] += war.get("att_money_looted", 0)
-        elif is_defender:
             money_stats[date_key]['given'] += war.get("att_money_looted", 0)
             money_stats[date_key]['received'] += war.get("def_money_looted", 0)
+        elif is_defender:
+            money_stats[date_key]['given'] += war.get("def_money_looted", 0)
+            money_stats[date_key]['received'] += war.get("att_money_looted", 0)
 
-        field_title = f"{date_key} | War #{war_id}"
-        field_value = f"**Attacker:** {atk_name}\n**Defender:** {def_name}\n**Outcome:** {result_text}"
-
+        line = f"{date_key} | War ID: {war_id} | Attacker: {atk_name} | Defender: {def_name} | Outcome: {result_text}"
         if detail == "infra":
-            field_value += f"\nInfra Destroyed → A: {war.get('att_infra_destroyed', 0)}, D: {war.get('def_infra_destroyed', 0)}"
+            line += f" | Infra: A {war.get('att_infra_destroyed', 0)}, D {war.get('def_infra_destroyed', 0)}"
         elif detail == "money":
-            field_value += f"\nMoney Looted → A: ${war.get('att_money_looted', 0):,.0f}, D: ${war.get('def_money_looted', 0):,.0f}"
+            line += f" | Money: A ${war.get('att_money_looted', 0):,.0f}, D ${war.get('def_money_looted', 0):,.0f}"
         elif detail == "soldiers":
-            field_value += f"\nSoldiers Lost → A: {war.get('att_soldiers_lost', 0):,}, D: {war.get('def_soldiers_lost', 0):,}"
+            line += f" | Soldiers: A {war.get('att_soldiers_lost', 0):,}, D {war.get('def_soldiers_lost', 0):,}"
 
-        embed.add_field(name=field_title, value=field_value, inline=False)
-        if len(embed.fields) >= 24:
-            break
+        text_lines.append(line)
+
+        # Only show first 10 wars in embed
+        if idx < 10:
+            embed.add_field(name=f"{date_key} | War #{war_id}", value=line, inline=False)
 
     total_wins = war_results.count(1)
     total_losses = war_results.count(-1)
     total_draws = war_results.count(0)
     embed.set_footer(text=f"Summary: ✅ {total_wins} Wins | ❌ {total_losses} Losses | ⚖️ {total_draws} Draws")
 
-    # Chart 1: Line graph
+    # 📈 Graph: Line chart of outcomes
     plt.figure(figsize=(8, 6))
     x = list(range(1, len(war_results) + 1))
     y = war_results
@@ -1756,7 +1758,7 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
 
     files = [file1]
 
-    # Chart 2: Money damage chart
+    # 📊 Bar chart: Money damage
     if money_stats:
         dates = sorted(money_stats.keys())
         given = [money_stats[date]['given'] / 1_000_000 for date in dates]
@@ -1783,7 +1785,15 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
         file2 = discord.File(fp=buf2, filename="money_damage.png")
         files.append(file2)
 
+    # 📝 Full war log in text file
+    txt_buf = BytesIO()
+    txt_buf.write("\n".join(text_lines).encode("utf-8"))
+    txt_buf.seek(0)
+    file3 = discord.File(fp=txt_buf, filename="full_war_summary.txt")
+    files.append(file3)
+
     await interaction.followup.send(embed=embed, files=files)
+
 
 '''@bot.tree.command(name="register_manual", description="Manually register a nation with a given Discord username (no validation)")
 @app_commands.describe(
