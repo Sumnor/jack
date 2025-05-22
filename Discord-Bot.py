@@ -1345,8 +1345,9 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
 
     lines = []
     war_results = []
+    money_stats = defaultdict(lambda: {'given': 0, 'received': 0})
     
-    for war in wars:
+    for war in wars_sorted:
         war_id = war.get("id")
         winner_id = str(war.get("winner_id"))
     
@@ -1358,69 +1359,99 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
         atk_name = attacker.get("nation_name", "Unknown")
         def_name = defender.get("nation_name", "Unknown")
     
-        nation_id_str = str(nation_id)
+        war_date = datetime.strptime(war.get("date", "")[:10], "%Y-%m-%d").date()
+        date_key = war_date.strftime("%Y-%m-%d")
     
-        # Determine war outcome
-        if winner_id == nation_id_str:
-            outcome = 1  # You won
-        elif winner_id in [atk_id, def_id] and winner_id != nation_id_str:
-            outcome = -1  # You lost
+        # Outcome logic
+        if winner_id == atk_id and atk_id == str(alliance_id):
+            outcome = 1  # Alliance won as attacker
+        elif winner_id == def_id and def_id == str(alliance_id):
+            outcome = 1  # Alliance won as defender
+        elif winner_id in [atk_id, def_id]:
+            outcome = -1  # Alliance lost
         else:
             outcome = 0  # Draw
     
         war_results.append(outcome)
     
-        # Build readable result line
+        # Money stats
+        if atk_id == str(alliance_id):
+            money_stats[date_key]['given'] += war.get("att_money_looted", 0)
+            money_stats[date_key]['received'] += war.get("def_money_looted", 0)
+        elif def_id == str(alliance_id):
+            money_stats[date_key]['given'] += war.get("def_money_looted", 0)
+            money_stats[date_key]['received'] += war.get("att_money_looted", 0)
+    
         result_text = "Win" if outcome == 1 else "Loss" if outcome == -1 else "Draw"
         line = f"War ID: {war_id} | Attacker: {atk_name} | Defender: {def_name} | Outcome: {result_text}"
     
-        # Optional details
         if detail == "infra":
-            infra_atk = war.get("att_infra_destroyed", 0)
-            infra_def = war.get("def_infra_destroyed", 0)
-            line += f" | Infra Destroyed - Attacker: {infra_atk}, Defender: {infra_def}"
+            line += f" | Infra Destroyed - Attacker: {war.get('att_infra_destroyed', 0)}, Defender: {war.get('def_infra_destroyed', 0)}"
         elif detail == "money":
-            money_atk = war.get("att_money_looted", 0)
-            money_def = war.get("def_money_looted", 0)
-            line += f" | Money Looted - Attacker: {money_atk}, Defender: {money_def}"
+            line += f" | Money Looted - Attacker: {war.get('att_money_looted', 0)}, Defender: {war.get('def_money_looted', 0)}"
         elif detail == "soldiers":
-            soldiers_atk = war.get("att_soldiers_lost", 0)
-            soldiers_def = war.get("def_soldiers_lost", 0)
-            line += f" | Soldiers Lost - Attacker: {soldiers_atk}, Defender: {soldiers_def}"
+            line += f" | Soldiers Lost - Attacker: {war.get('att_soldiers_lost', 0)}, Defender: {war.get('def_soldiers_lost', 0)}"
     
         lines.append(line)
     
-    # Optional: Summary
+    # Summary
     total_wins = war_results.count(1)
     total_losses = war_results.count(-1)
     total_draws = war_results.count(0)
-    
     summary = f"Summary: ✅ {total_wins} Wins | ❌ {total_losses} Losses | ⚖️ {total_draws} Draws"
     lines.append(summary)
     
-    # Plot outcomes graph
+    # War outcome line plot
     plt.figure(figsize=(8, 6))
     x = list(range(1, len(war_results) + 1))
     y = war_results
-    plt.plot(x, y, marker='o', color='blue')
-    plt.title(f"Nation {nation_id} Recent War Outcomes")
-    plt.xlabel("War Number (Recent First)")
+    plt.plot(x, y, marker='o', linestyle='-', color='blue')
+    plt.title(f"Alliance {alliance_id} War Outcomes")
+    plt.xlabel("War Number (Oldest First)")
     plt.ylabel("Outcome")
     plt.yticks([-1, 0, 1], ["Loss", "Draw", "Win"])
     plt.grid(True)
     plt.axhline(0, linestyle='--', color='gray')
     
-    buf = BytesIO()
+    buf1 = BytesIO()
     plt.tight_layout()
-    plt.savefig(buf, format='png')
+    plt.savefig(buf1, format='png')
     plt.close()
-    buf.seek(0)
+    buf1.seek(0)
+    file1 = discord.File(fp=buf1, filename="war_outcomes.png")
     
-    file = discord.File(fp=buf, filename="war_outcomes.png")
+    # Money bar chart
+    if money_stats:
+        dates = sorted(money_stats.keys())
+        given = [money_stats[date]['given'] / 1_000_000 for date in dates]
+        received = [money_stats[date]['received'] / 1_000_000 for date in dates]
     
-    summary_text = "\n".join(lines[:10])
+        plt.figure(figsize=(10, 6))
+        bar_width = 0.35
+        indices = list(range(len(dates)))
     
-    await interaction.followup.send(content=f"Recent Wars Summary:\n{summary_text}", file=file)
+        plt.bar([i - bar_width/2 for i in indices], given, width=bar_width, label='Damage Given (M)', color='blue')
+        plt.bar([i + bar_width/2 for i in indices], received, width=bar_width, label='Damage Received (M)', color='red')
+    
+        plt.xlabel('Date')
+        plt.ylabel('Damage (Million $)')
+        plt.title(f"Alliance {alliance_id} Daily Money Damage")
+        plt.xticks(indices, dates, rotation=45, ha='right')
+        plt.legend()
+        plt.tight_layout()
+    
+        buf2 = BytesIO()
+        plt.savefig(buf2, format='png')
+        plt.close()
+        buf2.seek(0)
+        file2 = discord.File(fp=buf2, filename="money_damage.png")
+    
+        summary_text = "\n".join(lines[:10]) + "\n" + summary
+        await interaction.followup.send(content=f"Recent Wars Summary for Alliance {alliance_id}:\n{summary_text}", files=[file1, file2])
+    else:
+        summary_text = "\n".join(lines[:10]) + "\nCould not load money data.\n" + summary
+        await interaction.followup.send(content=f"Recent Wars Summary for Alliance {alliance_id}:\n{summary_text}", file=file1)
+
 
 @bot.tree.command(name="conflict", description="Manage alliance conflicts")
 @app_commands.describe(
