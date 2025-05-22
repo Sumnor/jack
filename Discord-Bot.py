@@ -1677,55 +1677,49 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
     wars_sorted = sorted(wars, key=lambda w: w.get("date", ""))
 
     nation_id_str = str(alliance_id)
-    war_results = []
     cumulative = 0
-    lines = []
-    money_stats = defaultdict(lambda: {'given': 0, 'received': 0})
 
+    lines = []
+    war_results = []
+    money_stats = defaultdict(lambda: {'given': 0, 'received': 0})
+    
     for war in wars_sorted:
         war_id = war.get("id")
         winner_id = str(war.get("winner_id"))
-        active = war.get("end_date") is None
     
-        attacker = war.get("attacker") or {}
-        defender = war.get("defender") or {}
+        attacker = war.get("attacker", {})
+        defender = war.get("defender", {})
     
+        atk_id = str(attacker.get("id"))
+        def_id = str(defender.get("id"))
         atk_name = attacker.get("nation_name", "Unknown")
         def_name = defender.get("nation_name", "Unknown")
-    
-        atk_id = str(attacker.get("id", "0"))
-        def_id = str(defender.get("id", "0"))
     
         war_date = datetime.strptime(war.get("date", "")[:10], "%Y-%m-%d").date()
         date_key = war_date.strftime("%Y-%m-%d")
     
-                # Determine win/loss/draw (1 = win, 0 = draw, -1 = loss)
-        attacker_belongs = attacker.get("alliance_id") == alliance_id
-        defender_belongs = defender.get("alliance_id") == alliance_id
-        
-        if winner_id is None:
-            outcome = 0  # Draw
-        elif (attacker_belongs and winner_id == atk_id) or (defender_belongs and winner_id == def_id):
-            outcome = 1  # Win
-        elif attacker_belongs or defender_belongs:
-            outcome = -1  # Loss
+        # Outcome logic
+        if winner_id == atk_id and atk_id == str(alliance_id):
+            outcome = 1  # Alliance won as attacker
+        elif winner_id == def_id and def_id == str(alliance_id):
+            outcome = 1  # Alliance won as defender
+        elif winner_id in [atk_id, def_id]:
+            outcome = -1  # Alliance lost
         else:
-            outcome = 0  # Not related, treat as draw
-
+            outcome = 0  # Draw
     
         war_results.append(outcome)
     
         # Money stats
-        if not active:
-            if attacker_belongs == alliance_id:
-                money_stats[date_key]['given'] += war.get("att_money_looted", 0)
-                money_stats[date_key]['received'] += war.get("def_money_looted", 0)
-            elif defender_belongs == alliance_id:
-                money_stats[date_key]['given'] += war.get("def_money_looted", 0)
-                money_stats[date_key]['received'] += war.get("att_money_looted", 0)
+        if atk_id == str(alliance_id):
+            money_stats[date_key]['given'] += war.get("att_money_looted", 0)
+            money_stats[date_key]['received'] += war.get("def_money_looted", 0)
+        elif def_id == str(alliance_id):
+            money_stats[date_key]['given'] += war.get("def_money_looted", 0)
+            money_stats[date_key]['received'] += war.get("att_money_looted", 0)
     
         result_text = "Win" if outcome == 1 else "Loss" if outcome == -1 else "Draw"
-        line = f"War ID: {war_id} | Attacker: {atk_name} | Defender: {def_name} | Outcome: {result_text} | Active: {active}"
+        line = f"War ID: {war_id} | Attacker: {atk_name} | Defender: {def_name} | Outcome: {result_text}"
     
         if detail == "infra":
             line += f" | Infra Destroyed - Attacker: {war.get('att_infra_destroyed', 0)}, Defender: {war.get('def_infra_destroyed', 0)}"
@@ -1735,61 +1729,59 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
             line += f" | Soldiers Lost - Attacker: {war.get('att_soldiers_lost', 0)}, Defender: {war.get('def_soldiers_lost', 0)}"
     
         lines.append(line)
-
-    summary = f"Summary: {len(wars[:30] if not conflict else wars)} Wars shown."
-    x = list(range(1, len(war_results) + 1))
-    y = war_results  # not cumulative
-    # Cumulative War Outcomes Chart
-    import matplotlib.pyplot as plt
-    import matplotlib.ticker as ticker
-
+    
+    # Summary
+    total_wins = war_results.count(1)
+    total_losses = war_results.count(-1)
+    total_draws = war_results.count(0)
+    summary = f"Summary: ✅ {total_wins} Wins | ❌ {total_losses} Losses | ⚖️ {total_draws} Draws"
+    lines.append(summary)
+    
+    # War outcome line plot
     plt.figure(figsize=(8, 6))
     x = list(range(1, len(war_results) + 1))
     y = war_results
-    plt.plot(x, y, marker='o', color='green')
-    plt.title(f"Alliance {alliance_id} War Outcomes (Win=1, Draw=0, Loss=-1)")
+    plt.plot(x, y, marker='o', linestyle='-', color='blue')
+    plt.title(f"Alliance {alliance_id} War Outcomes")
     plt.xlabel("War Number (Oldest First)")
-    plt.ylabel("Outcome (1 = Win, 0 = Draw, -1 = Loss)")
-    plt.axhline(0, linestyle='--', color='gray')
+    plt.ylabel("Outcome")
+    plt.yticks([-1, 0, 1], ["Loss", "Draw", "Win"])
     plt.grid(True)
-    plt.xlim(1, max(10, len(war_results)))
-    plt.gca().xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
-    plt.gca().yaxis.set_major_locator(ticker.FixedLocator([-1, 0, 1]))  # << Force y-ticks
-
-
-    buf = BytesIO()
+    plt.axhline(0, linestyle='--', color='gray')
+    
+    buf1 = BytesIO()
     plt.tight_layout()
-    plt.savefig(buf, format='png')
+    plt.savefig(buf1, format='png')
     plt.close()
-    buf.seek(0)
-    file1 = discord.File(fp=buf, filename="alliance_war_outcomes.png")
-
-    # Money Damage Chart
+    buf1.seek(0)
+    file1 = discord.File(fp=buf1, filename="war_outcomes.png")
+    
+    # Money bar chart
     if money_stats:
         dates = sorted(money_stats.keys())
         given = [money_stats[date]['given'] / 1_000_000 for date in dates]
         received = [money_stats[date]['received'] / 1_000_000 for date in dates]
-
+    
         plt.figure(figsize=(10, 6))
         bar_width = 0.35
         indices = list(range(len(dates)))
-
+    
         plt.bar([i - bar_width/2 for i in indices], given, width=bar_width, label='Damage Given (M)', color='blue')
         plt.bar([i + bar_width/2 for i in indices], received, width=bar_width, label='Damage Received (M)', color='red')
-
+    
         plt.xlabel('Date')
         plt.ylabel('Damage (Million $)')
         plt.title(f"Alliance {alliance_id} Daily Money Damage")
         plt.xticks(indices, dates, rotation=45, ha='right')
         plt.legend()
         plt.tight_layout()
-
+    
         buf2 = BytesIO()
         plt.savefig(buf2, format='png')
         plt.close()
         buf2.seek(0)
         file2 = discord.File(fp=buf2, filename="money_damage.png")
-
+    
         summary_text = "\n".join(lines[:10]) + "\n" + summary
         await interaction.followup.send(content=f"Recent Wars Summary for Alliance {alliance_id}:\n{summary_text}", files=[file1, file2])
     else:
