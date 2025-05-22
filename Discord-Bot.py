@@ -1010,7 +1010,7 @@ async def res_in_m_for_a(
     scale: app_commands.Choice[str] = None
 ):
     await interaction.response.defer(thinking=True)
-    global cached_users, money_snapshots
+    global money_snapshots
 
     totals = {
         "money": 0,
@@ -1055,14 +1055,18 @@ async def res_in_m_for_a(
     except Exception as e:
         print(f"Error fetching resource prices: {e}")
 
-    for user_id, user_data in cached_users.items():
-        own_id = str(user_data.get("NationID", "")).strip()
-        if not own_id:
+    # ✅ Load nation data from sheet
+    sheet = get_alliance_sheet()
+    rows = sheet.get_all_records()
+
+    for row in rows:
+        nation_id = str(row.get("NationID", "")).strip()
+        if not nation_id:
             failed += 1
             continue
 
         try:
-            result = get_resources(own_id)
+            result = get_resources(nation_id)
             if len(result) != 14:
                 raise ValueError("Invalid result length from get_resources")
 
@@ -1101,7 +1105,7 @@ async def res_in_m_for_a(
             await asyncio.sleep(5)
 
         except Exception as e:
-            print(f"Failed processing nation {own_id}: {e}")
+            print(f"Failed processing nation {nation_id}: {e}")
             failed += 1
             continue
 
@@ -1154,11 +1158,8 @@ async def res_in_m_for_a(
             label_suffix = {"billions": "B", "millions": "M"}.get(value_scale, "")
 
             def format_large_ticks(x, _):
-                if value_scale == "billions":
-                    return f'{x:.1f}{label_suffix}'
-                else:
-                    return f'{x:.0f}{label_suffix}'
-            # Process snapshots
+                return f'{x:.1f}{label_suffix}' if value_scale == "billions" else f'{x:.0f}{label_suffix}'
+
             data = defaultdict(list)
             for entry in money_snapshots:
                 ts = datetime.fromisoformat(entry["time"]).replace(tzinfo=timezone.utc)
@@ -1166,21 +1167,16 @@ async def res_in_m_for_a(
                 data[key].append(entry.get("total", 0))
 
             if mode and mode.value == "days":
-                # 30-day daily mode, ending with today
                 today = datetime.utcnow().date()
                 start_date = today - timedelta(days=29)
                 full_range = [start_date + timedelta(days=i) for i in range(30)]
-
-                # X-axis format
                 day_fmt = '%#d' if platform.startswith('win') else '%-d'
             else:
-                # Hourly mode (unchanged)
                 now = datetime.utcnow().replace(minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
                 start = min(data)
                 hours = int((now - start).total_seconds() // 3600) + 1
                 full_range = [start + timedelta(hours=h) for h in range(hours)]
 
-            # Fill in values for full range
             times = []
             values = []
             for t in full_range:
@@ -1200,18 +1196,13 @@ async def res_in_m_for_a(
                     scaled[~nan_mask]
                 )
 
-            # Plotting
             plt.figure(figsize=(10, 5))
             plt.plot(times, scaled, color='magenta', marker='o', linestyle='-')
-            title = "Alliance Wealth Over Last 30 Days" if mode and mode.value == "days" else "Alliance Wealth Over Time"
-            plt.title(title)
+            plt.title("Alliance Wealth Over Last 30 Days" if mode and mode.value == "days" else "Alliance Wealth Over Time")
             plt.xlabel("Time")
             plt.ylabel(f"Total Money ({label_suffix})")
             plt.grid(True)
-
-            min_val = np.nanmin(scaled)
-            max_val = np.nanmax(scaled)
-            plt.ylim(bottom=max(0, min_val * 0.95), top=max_val * 1.05)
+            plt.ylim(bottom=max(0, np.nanmin(scaled) * 0.95), top=np.nanmax(scaled) * 1.05)
 
             ax = plt.gca()
             ax.yaxis.set_major_locator(MaxNLocator(nbins='auto'))
