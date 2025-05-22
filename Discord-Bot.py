@@ -1671,17 +1671,23 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
         # 0 if active or draw (no change)
         # +1 if alliance wins
         # -1 if alliance loses
-        if active:
-            outcome = 0
-        elif winner_id == nation_id_str:
-            outcome = 1
-        elif winner_id in [atk_id, def_id] and winner_id != nation_id_str:
-            outcome = -1
-        else:
-            outcome = 0
+        atk_alliance_id = attacker.get("alliance_id")
+        def_alliance_id = defender.get("alliance_id")
+        
+        outcome = 0  # Default to draw
+        if not active:
+            if winner_id == atk_id:
+                if atk_alliance_id == alliance_id:
+                    outcome = 1
+                elif def_alliance_id == alliance_id:
+                    outcome = -1
+            elif winner_id == def_id:
+                if def_alliance_id == alliance_id:
+                    outcome = 1
+                elif atk_alliance_id == alliance_id:
+                    outcome = -1
 
-        if outcome != 0:
-            cumulative += outcome
+        cumulative += outcome
 
         war_results.append(cumulative)
 
@@ -1713,9 +1719,9 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
     x = list(range(1, len(war_results) + 1))
     y = war_results
     plt.plot(x, y, marker='o', color='green')
-    plt.title(f"Alliance {alliance_id} Cumulative War Outcomes")
+    plt.title(f"Alliance {alliance_id} War Outcomes")
     plt.xlabel("War Number (Oldest First)")
-    plt.ylabel("Outcome Score")
+    plt.ylabel("Outcome (1=Win, 0=Draw, -1=Loss)")
     plt.axhline(0, linestyle='--', color='gray')
     plt.grid(True)
 
