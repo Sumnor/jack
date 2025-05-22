@@ -1703,7 +1703,8 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
         lines.append(line)
 
     summary = f"Summary: {len(wars[:30] if not conflict else wars)} Wars shown."
-
+    x = list(range(1, len(war_results) + 1))
+    y = war_results  # not cumulative
     # Cumulative War Outcomes Chart
     import matplotlib.pyplot as plt
     import matplotlib.ticker as ticker
@@ -1712,15 +1713,15 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
     x = list(range(1, len(war_results) + 1))
     y = war_results
     plt.plot(x, y, marker='o', color='green')
-    plt.title(f"Alliance {alliance_id} War Outcomes")
+    plt.title(f"Alliance {alliance_id} War Outcomes (Win=1, Draw=0, Loss=-1)")
     plt.xlabel("War Number (Oldest First)")
-    plt.ylabel("Outcome (1=Win, 0=Draw, -1=Loss)")
+    plt.ylabel("Outcome (1 = Win, 0 = Draw, -1 = Loss)")
     plt.axhline(0, linestyle='--', color='gray')
     plt.grid(True)
-
-    min_wars_display = max(10, len(war_results))
-    plt.xlim(1, min_wars_display)
+    plt.xlim(1, max(10, len(war_results)))
     plt.gca().xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+    plt.gca().yaxis.set_major_locator(ticker.FixedLocator([-1, 0, 1]))  # << Force y-ticks
+
 
     buf = BytesIO()
     plt.tight_layout()
