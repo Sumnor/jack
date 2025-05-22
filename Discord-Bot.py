@@ -1593,10 +1593,12 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
             attacker {
             nation_name
             id
+            alliance_id
             }
             defender {
             nation_name
             id
+            alliance_id
             }
             att_infra_destroyed
             def_infra_destroyed
@@ -1694,21 +1696,22 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
         atk_id = str(attacker.get("id", "0"))
         def_id = str(defender.get("id", "0"))
     
-        atk_alliance_id = attacker.get("alliance_id")
-        def_alliance_id = defender.get("alliance_id")
-    
         war_date = datetime.strptime(war.get("date", "")[:10], "%Y-%m-%d").date()
         date_key = war_date.strftime("%Y-%m-%d")
     
-        # Determine win/loss/draw (1 = win, 0 = draw, -1 = loss)
-        outcome = 0  # default draw
-        if not active and winner_id != "0":
-            if (atk_alliance_id == alliance_id and winner_id == atk_id) or \
-               (def_alliance_id == alliance_id and winner_id == def_id):
-                outcome = 1  # Win
-            elif (atk_alliance_id == alliance_id and winner_id == def_id) or \
-                 (def_alliance_id == alliance_id and winner_id == atk_id):
-                outcome = -1  # Loss
+                # Determine win/loss/draw (1 = win, 0 = draw, -1 = loss)
+        attacker_belongs = attacker.get("alliance_id") == alliance_id
+        defender_belongs = defender.get("alliance_id") == alliance_id
+        
+        if winner_id is None:
+            outcome = 0  # Draw
+        elif (attacker_belongs and winner_id == atk_id) or (defender_belongs and winner_id == def_id):
+            outcome = 1  # Win
+        elif attacker_belongs or defender_belongs:
+            outcome = -1  # Loss
+        else:
+            outcome = 0  # Not related, treat as draw
+
     
         war_results.append(outcome)
     
