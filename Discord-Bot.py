@@ -1611,19 +1611,72 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
     # ✅ Move graph prep after the loop
 # After all wars processed
     if money_more_detail:
+    # ✅ Move graph prep after the loop
+    used_dates = []
+
+    for idx, war in enumerate(wars):
+        attacker = war.get("attacker") or {}
+        defender = war.get("defender") or {}
+        atk_alliance = str(attacker.get("alliance_id", 0))
+        def_alliance = str(defender.get("alliance_id", 0))
+
+        is_attacker = atk_alliance == str(alliance_id)
+        is_defender = def_alliance == str(alliance_id)
+
+        money_looted = war.get("att_money_looted", 0) if is_attacker else war.get("def_money_looted", 0)
+
+        winner_id = str(war.get("winner_id"))
+        atk_id = str(attacker.get("id", 0))
+        def_id = str(defender.get("id", 0))
+
+        if winner_id == atk_id and is_attacker:
+            outcome = "Win"
+            y_val = 1
+        elif winner_id == def_id and is_defender:
+            outcome = "Win"
+            y_val = 1
+        elif winner_id == def_id and is_attacker:
+            outcome = "Loss"
+            y_val = -1
+        elif winner_id == atk_id and is_defender:
+            outcome = "Loss"
+            y_val = -1
+        else:
+            outcome = "Draw"
+            y_val = 0
+
+        war_datetime_raw = war.get("date")
+        try:
+            war_dt = datetime.strptime(war_datetime_raw, "%Y-%m-%d %H:%M:%S")
+            war_date = war_dt.date().isoformat()  # 'YYYY-MM-DD'
+        except Exception as e:
+            print(f"⛔ Failed to parse war date: {war_datetime_raw} | Error: {e}")
+            continue
+
+        if war_date not in money_by_day:
+            used_dates.append(war_date)
+
+        money_by_day[war_date] += money_looted
+        outcome_by_day[war_date].append(y_val)
+
+        all_log += (
+            f"Date: {war_date} | {attacker.get('nation_name','?')} vs {defender.get('nation_name','?')} | "
+            f"Outcome: {outcome} | Looted: {money_looted:,}\n"
+        )
+
+    # ✅ Graphs if money_more_detail enabled
+    if money_more_detail:
         from matplotlib.dates import DateFormatter
         import matplotlib.dates as mdates
 
-        # Use actual war_date values from money_by_day
-        sorted_days = sorted(datetime.strptime(d, "%Y-%m-%d").date() for d in money_by_day.keys())
-
+        sorted_days = [datetime.strptime(d, "%Y-%m-%d").date() for d in used_dates]
         values = [money_by_day[d.strftime("%Y-%m-%d")] for d in sorted_days]
         outcome_avgs = [
             sum(outcome_by_day[d.strftime("%Y-%m-%d")]) / len(outcome_by_day[d.strftime("%Y-%m-%d")])
             for d in sorted_days
         ]
 
-        # ✅ Money Looted Bar Graph
+        # Money Looted Bar Graph
         fig_money, ax_money = plt.subplots(figsize=(10, 5))
         ax_money.bar(sorted_days, values, color="red")
         ax_money.set_title(f"{alliance['name']} - Money Looted Per Day")
@@ -1639,7 +1692,7 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
         plt.close(fig_money)
         await interaction.followup.send(file=discord.File(buf_money, filename="money_detail_graph.png"))
 
-        # ✅ Outcome Average Line Graph
+        # Outcome Average Line Graph
         fig_outcome, ax_outcome = plt.subplots(figsize=(10, 5))
         ax_outcome.plot(sorted_days, outcome_avgs, color="blue", marker="o")
         ax_outcome.set_title(f"{alliance['name']} - Average Outcome Per Day")
@@ -1656,6 +1709,7 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
         buf_outcome.seek(0)
         plt.close(fig_outcome)
         await interaction.followup.send(file=discord.File(buf_outcome, filename="outcome_detail_graph.png"))
+
 
 
     else:
