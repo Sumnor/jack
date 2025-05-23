@@ -33,6 +33,7 @@ from matplotlib.ticker import MaxNLocator, FuncFormatter
 from datetime import datetime, timedelta, timezone
 import matplotlib.dates as mdates
 from discord.ext import tasks
+from datetime import datetime, date
 from datetime import datetime, timezone
 from collections import defaultdict
 
@@ -42,7 +43,7 @@ cached_sheet_data = []
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
-bot_key = os.getenv("bot_key")
+bot_key = os.getenv("Key")
 API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
@@ -1233,8 +1234,80 @@ async def res_in_m_for_a(
         except Exception as e:
             print(f"Failed to send fallback embed: {e}")
 
+@bot.tree.command(name="start_conflict", description="Start a new alliance conflict.")
+@app_commands.describe(
+    name="Name of the conflict",
+    message_to_members="Optional announcement message to members",
+    alliance_enemy_ids="Comma-separated list of enemy alliance IDs (e.g., 10433,48594)"
+)
+async def start_conflict(interaction: discord.Interaction, name: str, message_to_members: str = "", alliance_enemy_ids: str = ""):
+    load_conflicts_data()
+    if any(c.get("Name", "").lower() == name.lower() for c in cached_conflicts):
+        await interaction.response.send_message(f"❌ Conflict '{name}' already exists.")
+        return
 
-from discord import app_commands
+    enemy_ids = [int(id.strip()) for id in alliance_enemy_ids.split(",") if id.strip().isdigit()]
+    today = date.today().isoformat()
+
+    row = [name, today, "", "False", ",".join(map(str, enemy_ids)), message_to_members or ""]
+
+    save_conflict_row(row)
+    await interaction.response.send_message(f"✅ Conflict '{name}' started. Enemy alliances: {enemy_ids}")
+
+@bot.tree.command(name="add_to_conflict", description="Add enemy alliances to an existing conflict.")
+@app_commands.describe(
+    conflict_name="Name of the existing conflict",
+    enemy_alliance_ids="Comma-separated list of additional enemy alliance IDs"
+)
+async def add_to_conflict(interaction: discord.Interaction, conflict_name: str, enemy_alliance_ids: str):
+    load_conflicts_data()
+    row_idx = None
+    conflict = None
+    for i, c in enumerate(cached_conflicts):
+        if c.get("Name", "").lower() == conflict_name.lower() and c.get("Closed", "").lower() != "true":
+            conflict = c
+            row_idx = i + 2  # account for header row
+            break
+
+    if not conflict:
+        await interaction.response.send_message(f"❌ Open conflict '{conflict_name}' not found.")
+        return
+
+    new_ids = set(int(id.strip()) for id in enemy_alliance_ids.split(",") if id.strip().isdigit())
+    current_ids = set(int(id) for id in conflict.get("EnemyAlliances", "").split(",") if id.strip().isdigit())
+    combined_ids = sorted(current_ids.union(new_ids))
+
+    update_conflict_row(row_idx, 5, ",".join(map(str, combined_ids)))
+    await interaction.response.send_message(f"✅ Added alliances {new_ids - current_ids} to conflict '{conflict_name}'.")
+
+@bot.tree.command(name="end_conflict", description="End an existing open conflict.")
+@app_commands.describe(
+    conflict_name="Name of the conflict to end",
+    message_to_members="Mandatory message to members about the end"
+)
+async def end_conflict(interaction: discord.Interaction, conflict_name: str, message_to_members: str):
+    if not message_to_members.strip():
+        await interaction.response.send_message("❌ You must provide a message to members.")
+        return
+
+    load_conflicts_data()
+    row_idx = None
+    for i, c in enumerate(cached_conflicts):
+        if c.get("Name", "").lower() == conflict_name.lower() and c.get("Closed", "").lower() != "true":
+            row_idx = i + 2
+            break
+
+    if not row_idx:
+        await interaction.response.send_message(f"❌ Open conflict '{conflict_name}' not found.")
+        return
+
+    today = date.today().isoformat()
+    update_conflict_row(row_idx, 3, today)  # EndDate
+    update_conflict_row(row_idx, 4, "True")  # Closed
+    update_conflict_row(row_idx, 6, message_to_members)  # MessageToMembers
+    await interaction.response.send_message(f"✅ Conflict '{conflict_name}' has been ended.")
+
+
 import discord
 import requests
 from io import BytesIO
@@ -1737,6 +1810,8 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
     log_file = BytesIO(all_log.encode("utf-8"))
     log_file.seek(0)
     await interaction.followup.send(file=discord.File(log_file, filename=f"war_summary_{alliance_id}.txt"))
+
+
 
 
 
