@@ -1593,7 +1593,8 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
 
         war_datetime_raw = war.get("date")
         try:
-            war_dt = datetime.strptime(war_datetime_raw, "%Y-%m-%d %H:%M:%S")
+            from dateutil import parser
+            war_dt = parser.isoparse(war_datetime_raw)
             war_date = war_dt.date().isoformat()  # 'YYYY-MM-DD'
         except Exception as e:
             print(f"⛔ Failed to parse war date: {war_datetime_raw} | Error: {e}")
