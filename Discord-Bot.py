@@ -1556,109 +1556,110 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
     outcome_by_day = defaultdict(list)
 
     # Calculate money_looted as attacker loot + defender loot (total looted)
-    # If needed change later, now using attacker loot as money_loote
+    # If needed change later, now using attacker loot as money_looted
+
+    # Prepare outcomes and money per day
+    # Inside your war processing loop:
+    for idx, war in enumerate(wars):
+        attacker = war.get("attacker") or {}
+        defender = war.get("defender") or {}
+        atk_alliance = str(attacker.get("alliance_id", 0))
+        def_alliance = str(defender.get("alliance_id", 0))
+
+        is_attacker = atk_alliance == str(alliance_id)
+        is_defender = def_alliance == str(alliance_id)
+
+        money_looted = war.get("att_money_looted", 0) if is_attacker else war.get("def_money_looted", 0)
+
+        winner_id = str(war.get("winner_id"))
+        atk_id = str(attacker.get("id", 0))
+        def_id = str(defender.get("id", 0))
+
+        if winner_id == atk_id and is_attacker:
+            outcome = "Win"
+            y_val = 1
+        elif winner_id == def_id and is_defender:
+            outcome = "Win"
+            y_val = 1
+        elif winner_id == def_id and is_attacker:
+            outcome = "Loss"
+            y_val = -1
+        elif winner_id == atk_id and is_defender:
+            outcome = "Loss"
+            y_val = -1
+        else:
+            outcome = "Draw"
+            y_val = 0
+
+        war_datetime_raw = war.get("date")
+        try:
+            war_dt = datetime.strptime(war_datetime_raw, "%Y-%m-%d %H:%M:%S")
+            war_date = war_dt.date().isoformat()  # 'YYYY-MM-DD'
+        except Exception as e:
+            print(f"⛔ Failed to parse war date: {war_datetime_raw} | Error: {e}")
+            continue
+
+        # ✅ Store values here
+        money_by_day[war_date] += money_looted
+        outcome_by_day[war_date].append(y_val)
+
+        all_log += (
+            f"Date: {war_date} | {attacker.get('nation_name','?')} vs {defender.get('nation_name','?')} | "
+            f"Outcome: {outcome} | Looted: {money_looted:,}\n"
+        )
+
     # ✅ Move graph prep after the loop
 # After all wars processed
     if money_more_detail:
-        used_dates = []
-    
-        for idx, war in enumerate(wars):
-            attacker = war.get("attacker") or {}
-            defender = war.get("defender") or {}
-            atk_alliance = str(attacker.get("alliance_id", 0))
-            def_alliance = str(defender.get("alliance_id", 0))
-    
-            is_attacker = atk_alliance == str(alliance_id)
-            is_defender = def_alliance == str(alliance_id)
-    
-            money_looted = war.get("att_money_looted", 0) if is_attacker else war.get("def_money_looted", 0)
-    
-            winner_id = str(war.get("winner_id"))
-            atk_id = str(attacker.get("id", 0))
-            def_id = str(defender.get("id", 0))
-    
-            if winner_id == atk_id and is_attacker:
-                outcome = "Win"
-                y_val = 1
-            elif winner_id == def_id and is_defender:
-                outcome = "Win"
-                y_val = 1
-            elif winner_id == def_id and is_attacker:
-                outcome = "Loss"
-                y_val = -1
-            elif winner_id == atk_id and is_defender:
-                outcome = "Loss"
-                y_val = -1
-            else:
-                outcome = "Draw"
-                y_val = 0
-    
-            war_datetime_raw = war.get("date")
-            try:
-                war_dt = datetime.strptime(war_datetime_raw, "%Y-%m-%d %H:%M:%S")
-                war_date = war_dt.date().isoformat()
-            except Exception as e:
-                print(f"⛔ Failed to parse war date: {war_datetime_raw} | Error: {e}")
-                continue
-    
-            if war_date not in used_dates:
-                used_dates.append(war_date)
-    
-            money_by_day[war_date] += money_looted
-            outcome_by_day[war_date].append(y_val)
-    
-            all_log += (
-                f"Date: {war_date} | {attacker.get('nation_name','?')} vs {defender.get('nation_name','?')} | "
-                f"Outcome: {outcome} | Looted: {money_looted:,}\n"
-            )
-
-
-    # ✅ Graphs if money_more_detail enabled
-    if money_more_detail:
         from matplotlib.dates import DateFormatter
         import matplotlib.dates as mdates
-
-        sorted_days = [datetime.strptime(d, "%Y-%m-%d").date() for d in used_dates]
-        values = [money_by_day[d.strftime("%Y-%m-%d")] for d in sorted_days]
+    
+        # Use all unique war dates from the wars list to ensure correct x-axis
+        war_dates_all = sorted(set(
+            datetime.strptime(war.get("date")[:10], "%Y-%m-%d").date()
+            for war in wars if war.get("date")
+        ))
+    
+        # Ensure mapping date strings to match keys in dictionaries
+        values = [money_by_day[d.strftime("%Y-%m-%d")] for d in war_dates_all]
         outcome_avgs = [
             sum(outcome_by_day[d.strftime("%Y-%m-%d")]) / len(outcome_by_day[d.strftime("%Y-%m-%d")])
-            for d in sorted_days
+            for d in war_dates_all
         ]
-
-        # Money Looted Bar Graph
+    
+        # ✅ Money Looted Bar Graph
         fig_money, ax_money = plt.subplots(figsize=(10, 5))
-        ax_money.bar(sorted_days, values, color="red")
+        ax_money.bar(war_dates_all, values, color="red")
         ax_money.set_title(f"{alliance['name']} - Money Looted Per Day")
         ax_money.set_ylabel("Money Looted ($M)")
         ax_money.xaxis.set_major_formatter(DateFormatter("%Y-%m-%d"))
-        ax_money.xaxis.set_major_locator(mdates.DayLocator(interval=max(1, len(sorted_days) // 10)))
+        ax_money.xaxis.set_major_locator(mdates.DayLocator(interval=max(1, len(war_dates_all) // 10)))
         plt.xticks(rotation=45)
         plt.tight_layout()
-
+    
         buf_money = BytesIO()
         plt.savefig(buf_money, format="png")
         buf_money.seek(0)
         plt.close(fig_money)
         await interaction.followup.send(file=discord.File(buf_money, filename="money_detail_graph.png"))
-
-        # Outcome Average Line Graph
+    
+        # ✅ Outcome Average Line Graph
         fig_outcome, ax_outcome = plt.subplots(figsize=(10, 5))
-        ax_outcome.plot(sorted_days, outcome_avgs, color="blue", marker="o")
+        ax_outcome.plot(war_dates_all, outcome_avgs, color="blue", marker="o")
         ax_outcome.set_title(f"{alliance['name']} - Average Outcome Per Day")
         ax_outcome.set_ylabel("Outcome")
         ax_outcome.set_yticks([-1, 0, 1])
         ax_outcome.set_yticklabels(["Loss", "Draw", "Win"])
         ax_outcome.xaxis.set_major_formatter(DateFormatter("%Y-%m-%d"))
-        ax_outcome.xaxis.set_major_locator(mdates.DayLocator(interval=max(1, len(sorted_days) // 10)))
+        ax_outcome.xaxis.set_major_locator(mdates.DayLocator(interval=max(1, len(war_dates_all) // 10)))
         plt.xticks(rotation=45)
         plt.tight_layout()
-
+    
         buf_outcome = BytesIO()
         plt.savefig(buf_outcome, format="png")
         buf_outcome.seek(0)
         plt.close(fig_outcome)
         await interaction.followup.send(file=discord.File(buf_outcome, filename="outcome_detail_graph.png"))
-
 
 
     else:
@@ -1735,8 +1736,6 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
     log_file = BytesIO(all_log.encode("utf-8"))
     log_file.seek(0)
     await interaction.followup.send(file=discord.File(log_file, filename=f"war_summary_{alliance_id}.txt"))
-
-
 
 
 
