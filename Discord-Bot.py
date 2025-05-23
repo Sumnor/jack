@@ -43,7 +43,7 @@ cached_sheet_data = []
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
-bot_key = os.getenv("Key")
+bot_key = os.getenv("bot_key")
 API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
@@ -528,11 +528,12 @@ def get_alliance_sheet():
 
 def get_conflict_sheet():
     client = get_client()
-    return client.open("Alliance Conflicts").sheet1
+    return client.open("Alliance Conflict").sheet1  # was incorrectly "Alliance Conflicts"
 
 def get_conflict_data_sheet():
     client = get_client()
     return client.open("ConflictData").sheet1
+
 
 # --- Data Saving Functions ---
 
@@ -543,6 +544,38 @@ def save_to_alliance_net(data_row):
         print("✅ Data saved to Alliance Net")
     except Exception as e:
         print(f"❌ Failed to save to Alliance Net: {e}")
+
+def save_conflict_row(data_row):
+    try:
+        sheet = get_conflict_sheet()
+        sheet.append_row(data_row)
+        print("✅ Conflict data saved")
+    except Exception as e:
+        print(f"❌ Failed to save conflict data: {e}")
+
+def update_conflict_row(row_number, col_number, value):
+    try:
+        sheet = get_conflict_sheet()
+        sheet.update_cell(row_number, col_number, value)
+        print("✅ Conflict data updated")
+    except Exception as e:
+        print(f"❌ Failed to update conflict data: {e}")
+
+def log_to_alliance_conflict(name, start, end=None):
+    try:
+        sheet = get_conflict_sheet()
+        records = sheet.get_all_values()
+        for i, row in enumerate(records[1:], start=2):  # Skip header
+            if row[0].strip().lower() == name.lower():
+                if end:
+                    sheet.update_cell(i, 3, end)
+                    print(f"✅ Updated end date for '{name}' in Alliance Conflict")
+                return
+        sheet.append_row([name, start, end or ""])
+        print(f"✅ Logged new conflict '{name}' to Alliance Conflict")
+    except Exception as e:
+        print(f"❌ Failed to log to Alliance Conflict: {e}")
+        print(traceback.format_exc())
 
 # --- Caching and Loading Sheet Data ---
 
@@ -592,7 +625,6 @@ def load_conflict_data():
         print(f"❌ Failed to load conflict data sheet: {e}")
         print(traceback.format_exc())
 
-
 # --- Daily Refresh Task ---
 
 async def daily_refresh_loop():
@@ -607,29 +639,12 @@ async def daily_refresh_loop():
         load_conflicts_data()
         load_conflict_data()
 
-def save_conflict_row(data_row):
-    try:
-        sheet = get_conflict_sheet()
-        sheet.append_row(data_row)
-        print("✅ Conflict data saved")
-    except Exception as e:
-        print(f"❌ Failed to save conflict data: {e}")
-
-def update_conflict_row(row_number, col_number, value):
-    try:
-        sheet = get_conflict_sheet()
-        sheet.update_cell(row_number, col_number, value)
-        print("✅ Conflict data updated")
-    except Exception as e:
-        print(f"❌ Failed to update conflict data: {e}")
-
 # === Helper to find latest open conflict ===
 def get_latest_open_conflict():
-    conflicts = load_conflicts()
+    conflicts = load_conflicts_data()
     for i, conflict in enumerate(reversed(conflicts), 1):
         if not conflict.get("Closed", False):
-            # return conflict and its row number in the sheet (needed for updates)
-            return conflict, len(conflicts) - i + 2  # +2 because sheet rows start at 1, and header is row 1
+            return conflict, len(conflicts) - i + 2
     return None, None
 
 def get_sheet():
@@ -648,10 +663,8 @@ def load_sheet_data():
         sheet = get_sheet()
         print(f"Sheet object: {sheet}")
         print(f"Sheet title: {sheet.title}")
-        
         records = sheet.get_all_records()
         print(f"Records fetched: {len(records)}")
-        
         cached_sheet_data = records
         cached_users = {
             str(record['DiscordID']): {
@@ -664,6 +677,7 @@ def load_sheet_data():
     except Exception as e:
         print(f"❌ Failed to load sheet data: {e}")
         print(traceback.format_exc())
+
 
 @tasks.loop(minutes=60)
 async def hourly_snapshot():
@@ -1234,25 +1248,28 @@ async def res_in_m_for_a(
         except Exception as e:
             print(f"Failed to send fallback embed: {e}")
 
-@bot.tree.command(name="start_conflict", description="Start a new alliance conflict.")
+@bot.tree.command(name="start_conflict", description="Start a new conflict.")
 @app_commands.describe(
-    name="Name of the conflict",
-    message_to_members="Optional announcement message to members",
-    alliance_enemy_ids="Comma-separated list of enemy alliance IDs (e.g., 10433,48594)"
+    conflict_name="Name of the new conflict",
+    message_to_members="Message to the members",
+    enemy_alliance_ids="Comma-separated list of enemy alliance IDs"
 )
-async def start_conflict(interaction: discord.Interaction, name: str, message_to_members: str = "", alliance_enemy_ids: str = ""):
+async def start_conflict(interaction: discord.Interaction, conflict_name: str, message_to_members: str = None, enemy_alliance_ids: str = None):
+    await interaction.response.defer()
     load_conflicts_data()
-    if any(c.get("Name", "").lower() == name.lower() for c in cached_conflicts):
-        await interaction.response.send_message(f"❌ Conflict '{name}' already exists.")
+    if any(c.get("Name", "").lower() == conflict_name.lower() for c in cached_conflicts):
+        await interaction.followup.send(f"❌ Conflict '{conflict_name}' already exists.")
         return
 
-    enemy_ids = [int(id.strip()) for id in alliance_enemy_ids.split(",") if id.strip().isdigit()]
+    enemy_ids = [int(id.strip()) for id in enemy_alliance_ids.split(",") if id.strip().isdigit()] if enemy_alliance_ids else []
     today = date.today().isoformat()
-
-    row = [name, today, "", "False", ",".join(map(str, enemy_ids)), message_to_members or ""]
-
+    row = [conflict_name, today, "", "False", ",".join(map(str, enemy_ids)), message_to_members or ""]
     save_conflict_row(row)
-    await interaction.response.send_message(f"✅ Conflict '{name}' started. Enemy alliances: {enemy_ids}")
+
+    # ✅ Log to Alliance Conflict
+    log_to_alliance_conflict(conflict_name, today)
+
+    await interaction.followup.send(f"✅ Conflict '{conflict_name}' started. Enemy alliances: {enemy_ids}")
 
 @bot.tree.command(name="add_to_conflict", description="Add enemy alliances to an existing conflict.")
 @app_commands.describe(
@@ -1260,53 +1277,65 @@ async def start_conflict(interaction: discord.Interaction, name: str, message_to
     enemy_alliance_ids="Comma-separated list of additional enemy alliance IDs"
 )
 async def add_to_conflict(interaction: discord.Interaction, conflict_name: str, enemy_alliance_ids: str):
+    await interaction.response.defer()
     load_conflicts_data()
     row_idx = None
     conflict = None
+
     for i, c in enumerate(cached_conflicts):
         if c.get("Name", "").lower() == conflict_name.lower() and c.get("Closed", "").lower() != "true":
             conflict = c
-            row_idx = i + 2  # account for header row
-            break
-
-    if not conflict:
-        await interaction.response.send_message(f"❌ Open conflict '{conflict_name}' not found.")
-        return
-
-    new_ids = set(int(id.strip()) for id in enemy_alliance_ids.split(",") if id.strip().isdigit())
-    current_ids = set(int(id) for id in conflict.get("EnemyAlliances", "").split(",") if id.strip().isdigit())
-    combined_ids = sorted(current_ids.union(new_ids))
-
-    update_conflict_row(row_idx, 5, ",".join(map(str, combined_ids)))
-    await interaction.response.send_message(f"✅ Added alliances {new_ids - current_ids} to conflict '{conflict_name}'.")
-
-@bot.tree.command(name="end_conflict", description="End an existing open conflict.")
-@app_commands.describe(
-    conflict_name="Name of the conflict to end",
-    message_to_members="Mandatory message to members about the end"
-)
-async def end_conflict(interaction: discord.Interaction, conflict_name: str, message_to_members: str):
-    if not message_to_members.strip():
-        await interaction.response.send_message("❌ You must provide a message to members.")
-        return
-
-    load_conflicts_data()
-    row_idx = None
-    for i, c in enumerate(cached_conflicts):
-        if c.get("Name", "").lower() == conflict_name.lower() and c.get("Closed", "").lower() != "true":
             row_idx = i + 2
             break
 
-    if not row_idx:
-        await interaction.response.send_message(f"❌ Open conflict '{conflict_name}' not found.")
+    if not conflict:
+        await interaction.followup.send(f"❌ Open conflict '{conflict_name}' not found.")
         return
 
-    today = date.today().isoformat()
-    update_conflict_row(row_idx, 3, today)  # EndDate
-    update_conflict_row(row_idx, 4, "True")  # Closed
-    update_conflict_row(row_idx, 6, message_to_members)  # MessageToMembers
-    await interaction.response.send_message(f"✅ Conflict '{conflict_name}' has been ended.")
+    existing_ids = str(conflict.get("EnemyIDs", ""))
+    existing_id_set = set(map(int, filter(str.isdigit, existing_ids.split(",")))) if existing_ids else set()
+    new_ids = set(map(int, filter(str.isdigit, enemy_alliance_ids.split(","))))
 
+    updated_ids = existing_id_set.union(new_ids)
+    updated_ids_str = ",".join(map(str, sorted(updated_ids)))
+
+    update_conflict_row(row_idx, 5, updated_ids_str)
+
+    await interaction.followup.send(f"✅ Added enemy alliances {list(new_ids)} to conflict '{conflict_name}'.")
+
+@bot.tree.command(name="end_conflict", description="Mark an existing conflict as ended.")
+@app_commands.describe(
+    conflict_name="Name of the conflict to end"
+)
+async def end_conflict(interaction: discord.Interaction, conflict_name: str):
+    await interaction.response.defer()
+    import datetime
+    end_date = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
+    try:
+        sheet = get_conflict_sheet()
+        records = sheet.get_all_values()
+        found = False
+        for i, row in enumerate(records[1:], start=2):
+            if row[0].strip().lower() == conflict_name.lower():
+                sheet.update_cell(i, 3, end_date)  # End Date
+                sheet.update_cell(i, 4, "True")    # Closed
+                found = True
+                break
+
+        if not found:
+            await interaction.followup.send(f"❌ Conflict '{conflict_name}' not found.")
+            return
+
+        try:
+            log_to_alliance_conflict(conflict_name, None, end_date)
+        except Exception as log_err:
+            print(f"⚠️ Logging error in Alliance Conflict sheet: {log_err}")
+
+        await interaction.followup.send(f"✅ Conflict '{conflict_name}' marked as ended on {end_date}.")
+    except Exception as e:
+        print(f"❌ Failed to end conflict '{conflict_name}': {e}")
+        await interaction.followup.send(f"❌ Failed to end conflict '{conflict_name}'. Check logs for details.")
 
 import discord
 import requests
@@ -1602,14 +1631,22 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
     if conflict:
         date_format = "%Y-%m-%d"
         try:
-            start_dt = datetime.strptime(conflict.get("StartDate"), date_format).date()
-            end_date = conflict.get("EndDate")
-            end_dt = datetime.strptime(end_date, date_format).date() if end_date else date.today()
+            start_dt = datetime.strptime(conflict.get("Start"), date_format).date()
+            end_raw = conflict.get("End")
+            end_dt = datetime.strptime(end_raw, date_format).date() if end_raw else date.today()
         except Exception:
             await interaction.followup.send("❌ Invalid conflict dates.")
             return
 
-        wars = [w for w in wars if start_dt <= datetime.strptime(w.get("date", "")[:10], date_format).date() <= end_dt]
+        wars = [
+            w for w in wars
+            if start_dt <= datetime.strptime(w.get("date", "")[:10], date_format).date() <= end_dt
+        ]
+        wars = sorted(wars, key=lambda w: w.get("date", ""))[-war_count:]
+    else:
+        wars = sorted(wars, key=lambda w: w.get("date", ""))[-war_count:]
+
+
 
     # Sort by date ascending and limit by war_count (last N wars)
     wars = sorted(wars, key=lambda w: w.get("date", ""))
