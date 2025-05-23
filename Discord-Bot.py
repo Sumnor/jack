@@ -42,7 +42,7 @@ cached_sheet_data = []
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
-bot_ey = os.getenv("bot_key")
+bot_key = os.getenv("bot_key")
 API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
@@ -1559,6 +1559,7 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
     # If needed change later, now using attacker loot as money_looted
 
     # Prepare outcomes and money per day
+    # Inside your war processing loop:
     for idx, war in enumerate(wars):
         attacker = war.get("attacker") or {}
         defender = war.get("defender") or {}
@@ -1568,7 +1569,6 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
         is_attacker = atk_alliance == str(alliance_id)
         is_defender = def_alliance == str(alliance_id)
 
-        # Money looted: attacker loot if user alliance is attacker, else 0 (changed from money lost to money looted)
         money_looted = war.get("att_money_looted", 0) if is_attacker else war.get("def_money_looted", 0)
 
         winner_id = str(war.get("winner_id"))
@@ -1591,8 +1591,16 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
             outcome = "Draw"
             y_val = 0
 
-        war_date = war.get("date", "")[:10]
-        money_by_day[war_date] += money_looted / 1_000_000  # millions
+        war_datetime_raw = war.get("date")
+        try:
+            war_dt = datetime.strptime(war_datetime_raw, "%Y-%m-%d %H:%M:%S")
+            war_date = war_dt.date().isoformat()  # 'YYYY-MM-DD'
+        except Exception as e:
+            print(f"⛔ Failed to parse war date: {war_datetime_raw} | Error: {e}")
+            continue
+
+        # ✅ Store values here
+        money_by_day[war_date] += money_looted
         outcome_by_day[war_date].append(y_val)
 
         all_log += (
@@ -1600,16 +1608,22 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
             f"Outcome: {outcome} | Looted: {money_looted:,}\n"
         )
 
-    # If money_more_detail True: send separate graphs for outcomes & money per day + txt file, no combined graph
+    # ✅ Move graph prep after the loop
+# After all wars processed
     if money_more_detail:
         from matplotlib.dates import DateFormatter
         import matplotlib.dates as mdates
 
-        sorted_days = sorted(money_by_day.keys())
-        values = [money_by_day[d] for d in sorted_days]
-        outcome_avgs = [sum(outcome_by_day[d]) / len(outcome_by_day[d]) for d in sorted_days]
+        # Use actual war_date values from money_by_day
+        sorted_days = sorted(datetime.strptime(d, "%Y-%m-%d").date() for d in money_by_day.keys())
 
-        # Money looted per day bar graph
+        values = [money_by_day[d.strftime("%Y-%m-%d")] for d in sorted_days]
+        outcome_avgs = [
+            sum(outcome_by_day[d.strftime("%Y-%m-%d")]) / len(outcome_by_day[d.strftime("%Y-%m-%d")])
+            for d in sorted_days
+        ]
+
+        # ✅ Money Looted Bar Graph
         fig_money, ax_money = plt.subplots(figsize=(10, 5))
         ax_money.bar(sorted_days, values, color="red")
         ax_money.set_title(f"{alliance['name']} - Money Looted Per Day")
@@ -1623,10 +1637,9 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
         plt.savefig(buf_money, format="png")
         buf_money.seek(0)
         plt.close(fig_money)
-
         await interaction.followup.send(file=discord.File(buf_money, filename="money_detail_graph.png"))
 
-        # Outcome average per day line graph
+        # ✅ Outcome Average Line Graph
         fig_outcome, ax_outcome = plt.subplots(figsize=(10, 5))
         ax_outcome.plot(sorted_days, outcome_avgs, color="blue", marker="o")
         ax_outcome.set_title(f"{alliance['name']} - Average Outcome Per Day")
@@ -1642,8 +1655,8 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
         plt.savefig(buf_outcome, format="png")
         buf_outcome.seek(0)
         plt.close(fig_outcome)
-
         await interaction.followup.send(file=discord.File(buf_outcome, filename="outcome_detail_graph.png"))
+
 
     else:
         # money_more_detail == False: generate combined graphs in chunks of WARS_PER_GRAPH
