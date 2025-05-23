@@ -1612,57 +1612,57 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
 # After all wars processed
     if money_more_detail:
     # ✅ Move graph prep after the loop
-    used_dates = []
-
-    for idx, war in enumerate(wars):
-        attacker = war.get("attacker") or {}
-        defender = war.get("defender") or {}
-        atk_alliance = str(attacker.get("alliance_id", 0))
-        def_alliance = str(defender.get("alliance_id", 0))
-
-        is_attacker = atk_alliance == str(alliance_id)
-        is_defender = def_alliance == str(alliance_id)
-
-        money_looted = war.get("att_money_looted", 0) if is_attacker else war.get("def_money_looted", 0)
-
-        winner_id = str(war.get("winner_id"))
-        atk_id = str(attacker.get("id", 0))
-        def_id = str(defender.get("id", 0))
-
-        if winner_id == atk_id and is_attacker:
-            outcome = "Win"
-            y_val = 1
-        elif winner_id == def_id and is_defender:
-            outcome = "Win"
-            y_val = 1
-        elif winner_id == def_id and is_attacker:
-            outcome = "Loss"
-            y_val = -1
-        elif winner_id == atk_id and is_defender:
-            outcome = "Loss"
-            y_val = -1
-        else:
-            outcome = "Draw"
-            y_val = 0
-
-        war_datetime_raw = war.get("date")
-        try:
-            war_dt = datetime.strptime(war_datetime_raw, "%Y-%m-%d %H:%M:%S")
-            war_date = war_dt.date().isoformat()  # 'YYYY-MM-DD'
-        except Exception as e:
-            print(f"⛔ Failed to parse war date: {war_datetime_raw} | Error: {e}")
-            continue
-
-        if war_date not in money_by_day:
-            used_dates.append(war_date)
-
-        money_by_day[war_date] += money_looted
-        outcome_by_day[war_date].append(y_val)
-
-        all_log += (
-            f"Date: {war_date} | {attacker.get('nation_name','?')} vs {defender.get('nation_name','?')} | "
-            f"Outcome: {outcome} | Looted: {money_looted:,}\n"
-        )
+        used_dates = []
+    
+        for idx, war in enumerate(wars):
+            attacker = war.get("attacker") or {}
+            defender = war.get("defender") or {}
+            atk_alliance = str(attacker.get("alliance_id", 0))
+            def_alliance = str(defender.get("alliance_id", 0))
+    
+            is_attacker = atk_alliance == str(alliance_id)
+            is_defender = def_alliance == str(alliance_id)
+    
+            money_looted = war.get("att_money_looted", 0) if is_attacker else war.get("def_money_looted", 0)
+    
+            winner_id = str(war.get("winner_id"))
+            atk_id = str(attacker.get("id", 0))
+            def_id = str(defender.get("id", 0))
+    
+            if winner_id == atk_id and is_attacker:
+                outcome = "Win"
+                y_val = 1
+            elif winner_id == def_id and is_defender:
+                outcome = "Win"
+                y_val = 1
+            elif winner_id == def_id and is_attacker:
+                outcome = "Loss"
+                y_val = -1
+            elif winner_id == atk_id and is_defender:
+                outcome = "Loss"
+                y_val = -1
+            else:
+                outcome = "Draw"
+                y_val = 0
+    
+            war_datetime_raw = war.get("date")
+            try:
+                war_dt = datetime.strptime(war_datetime_raw, "%Y-%m-%d %H:%M:%S")
+                war_date = war_dt.date().isoformat()  # 'YYYY-MM-DD'
+            except Exception as e:
+                print(f"⛔ Failed to parse war date: {war_datetime_raw} | Error: {e}")
+                continue
+    
+            if war_date not in money_by_day:
+                used_dates.append(war_date)
+    
+            money_by_day[war_date] += money_looted
+            outcome_by_day[war_date].append(y_val)
+    
+            all_log += (
+                f"Date: {war_date} | {attacker.get('nation_name','?')} vs {defender.get('nation_name','?')} | "
+                f"Outcome: {outcome} | Looted: {money_looted:,}\n"
+            )
 
     # ✅ Graphs if money_more_detail enabled
     if money_more_detail:
