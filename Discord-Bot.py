@@ -43,7 +43,7 @@ cached_sheet_data = []
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
-bot_ky = os.getenv("bot_key")
+bot_key = os.getenv("bot_key")
 API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
@@ -74,12 +74,22 @@ class MessageView(View):
     async def copy_message_button(self, interaction: discord.Interaction, button: Button):
         await interaction.response.defer()
         await interaction.followup.send(
-            f"COPY THE FOLLOWING:\n"
-            "Go to the #💰︱essential-grants channel and request this with the /request_grant command:\n\n"
-            f"{self.description_text}\n\nOr use the `/warchest` command.",
-            ephemeral=True
+            f"You are missing the following: \n"
+            f"{self.description_text}\n"
+            f"Use the `/warchest` command in <@1338510585595428895>."
         )
 
+class MMRView(View):
+    def __init__(self, description_text: str):
+        super().__init__(timeout=None)
+        self.description_text = description_text
+
+    @discord.ui.button(label="Generate Message MMRR", style=discord.ButtonStyle.green, custom_id="gm_message_button")
+    async def copy_message_button(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.defer()
+        await interaction.followup.send(
+            f"Your MMR isn't one of the standart MMR's. Get you MMR to either war {mmr} or peace {mmr}\n"
+        )
 
 class BlueGuy(discord.ui.View):
     def __init__(self, category=None, data=None):
@@ -829,6 +839,47 @@ async def on_ready():
     await bot.tree.sync()
     print(f"✅ Logged in as {bot.user}")
 
+# Global dictionary to track last bot message sent to each user (by user ID)
+
+# Store last bot messages
+last_bot_dm = {}
+
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    if message.guild is None:
+        default_reply = "Thanks for your message! We'll get back to you soon."
+
+        # Step 1: Look back at what the bot last said before this user message
+        last_bot_msg = None
+        async for msg in message.channel.history(limit=20, before=message.created_at):
+            if msg.author == bot.user:
+                last_bot_msg = msg.content
+                break
+
+        # Step 2: If last thing bot said was NOT the default reply, send to staff
+        if last_bot_msg != default_reply:
+            log_channel_id = 1262301979242401822
+            log_channel = bot.get_channel(log_channel_id)
+
+            if log_channel:
+                embed = discord.Embed(
+                    title="New DM received",
+                    description=(
+                        f"**From:** {message.author} (`{message.author.id}`)\n"
+                        f"**User message:**\n{message.content}\n\n"
+                        f"**Last bot message to user:**\n{last_bot_msg or 'None'}"
+                    ),
+                    color=discord.Color.blue()
+                )
+                await log_channel.send(embed=embed)
+
+        # Step 3: Always send thanks (but do it AFTER all checks)
+        await message.channel.send(default_reply)
+
+    await bot.process_commands(message)
 
 @bot.tree.command(name="register", description="Register your Nation ID")
 @app_commands.describe(nation_id="Your Nation ID (numbers only, e.g., 365325)")
@@ -887,6 +938,87 @@ async def register(interaction: discord.Interaction, nation_id: str):
 
     load_sheet_data()
     await interaction.followup.send("✅ You're registered successfully!")
+
+@bot.tree.command(name="mmr_audit", description="Audits the MMR of the Member and gives suggestions")
+@app_commands.describe(who="The Discord Member you wish to audit")
+async def mmr_audit(interaction: discord.Interaction, who: discord.Member):
+    await interaction.response.defer()
+    GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
+    
+    query = """
+    query GetNationData {
+      nation {
+        num_cities
+        cities {
+          name
+          population
+        }
+        barracks
+        factory
+        hangar
+        drydock
+      }
+    }
+    """
+
+    response = requests.post(GRAPHQL_URL, json={"query": query})
+
+
+
+    if response.status_code != 200:
+        await interaction.followup.send(f"❌ Request failed with status {response.status_code}")
+        return
+
+    soldiers, tanks, aircrats, ships = get_military
+    nation_data = response.json().get("data", {}).get("nation", {})
+    num_cities = nation_data.get("num_cities", 0)
+    cities = nation_data.get("cities", [])
+    barracks = nation_data.get("barracks", 0)
+    factory = nation_data.get("factory", 0)
+    hangar = nation_data.get("hangar", 0)
+    drydocks = nation_data.get("drydock", 0)
+
+    mmr_string = f"{barracks}/{factory}/{hangar}/{drydocks}"
+    valid_mmrs = (
+        [[0, 5, 5, 1], [5, 5, 5, 3]] if num_cities < 16 else [[0, 3, 5, 1], [5, 5, 5, 3]]
+    )
+    is_valid = any([barracks, factory, hangar, drydocks] == mmr for mmr in valid_mmrs)
+
+    # Construct the message to send via the button
+# Prepare embed with summary info
+    embed = discord.Embed(
+        title=f"MMR Audit for {who.display_name}",
+        color=discord.Color.green() if is_valid else discord.Color.red()
+    )
+    embed.add_field(name="Cities", value=str(num_cities), inline=True)
+    embed.add_field(name="Current MMR", value=mmr_string, inline=True)
+    embed.add_field(
+        name="Status",
+        value="✅ Valid MMR" if is_valid else "❌ Invalid MMR",
+        inline=False
+    )
+
+    if not is_valid:
+        valid_options = "\n".join(f"{m[0]}/{m[1]}/{m[2]}/{m[3]}" for m in valid_mmrs)
+        embed.add_field(name="Valid Options", value=valid_options, inline=False)
+
+    # Your message text to send when button is clicked (detailed info)
+    message_text = (
+        f"**Cities:** {num_cities}\n"
+        f"**Current MMR:** {mmr_string}\n"
+    )
+    if is_valid:
+        message_text += "✅ Your MMR matches a valid configuration."
+    else:
+        message_text += f"❌ Invalid MMR. Valid options:\n{valid_options}"
+
+    # Create the button view
+    view = MMRView(description_text=message_text)
+
+    # Send embed + button in the same response
+    await interaction.followup.send(embed=embed, view=view)
+
+    
 
 @bot.tree.command(name="res_details_for_alliance", description="Get each Alliance Member's resources and money individually")
 async def res_details_for_alliance(interaction: discord.Interaction):
@@ -1310,7 +1442,7 @@ async def add_to_conflict(interaction: discord.Interaction, conflict_name: str, 
 async def end_conflict(interaction: discord.Interaction, conflict_name: str):
     await interaction.response.defer()
     import datetime
-    end_date = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    end_date = datetime.datetime.utcnow().strftime("%Y-%m-%d")
 
     try:
         sheet = get_conflict_sheet()
@@ -3364,7 +3496,22 @@ async def request_project(interaction: Interaction, project_name: str, tech_adva
     else:
         await interaction.followup.send("❌ Project not found.")
 
+@bot.tree.command(name="dm_user", description="DM a user by mentioning them")
+@app_commands.describe(
+    user="Mention the user to DM",
+    message="The message to send"
+)
+async def dm_user(interaction: discord.Interaction, user: discord.User, message: str):
+    await interaction.response.defer(ephemeral=True)
 
+    better_msg = message.replace(")(", "\n")
+    try:
+        await user.send(better_msg)
+        await interaction.followup.send(f"✅ Sent DM to {user.mention}")
+    except discord.Forbidden:
+        await interaction.followup.send(f"❌ Couldn't send DM to {user.mention} (they may have DMs disabled).")
+    except Exception as e:
+        await interaction.followup.send(f"❌ An error occurred: {e}")
 
 
 @bot.tree.command(name="send_message_to_channels", description="Send a message to multiple channels by their IDs")
@@ -3392,21 +3539,24 @@ async def send_message_to_channels(interaction: discord.Interaction, channel_ids
     sent_count = 0
     failed_count = 0
 
+    from discord import TextChannel
+
     for channel_id in channel_ids_list:
         try:
-            channel = interaction.guild.get_channel(int(channel_id))
-            if channel:
+            channel = await bot.fetch_channel(int(channel_id))
+            if isinstance(channel, TextChannel):
                 await channel.send(message)
                 sent_count += 1
             else:
                 failed_count += 1
-        except Exception:
+        except Exception as e:
             failed_count += 1
 
     await interaction.followup.send(
         f"✅ Sent message to **{sent_count}** channel(s).\n"
         f"❌ Failed for **{failed_count}** channel(s)."
     )
+
 
 @bot.tree.command(name="bug_report", description="Report a bug you found")
 @app_commands.describe(bug="Describe the bug and tell me on which command you got it")
