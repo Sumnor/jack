@@ -1353,7 +1353,7 @@ async def res_in_m_for_a(
         print(f"Error fetching resource prices: {e}")
 
     # ✅ Load nation data from sheet
-    sheet = get_alliance_sheet()
+    sheet = get_registration_sheet()
     rows = sheet.get_all_records()
 
     for row in rows:
