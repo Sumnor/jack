@@ -706,11 +706,11 @@ def load_conflict_data():
         return None
 
 # --- Daily Refresh Task ---
-
+from datetime import datetime, timezone
 async def daily_refresh_loop():
     while True:
-        now = datetime.datetime.now(datetime.timezone.utc)
-        next_midnight = (now + datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        now = datetime.now(timezone.utc)
+        next_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         wait_seconds = (next_midnight - now).total_seconds()
         await asyncio.sleep(wait_seconds)
         print("🔄 Refreshing all cached sheet data at UTC midnight...")
@@ -759,7 +759,8 @@ def load_sheet_data():
 
 
 from datetime import datetime, timezone
-
+last_snapshot_hour = None 
+@tasks.loop(hours=1)
 async def hourly_snapshot():
     global last_snapshot_hour
 
