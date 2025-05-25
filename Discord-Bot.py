@@ -43,7 +43,7 @@ cached_sheet_data = []
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
-botkey = os.getenv("bot_key")
+bot_key = os.getenv("bot_key")
 API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
@@ -83,14 +83,17 @@ from discord.ui import View, button
 from discord import ButtonStyle
 
 class MMRView(View):
-    def __init__(self, is_valid, soldiers, barracks, tanks, aircraft, ships, num_cities):
+    def __init__(self, is_valid, soldiers, barracks, factory, tanks, aircraft, ships, drydocks, hangars, num_cities):
         super().__init__(timeout=None)
         self.is_valid = is_valid
         self.soldiers = soldiers
         self.barracks = barracks
+        self.factory = factory
         self.tanks = tanks
         self.aircraft = aircraft
         self.ships = ships
+        self.drydocks = drydocks
+        self.hangars = hangars
         self.num_cities = num_cities
 
     @button(label="Fix MMR", style=ButtonStyle.red)
@@ -106,7 +109,6 @@ class MMRView(View):
             await interaction.response.send_message(
                 f"Please, get that MMR to either war MMR (option={war_mmr}) or peacetime MMR (option={peace_mmr})."
             )
-        # Remove buttons entirely
         await interaction.message.edit(view=None)
 
     @button(label="Buy Troops", style=ButtonStyle.blurple)
@@ -116,31 +118,29 @@ class MMRView(View):
                 "MMR is invalid. Please fix your MMR first."
             )
             return
-        
+
         missing = []
         max_soldiers = self.barracks * 3000
+        max_tanks = self.factory * 250
+        max_aircraft = self.hangars * 15
+        max_ships = self.drydocks * 5
 
         if self.soldiers < max_soldiers:
             missing.append(f"{max_soldiers - self.soldiers} soldiers")
-
-        # Replace these with your actual desired minimums
-        desired_tanks = 1000
-        desired_aircraft = 500
-        desired_ships = 300
-
-        if self.tanks < desired_tanks:
-            missing.append(f"{desired_tanks - self.tanks} tanks")
-        if self.aircraft < desired_aircraft:
-            missing.append(f"{desired_aircraft - self.aircraft} aircraft")
-        if self.ships < desired_ships:
-            missing.append(f"{desired_ships - self.ships} ships")
+        if self.tanks < max_tanks:
+            missing.append(f"{max_tanks - self.tanks} tanks")
+        if self.aircraft < max_aircraft:
+            missing.append(f"{max_aircraft - self.aircraft} aircraft")
+        if self.ships < max_ships:
+            missing.append(f"{max_ships - self.ships} ships")
 
         if not missing:
             await interaction.response.send_message(
                 "Your troops are all stocked up. No need to buy more."
             )
+            await interaction.message.edit(view=None)
             return
-        
+
         if len(missing) == 1:
             msg = missing[0]
         else:
@@ -151,7 +151,6 @@ class MMRView(View):
         )
         await interaction.message.edit(view=None)
 
-
     @button(label="Close", style=ButtonStyle.gray)
     async def close(self, interaction, button):
         await interaction.response.send_message(
@@ -159,6 +158,7 @@ class MMRView(View):
         )
         await interaction.message.edit(view=None)
         self.stop()
+
 
 
 class BlueGuy(discord.ui.View):
@@ -709,9 +709,8 @@ def load_conflict_data():
 
 async def daily_refresh_loop():
     while True:
-        import datetime
-        now = datetime.datetime.utcnow().date()
-        next_midnight = (now + datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        next_midnight = (now + datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         wait_seconds = (next_midnight - now).total_seconds()
         await asyncio.sleep(wait_seconds)
         print("🔄 Refreshing all cached sheet data at UTC midnight...")
@@ -759,28 +758,29 @@ def load_sheet_data():
         print(traceback.format_exc())
 
 
-@tasks.loop(minutes=60)
+from datetime import datetime, timezone
+
 async def hourly_snapshot():
+    global last_snapshot_hour
+
+    now = datetime.now(timezone.utc)
+    current_hour = now.replace(minute=0, second=0, microsecond=0)
+
+    if last_snapshot_hour == current_hour:
+        print("⏭ Already saved snapshot this hour. Skipping.")
+        return
+    last_snapshot_hour = current_hour  # Mark it saved
+
     try:
-        totals = {
-            "money": 0,
-            "food": 0,
-            "gasoline": 0,
-            "munitions": 0,
-            "steel": 0,
-            "aluminum": 0,
-            "bauxite": 0,
-            "lead": 0,
-            "iron": 0,
-            "oil": 0,
-            "uranium": 0,
-            "num_cities": 0,
-            "coal": 0,
-        }
+        totals = {res: 0 for res in [
+            "money", "food", "gasoline", "munitions", "steel", "aluminum",
+            "bauxite", "lead", "iron", "oil", "uranium", "coal", "num_cities"
+        ]}
         processed_nations = 0
         failed = 0
+
+        # Get market prices
         GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
-        # Get resource prices
         prices_query = """
         {
           top_trade_info {
@@ -792,39 +792,24 @@ async def hourly_snapshot():
         }
         """
         try:
-            prices_resp = requests.post(GRAPHQL_URL, json={"query": prices_query}, headers={"Content-Type": "application/json"})
-            prices_resp.raise_for_status()
-            prices_data = prices_resp.json()
-            resource_prices = {item["resource"]: float(item["average_price"]) for item in prices_data["data"]["top_trade_info"]["resources"]}
-            print(f"✅ Fetched resource prices: {resource_prices}")
+            resp = requests.post(GRAPHQL_URL, json={"query": prices_query}, headers={"Content-Type": "application/json"})
+            resp.raise_for_status()
+            prices = {item["resource"]: float(item["average_price"]) for item in resp.json()["data"]["top_trade_info"]["resources"]}
+            print("✅ Resource prices fetched.")
         except Exception as e:
-            print(f"❌ Error fetching resource prices: {e}")
-            print(traceback.format_exc())
-            resource_prices = {}
+            print(f"❌ Error fetching prices: {e}")
+            prices = {}
 
         for user_id, user_data in cached_users.items():
-            own_id = str(user_data.get("NationID", "")).strip()
-            if not own_id:
+            nation_id = str(user_data.get("NationID", "")).strip()
+            if not nation_id:
                 failed += 1
                 continue
 
             try:
-                (
-                    nation_name,
-                    num_cities,
-                    food,
-                    money,
-                    gasoline,
-                    munitions,
-                    steel,
-                    aluminum,
-                    bauxite,
-                    lead,
-                    iron,
-                    oil,
-                    coal,
-                    uranium
-                ) = get_resources(own_id)
+                resources = get_resources(nation_id)  # Unpack however your function returns
+                (nation_name, num_cities, food, money, gasoline, munitions, steel,
+                 aluminum, bauxite, lead, iron, oil, coal, uranium) = resources
 
                 totals["money"] += money
                 totals["food"] += food
@@ -841,57 +826,45 @@ async def hourly_snapshot():
                 totals["num_cities"] += num_cities
                 processed_nations += 1
 
-                await asyncio.sleep(5)  # API rate limit friendly
+                await asyncio.sleep(2)  # API friendly
             except Exception as e:
                 failed += 1
-                print(f"❌ Failed processing nation {own_id}: {e}")
-                print(traceback.format_exc())
+                print(f"❌ Failed for nation {nation_id}: {e}")
                 continue
 
-        total_sell_value = totals["money"]
-        for resource in ["food", "gasoline", "munitions", "steel", "aluminum", "bauxite", "lead", "iron", "oil", "coal", "uranium"]:
-            amount = totals.get(resource, 0)
-            price = resource_prices.get(resource, 0)
-            total_sell_value += amount * price
+        # Total wealth calculation
+# Calculate value per resource
+        resource_values = {}
+        total_wealth = totals["money"]  # start with flat money
 
-        timestamp = datetime.now(timezone.utc).isoformat()
-        money_snapshots.append({"time": timestamp, "total": total_sell_value})
+        for resource, amount in totals.items():
+            if resource in ["money", "num_cities"]:
+                continue
+            price = prices.get(resource, 0)
+            value = amount * price
+            resource_values[resource] = value
+            total_wealth += value
+
+        timestamp = current_hour.isoformat()
+        money_snapshots.append({"time": timestamp, "total": total_wealth})
+
+        # Prepare row: [timestamp, total, money, food_value, gasoline_value, ...]
+        save_row = [timestamp, total_wealth, totals["money"]]
+        ordered_resources = [
+            "food", "gasoline", "munitions", "steel", "aluminum",
+            "bauxite", "lead", "iron", "oil", "coal", "uranium"
+        ]
+        for res in ordered_resources:
+            save_row.append(resource_values.get(res, 0))  # save $ value
 
         try:
-            save_to_alliance_net([timestamp, total_sell_value])
+            save_to_alliance_net(save_row)
+            print(f"💾 Snapshot saved at {timestamp}: ${total_wealth:,.0f}")
         except Exception as e:
-            print(f"❌ Failed to save snapshot to Alliance Net: {e}")
-            print(traceback.format_exc())
-
-        with open(snapshots_file, "w") as f:
-            json.dump(money_snapshots[-240:], f)
-
-        # Plot graph
-        try:
-            times = [datetime.fromisoformat(entry["time"]) for entry in money_snapshots]
-            totals_money = [entry.get("money", 0) for entry in money_snapshots]
-
-            plt.figure(figsize=(10, 5))
-            plt.axhline(0, color='black', linestyle='--', linewidth=0.5)
-            plt.plot(times, totals_money, color='magenta', marker='o')
-            plt.xticks(rotation=45)
-            plt.ylabel("Total Money ($)")
-            plt.xlabel("Time")
-            plt.title("Alliance Wealth Over Time")
-            plt.grid(True)
-            plt.tight_layout()
-            plt.savefig("money_trend_hourly.png")
-            plt.close()
-            print("✅ Saved hourly money trend graph")
-        except Exception as e:
-            print(f"❌ Failed to generate hourly money trend graph: {e}")
-            print(traceback.format_exc())
-
-        print(f"🕒 Hourly snapshot completed: Processed {processed_nations}, Failed {failed}")
-    
+            print(f"❌ Failed to save snapshot: {e}")
     except Exception as e:
-        print(f"❌ Unexpected error in hourly_snapshot task: {e}")
-        print(traceback.format_exc())
+        print(f"Error: {e}")
+
 
 @hourly_snapshot.before_loop
 async def before_hourly():
@@ -1181,9 +1154,12 @@ async def mmr_audit(interaction: discord.Interaction, who: discord.Member):
             is_valid=is_valid,
             soldiers=soldiers,
             barracks=barracks,
+            factory=factory,
             tanks=tanks,
             aircraft=aircraft,
             ships=ships,
+            drydocks=drydocks,
+            hangars=hangar,
             num_cities=num_cities
         )
 
@@ -1429,14 +1405,18 @@ async def res_in_m_for_a(
             failed += 1
             continue
 
+    resource_values = {}
     total_sell_value = totals["money"]
+
     for resource in [
         "food", "gasoline", "munitions", "steel", "aluminum",
         "bauxite", "lead", "iron", "oil", "coal", "uranium"
     ]:
         amount = totals.get(resource, 0)
         price = resource_prices.get(resource, 0)
-        total_sell_value += amount * price
+        value = amount * price
+        resource_values[resource] = value
+        total_sell_value += value
 
     embed = discord.Embed(
         title="Alliance Total Resources & Money",
@@ -1480,11 +1460,19 @@ async def res_in_m_for_a(
             def format_large_ticks(x, _):
                 return f'{x:.1f}{label_suffix}' if value_scale == "billions" else f'{x:.0f}{label_suffix}'
 
+            # Resources to graph
+            resource_keys = ["money", "food", "gasoline", "munitions", "steel", "aluminum"]
+            colors = {
+                "money": "gold", "food": "green", "gasoline": "blue",
+                "munitions": "red", "steel": "gray", "aluminum": "purple"
+            }
+
+            # Normalize timestamps and bucket
             data = defaultdict(list)
             for entry in money_snapshots:
                 ts = datetime.fromisoformat(entry["time"]).replace(tzinfo=timezone.utc)
                 key = ts.date() if mode and mode.value == "days" else ts.replace(minute=0, second=0, microsecond=0)
-                data[key].append(entry.get("total", 0))
+                data[key].append(entry)
 
             if mode and mode.value == "days":
                 today = datetime.utcnow().date()
@@ -1497,32 +1485,43 @@ async def res_in_m_for_a(
                 hours = int((now - start).total_seconds() // 3600) + 1
                 full_range = [start + timedelta(hours=h) for h in range(hours)]
 
+            # Build time-series for each resource
             times = []
-            values = []
+            series = {res: [] for res in resource_keys}
+
             for t in full_range:
-                vs = data.get(t, [])
-                avg = np.mean(vs) if vs else np.nan
+                entries = data.get(t, [])
                 times.append(t)
-                values.append(avg)
 
-            values_np = np.array(values)
-            scaled = values_np / divisor
+                for res in resource_keys:
+                    if entries:
+                        avg = np.mean([e.get(res, 0) for e in entries])
+                    else:
+                        avg = np.nan
+                    series[res].append(avg / divisor)
 
-            nan_mask = np.isnan(scaled)
-            if np.any(nan_mask):
-                scaled[nan_mask] = np.interp(
-                    np.flatnonzero(nan_mask),
-                    np.flatnonzero(~nan_mask),
-                    scaled[~nan_mask]
-                )
+            # Interpolate NaNs
+            for res in resource_keys:
+                values = np.array(series[res])
+                nan_mask = np.isnan(values)
+                if np.any(nan_mask):
+                    values[nan_mask] = np.interp(
+                        np.flatnonzero(nan_mask),
+                        np.flatnonzero(~nan_mask),
+                        values[~nan_mask]
+                    )
+                series[res] = values
 
+            # Plot
             plt.figure(figsize=(10, 5))
-            plt.plot(times, scaled, color='magenta', marker='o', linestyle='-')
-            plt.title("Alliance Wealth Over Last 30 Days" if mode and mode.value == "days" else "Alliance Wealth Over Time")
+            for res in resource_keys:
+                plt.plot(times, series[res], label=res.capitalize(), color=colors[res], marker='o', linestyle='-')
+
+            plt.title("Alliance Wealth Breakdown" if mode and mode.value == "days" else "Hourly Resource Value Trend")
             plt.xlabel("Time")
-            plt.ylabel(f"Total Money ({label_suffix})")
+            plt.ylabel(f"Value ({label_suffix})")
             plt.grid(True)
-            plt.ylim(bottom=max(0, np.nanmin(scaled) * 0.95), top=np.nanmax(scaled) * 1.05)
+            plt.ylim(bottom=0)
 
             ax = plt.gca()
             ax.yaxis.set_major_locator(MaxNLocator(nbins='auto'))
@@ -1536,6 +1535,7 @@ async def res_in_m_for_a(
                 ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, 2)))
 
             plt.xticks(rotation=45)
+            plt.legend(loc='upper left')
             plt.tight_layout()
 
             buf = io.BytesIO()
@@ -1543,7 +1543,7 @@ async def res_in_m_for_a(
             plt.close()
             buf.seek(0)
 
-            await interaction.followup.send(embed=embed, file=discord.File(buf, filename="money_trend.png"))
+            await interaction.followup.send(embed=embed, file=discord.File(buf, filename="resource_trend.png"))
         else:
             await interaction.followup.send(embed=embed)
 
@@ -1553,6 +1553,7 @@ async def res_in_m_for_a(
             await interaction.followup.send(embed=embed)
         except Exception as e:
             print(f"Failed to send fallback embed: {e}")
+
             
 """
 @bot.tree.command(name="start_conflict", description="Start a new conflict.")
