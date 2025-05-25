@@ -43,7 +43,7 @@ cached_sheet_data = []
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
-bot_ke = os.getenv("bot_key")
+bot_key = os.getenv("bot_key")
 API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
@@ -76,20 +76,90 @@ class MessageView(View):
         await interaction.followup.send(
             f"You are missing the following: \n"
             f"{self.description_text}\n"
-            f"Use the `/warchest` command in <@1338510585595428895>."
+            f"Use the `/warchest` command in <#1338510585595428895>."
         )
+
+from discord.ui import View, button
+from discord import ButtonStyle
 
 class MMRView(View):
-    def __init__(self, description_text: str):
+    def __init__(self, is_valid, soldiers, barracks, tanks, aircraft, ships, num_cities):
         super().__init__(timeout=None)
-        self.description_text = description_text
+        self.is_valid = is_valid
+        self.soldiers = soldiers
+        self.barracks = barracks
+        self.tanks = tanks
+        self.aircraft = aircraft
+        self.ships = ships
+        self.num_cities = num_cities
 
-    @discord.ui.button(label="Generate Message MMRR", style=discord.ButtonStyle.green, custom_id="gm_message_button")
-    async def copy_message_button(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.defer()
-        await interaction.followup.send(
-            f"Your MMR isn't one of the standart MMR's. Get you MMR to either war {mmr} or peace {mmr}\n"
+    @button(label="Fix MMR", style=ButtonStyle.red)
+    async def fix_mmr(self, interaction, button):
+        if self.is_valid:
+            await interaction.response.send_message(
+                "Your MMR is already valid! No need to fix it."
+            )
+        else:
+            # Peace MMR depends on city count
+            peace_mmr = "0/5/5/1" if self.num_cities <= 15 else "0/3/5/1"
+            war_mmr = "5/5/5/3"
+            await interaction.response.send_message(
+                f"Please, get that MMR to either war MMR (option={war_mmr}) or peacetime MMR (option={peace_mmr})."
+            )
+        # Remove buttons entirely
+        await interaction.message.edit(view=None)
+
+    @button(label="Buy Troops", style=ButtonStyle.blurple)
+    async def buy_troops(self, interaction, button):
+        if not self.is_valid:
+            await interaction.response.send_message(
+                "MMR is invalid. Please fix your MMR first."
+            )
+            return
+        
+        missing = []
+        max_soldiers = self.barracks * 3000
+
+        if self.soldiers < max_soldiers:
+            missing.append(f"{max_soldiers - self.soldiers} soldiers")
+
+        # Replace these with your actual desired minimums
+        desired_tanks = 1000
+        desired_aircraft = 500
+        desired_ships = 300
+
+        if self.tanks < desired_tanks:
+            missing.append(f"{desired_tanks - self.tanks} tanks")
+        if self.aircraft < desired_aircraft:
+            missing.append(f"{desired_aircraft - self.aircraft} aircraft")
+        if self.ships < desired_ships:
+            missing.append(f"{desired_ships - self.ships} ships")
+
+        if not missing:
+            await interaction.response.send_message(
+                "Your troops are all stocked up. No need to buy more."
+            )
+            return
+        
+        if len(missing) == 1:
+            msg = missing[0]
+        else:
+            msg = ", ".join(missing[:-1]) + " and " + missing[-1]
+
+        await interaction.response.send_message(
+            f"The MMR is looking good, but please buy your troops: {msg}."
         )
+        await interaction.message.edit(view=None)
+
+
+    @button(label="Close", style=ButtonStyle.gray)
+    async def close(self, interaction, button):
+        await interaction.response.send_message(
+            "Looking good. Nothing to complain about."
+        )
+        await interaction.message.edit(view=None)
+        self.stop()
+
 
 class BlueGuy(discord.ui.View):
     def __init__(self, category=None, data=None):
@@ -413,8 +483,8 @@ def get_resources(nation_id):
     df = graphql_request(nation_id)
     if df is not None:
         try:
-            row = df[df["id"] == nation_id].iloc[0]
-            
+            row = df[df["id"].astype(str) == str(nation_id)].iloc[0]
+
             return (
                 row.get("nation_name", ""),
                 row.get("num_cities", 0),
@@ -439,12 +509,10 @@ def get_military(nation_id):
     df = graphql_request(nation_id)
     if df is not None:
         try:
-            row = df[df["id"] == nation_id].iloc[0]
-            
+            row = df[df["id"].astype(str) == str(nation_id)].iloc[0]
             return (
                 row.get("nation_name", ""),
                 row.get("leader_name", ""),
-                row.get("score", 0),
                 row.get("warpolicy"),
                 row.get("soldiers", 0),
                 row.get("tanks", 0),
@@ -557,7 +625,7 @@ def save_to_alliance_net(data_row):
 
 def save_conflict_row(data_row):
     try:
-        sheet = get_conflict_sheet()
+        sheet = get_conflict_data_sheet()  # <-- Use the correct sheet
         sheet.append_row(data_row)
         print("✅ Conflict data saved")
     except Exception as e:
@@ -565,7 +633,7 @@ def save_conflict_row(data_row):
 
 def update_conflict_row(row_number, col_number, value):
     try:
-        sheet = get_conflict_sheet()
+        sheet = get_conflict_data_sheet()
         sheet.update_cell(row_number, col_number, value)
         print("✅ Conflict data updated")
     except Exception as e:
@@ -631,9 +699,11 @@ def load_conflict_data():
         sheet = get_conflict_data_sheet()
         cached_conflict_data = sheet.get_all_records()
         print(f"✅ Loaded {len(cached_conflict_data)} conflict data records from sheet.")
+        return sheet  # <-- This is the fix
     except Exception as e:
         print(f"❌ Failed to load conflict data sheet: {e}")
         print(traceback.format_exc())
+        return None
 
 # --- Daily Refresh Task ---
 
@@ -942,81 +1012,185 @@ async def register(interaction: discord.Interaction, nation_id: str):
 @bot.tree.command(name="mmr_audit", description="Audits the MMR of the Member and gives suggestions")
 @app_commands.describe(who="The Discord Member you wish to audit")
 async def mmr_audit(interaction: discord.Interaction, who: discord.Member):
-    await interaction.response.defer()
-    GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
-    
-    query = """
-    query GetNationData {
-      nation {
-        num_cities
-        cities {
-          name
-          population
+    try:
+        await interaction.response.defer()
+
+        target_username = who.name.lower()
+
+        target_discord_id = None
+        for discord_id, info in cached_users.items():
+            if info['DiscordUsername'].lower() == target_username:
+                target_discord_id = discord_id
+                break
+
+        if target_discord_id is None:
+            await interaction.followup.send(
+                f"❌ Could not find Nation ID for {who.mention}. "
+                "They must be registered in the Google Sheet with their Discord username."
+            )
+            return
+
+        async def is_banker(interaction):
+            return (
+                any(role.name == "Government member" for role in interaction.user.roles)
+                or str(interaction.user.id) == "1148678095176474678"
+            )
+
+        if not await is_banker(interaction):
+            await interaction.followup.send("❌ You don't have the rights to perform this action.")
+            return
+
+        nation_id = int(cached_users[target_discord_id]["NationID"])
+        GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
+
+        query = """
+        query GetNationData($id: [Int]) {
+        nations(id: $id) {
+            data {
+            num_cities
+            cities {
+                name
+                barracks
+                factory
+                hangar
+                drydock
+            }
+            }
         }
-        barracks
-        factory
-        hangar
-        drydock
-      }
-    }
-    """
+        }
+        """
 
-    response = requests.post(GRAPHQL_URL, json={"query": query})
+        variables = {"id": [nation_id]}
 
+        response = requests.post(
+            GRAPHQL_URL,
+            json={"query": query, "variables": variables},
+            headers={"Content-Type": "application/json"}
+        )
 
+        if response.status_code != 200:
+            print(f"Request failed: {response.status_code}")
+            # handle error here or return
 
-    if response.status_code != 200:
-        await interaction.followup.send(f"❌ Request failed with status {response.status_code}")
-        return
+        json_data = response.json()
+        if "errors" in json_data:
+            print("API returned errors:", json_data["errors"])
+            # handle error here or return
 
-    soldiers, tanks, aircrats, ships = get_military
-    nation_data = response.json().get("data", {}).get("nation", {})
-    num_cities = nation_data.get("num_cities", 0)
-    cities = nation_data.get("cities", [])
-    barracks = nation_data.get("barracks", 0)
-    factory = nation_data.get("factory", 0)
-    hangar = nation_data.get("hangar", 0)
-    drydocks = nation_data.get("drydock", 0)
+        nation_list = json_data.get("data", {}).get("nations", {}).get("data", [])
+        if not nation_list:
+            print("No nation data found")
+            # handle no data case here
+            return
 
-    mmr_string = f"{barracks}/{factory}/{hangar}/{drydocks}"
-    valid_mmrs = (
-        [[0, 5, 5, 1], [5, 5, 5, 3]] if num_cities < 16 else [[0, 3, 5, 1], [5, 5, 5, 3]]
-    )
-    is_valid = any([barracks, factory, hangar, drydocks] == mmr for mmr in valid_mmrs)
+        nation_data = nation_list[0]
 
-    # Construct the message to send via the button
-# Prepare embed with summary info
-    embed = discord.Embed(
-        title=f"MMR Audit for {who.display_name}",
-        color=discord.Color.green() if is_valid else discord.Color.red()
-    )
-    embed.add_field(name="Cities", value=str(num_cities), inline=True)
-    embed.add_field(name="Current MMR", value=mmr_string, inline=True)
-    embed.add_field(
-        name="Status",
-        value="✅ Valid MMR" if is_valid else "❌ Invalid MMR",
-        inline=False
-    )
+        nation_name = nation_data.get("nation_name", "Unknown Nation")
+        num_cities = nation_data.get("num_cities", 0)
+        cities = nation_data.get("cities", [])
 
-    if not is_valid:
+        barracks = sum(city.get("barracks", 0) for city in cities)
+        factory = sum(city.get("factory", 0) for city in cities)
+        hangar = sum(city.get("hangar", 0) for city in cities)
+        drydocks = sum(city.get("drydock", 0) for city in cities)
+
+        military_data = get_military(nation_id)
+        if military_data is None:
+            await interaction.followup.send("❌ Could not retrieve military data for this nation.")
+            return
+
+        (
+            nation_name,
+            leader_name,
+            warpolicy,
+            soldiers,
+            tanks,
+            aircraft,
+            ships,
+            spies,
+            missiles,
+            nukes,
+        ) = military_data
+
+        valid_mmrs = (
+            [[0, 5, 5, 1], [5, 5, 5, 3]] if num_cities < 16 else [[0, 3, 5, 1], [5, 5, 5, 3]]
+        )
+
+        from collections import Counter
+
+        def distribute_structures(total, parts):
+            if parts == 0:
+                return []
+            base = total // parts
+            extras = total % parts
+            return [base + (1 if i < extras else 0) for i in range(parts)]
+
+        b_list = distribute_structures(barracks, num_cities)
+        f_list = distribute_structures(factory, num_cities)
+        h_list = distribute_structures(hangar, num_cities)
+        d_list = distribute_structures(drydocks, num_cities)
+
+        city_mmrs = list(zip(b_list, f_list, h_list, d_list))
+        mmr_counts = Counter(city_mmrs)
+
+        # Validate: all city MMRs must be in valid options
+        is_valid = all([b, f, h, d] in valid_mmrs for (b, f, h, d) in city_mmrs)
+
+        grouped_mmr_string = "\n".join(
+            f"{count} Cities: {b}/{f}/{h}/{d}" for (b, f, h, d), count in sorted(mmr_counts.items(), reverse=True)
+        )
+
+        hrr = who.display_name
+        if hrr in ["Barring(Economics Minister)", "MasterAced"]:
+            whom = "~:heart: My Pookie :heart:~"
+        elif hrr in ["IA Minister Speckgard", "Speckgard"]:
+            whom = "Gooner"
+        else:
+            whom = who.display_name
+
         valid_options = "\n".join(f"{m[0]}/{m[1]}/{m[2]}/{m[3]}" for m in valid_mmrs)
-        embed.add_field(name="Valid Options", value=valid_options, inline=False)
+        embed = discord.Embed(
+            title=f"MMR Audit for {whom}",
+            color=discord.Color.green() if is_valid else discord.Color.red(),
+        )
+        embed.add_field(name="Cities", value=str(num_cities), inline=False)
+        embed.add_field(name="Grouped City MMRs", value=grouped_mmr_string, inline=False)
+        embed.add_field(name="Soldiers", value=f"{soldiers}/{barracks*3000} (Missing {barracks*3000-soldiers} Soldiers)", inline=False)
+        embed.add_field(name="Tanks", value=f"{tanks}/{factory*250} (Missing {factory*250-tanks} Tanks)", inline=False)
+        embed.add_field(name="Aircrafts", value=f"{aircraft}/{hangar*15} (Missing {hangar*15-aircraft} Aircrafts)", inline=False)
+        embed.add_field(name="Ships", value=f"{ships}/{drydocks*5} (Missing {drydocks*5-ships} Ships)", inline=False)
+        embed.add_field(
+            name="Status",
+            value="✅ Valid MMR" if is_valid else "❌ Invalid MMR",
+            inline=False,
+        )
+        if not is_valid:
+            embed.add_field(name="Valid Options", value=valid_options, inline=False)
+  # you need to define message_text below or adjust as needed
 
-    # Your message text to send when button is clicked (detailed info)
-    message_text = (
-        f"**Cities:** {num_cities}\n"
-        f"**Current MMR:** {mmr_string}\n"
-    )
-    if is_valid:
-        message_text += "✅ Your MMR matches a valid configuration."
-    else:
-        message_text += f"❌ Invalid MMR. Valid options:\n{valid_options}"
+        # Prepare a plain text message for the view's description_text or send separately
+        message_text = (
+            f"**Cities:** {num_cities}\n"
+            f"**Grouped City MMRs:**\n{grouped_mmr_string}\n"
+            f"**Soldiers:** {soldiers}/{barracks*3000}\n"
+            f"**Status:** {'✅ Valid MMR' if is_valid else '❌ Invalid MMR'}\n"
+        )
+        if not is_valid:
+            message_text += f"**Valid Options:**\n{valid_options}\n"
+        view = MMRView(
+            is_valid=is_valid,
+            soldiers=soldiers,
+            barracks=barracks,
+            tanks=tanks,
+            aircraft=aircraft,
+            ships=ships,
+            num_cities=num_cities
+        )
 
-    # Create the button view
-    view = MMRView(description_text=message_text)
+        await interaction.followup.send(embed=embed, view=view)
 
-    # Send embed + button in the same response
-    await interaction.followup.send(embed=embed, view=view)
+    except Exception as e:
+        await interaction.followup.send(f"❌ An unexpected error occurred: {e}")
 
     
 
@@ -1379,7 +1553,8 @@ async def res_in_m_for_a(
             await interaction.followup.send(embed=embed)
         except Exception as e:
             print(f"Failed to send fallback embed: {e}")
-
+            
+"""
 @bot.tree.command(name="start_conflict", description="Start a new conflict.")
 @app_commands.describe(
     conflict_name="Name of the new conflict",
@@ -1468,6 +1643,7 @@ async def end_conflict(interaction: discord.Interaction, conflict_name: str):
     except Exception as e:
         print(f"❌ Failed to end conflict '{conflict_name}': {e}")
         await interaction.followup.send(f"❌ Failed to end conflict '{conflict_name}'. Check logs for details.")
+"""
 
 import discord
 import requests
@@ -1661,11 +1837,10 @@ import discord
 @bot.tree.command(name="war_losses_alliance", description="Show recent wars for an alliance with optional detailed stats and conflict mode.")
 @app_commands.describe(
     alliance_id="Alliance ID",
-    conflict_name="Optional conflict name to filter and show detailed conflict stats",
     war_count="Number of recent wars to display (default 30)",
     money_more_detail="Set to true to show detailed money and outcome graphs (default false)"
 )
-async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int, conflict_name: str = None, war_count: int = 30, money_more_detail: bool = False):
+async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int, war_count: int = 30, money_more_detail: bool = False):
     await interaction.response.defer()
 
     from datetime import datetime, date
@@ -1756,38 +1931,86 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
     if not alliances_data:
         await interaction.followup.send("No alliance data found.")
         return
-
     alliance = alliances_data[0]
     wars = alliance.get("wars", [])
 
-    if conflict:
-        date_format = "%Y-%m-%d"
+    if cached_conflicts:
         try:
-            start_dt = datetime.strptime(conflict.get("Start"), date_format).date()
-            end_raw = conflict.get("End")
-            end_dt = datetime.strptime(end_raw, date_format).date() if end_raw else date.today()
-        except Exception:
-            await interaction.followup.send("❌ Invalid conflict dates.")
-            return
+            # Load existing saved rows from your sheet
+            sheet = get_conflict_data_sheet()
+            all_saved_conflict_rows = sheet.get_all_records() or []
+        except Exception as e:
+            all_saved_conflict_rows = []
+            print(f"⚠️ Failed to load existing conflict rows: {e}")
 
-        wars = [
-            w for w in wars
-            if start_dt <= datetime.strptime(w.get("date", "")[:10], date_format).date() <= end_dt
-        ]
-        wars = sorted(wars, key=lambda w: w.get("date", ""))[-war_count:]
-    else:
-        wars = sorted(wars, key=lambda w: w.get("date", ""))[-war_count:]
+        existing_ids_set = set(str(row.get("War ID")) for row in all_saved_conflict_rows if row.get("War ID"))
+
+        for conflict in cached_conflicts:
+            try:
+                start = datetime.strptime(conflict.get("Start"), "%Y-%m-%d").date()
+                end_str = conflict.get("End")
+                end = datetime.strptime(end_str, "%Y-%m-%d").date() if end_str else date.today()
+                print(f"Conflict '{conflict.get('Name')}' start={start} end={end}")
+            except Exception as e:
+                print(f"Skipping conflict due to bad date: {e}")
+                continue
+
+            for war in wars:
+                war_id = str(war.get("id"))
+                if war_id in existing_ids_set:
+                    continue
+
+                war_date_str = war.get("date", "")[:10]
+                try:
+                    war_date = datetime.strptime(war_date_str, "%Y-%m-%d").date()
+                except Exception:
+                    print(f"Skipping war {war_id} due to bad date: {war_date_str}")
+                    continue
+
+                print(f"Checking war {war_id} on {war_date} against conflict {conflict.get('Name')} ({start} to {end})")
+
+                if start <= war_date <= end:
+                    print(f"War {war_id} matches conflict '{conflict.get('Name')}'")
+                    try:
+                        attacker = war.get("attacker", {})
+                        defender = war.get("defender", {})
+                        winner_id = str(war.get("winner_id", ""))
+                        attacker_id = str(attacker.get("id", ""))
+                        defender_id = str(defender.get("id", ""))
+
+                        if winner_id == attacker_id:
+                            outcome = "Attacker Win"
+                        elif winner_id == defender_id:
+                            outcome = "Defender Win"
+                        else:
+                            outcome = "Draw"
+
+                        money_looted = (war.get("att_money_looted", 0) or 0) + (war.get("def_money_looted", 0) or 0)
+
+                        # Skip draws with 0 earnings
+                        if outcome == "Draw" and money_looted == 0:
+                            continue
+
+                        new_row = [
+                            conflict.get("Name", "Unknown"),
+                            conflict.get("Start", ""),
+                            conflict.get("End", ""),
+                            war_id,
+                            attacker.get("nation_name", "Unknown"),
+                            defender.get("nation_name", "Unknown"),
+                            outcome,
+                            money_looted
+                        ]
+
+                        load_conflict_data().append_row(new_row)
+                        print(f"✅ Saved war {war_id} to conflict data.")
+                        existing_ids_set.add(war_id)  # prevent saving again
+                        break  # ✅ Only one conflict match per war
+                    except Exception as e:
+                        print(f"❌ Failed to save war row: {e}")
 
 
 
-    # Sort by date ascending and limit by war_count (last N wars)
-    wars = sorted(wars, key=lambda w: w.get("date", ""))
-    if war_count > 0:
-        wars = wars[-war_count:]
-
-    if not wars:
-        await interaction.followup.send("No wars found for the given criteria.")
-        return
 
     def chunks(lst, n):
         for i in range(0, len(lst), n):
@@ -2048,12 +2271,12 @@ async def simulation(interaction: discord.Interaction, nation_id: str, war_type:
             return
 
         (
-            nation_name, nation_leader, nation_rank, nation_score, war_policy,
+            nation_name, nation_leader, nation_score, war_policy,
             soldiers, tanks, aircraft, ships, spies, missiles, nuclear
         ) = opponent
 
         (
-            me_name, me_leader, me_rank, me_score, me_policy,
+            me_name, me_leader, me_score, me_policy,
             me_soldiers, me_tanks, me_aircraft, me_ships, me_spies, me_missiles, me_nukes
         ) = me
 
