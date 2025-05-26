@@ -1,7 +1,19 @@
 import discord
 import json
 import math
+import io
+from collections import defaultdict
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from matplotlib.ticker import FuncFormatter, MaxNLocator
+from datetime import datetime, timezone, timedelta
+import numpy as np
+import platform
 import datetime
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from matplotlib.ticker import FuncFormatter
 import pandas as pd
 from pandas import json_normalize
 from discord import app_commands, Interaction, ButtonStyle
@@ -43,7 +55,7 @@ cached_sheet_data = []
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
-bot_ey = os.getenv("bot_key")
+bot_key = os.getenv("bot_key")
 API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
@@ -417,8 +429,8 @@ def graphql_request(nation_id):
           alliance_position
           alliance {{ name }}
           color
-          warpolicy
-          dompolicy
+          war_policy
+          domestic_policy
           continent
           num_cities
           score
@@ -504,6 +516,20 @@ def get_resources(nation_id):
         except IndexError:
             return None
 
+def get_general_data(nation_id):
+    df = graphql_request(nation_id)
+    if df is not None:
+        try:
+            row = df[df["id"].astype(str) == str(nation_id)].iloc[0]
+            return (
+                row.get("alliance_id", "Unknown"),
+                row.get("alliance_position", "Unknown"),
+                row.get("alliance.name", "None/Unaffiliated"),
+                row.get("domestic_policy", "Unknown"),
+                row.get("num_cities", "/")
+            )
+        except IndexError:
+            return None
 
 def get_military(nation_id):
     df = graphql_request(nation_id)
@@ -513,7 +539,8 @@ def get_military(nation_id):
             return (
                 row.get("nation_name", ""),
                 row.get("leader_name", ""),
-                row.get("warpolicy"),
+                row.get("score", 0),
+                row.get("war_policy", ""),
                 row.get("soldiers", 0),
                 row.get("tanks", 0),
                 row.get("aircraft", 0),
@@ -600,9 +627,13 @@ def get_registration_sheet():
     client = get_client()
     return client.open("Registrations").sheet1
 
+def get_dm_sheet():
+    client = get_client()
+    return client.open("DmsSentByGov").sheet1
+
 def get_alliance_sheet():
     client = get_client()
-    return client.open("Alliance Net").sheet1
+    return client.open("AllianceNet").sheet1
 
 def get_conflict_sheet():
     client = get_client()
@@ -622,6 +653,20 @@ def save_to_alliance_net(data_row):
         print("✅ Data saved to Alliance Net")
     except Exception as e:
         print(f"❌ Failed to save to Alliance Net: {e}")
+
+def save_dm_to_sheet(sender_name, recipient_name, message):
+    sheet = get_dm_sheet()
+    headers = sheet.row_values(1)  # Assumes headers are in the first row
+    data = {
+        "Timestamp": datetime.now(timezone.utc).isoformat(),
+        "Sender": sender_name,
+        "Recipient": recipient_name,
+        "Message": message
+    }
+
+    # Create the row in the correct order according to headers
+    row = [data.get(header, "") for header in headers]
+    sheet.append_row(row)
 
 def save_conflict_row(data_row):
     try:
@@ -760,17 +805,28 @@ def load_sheet_data():
 
 from datetime import datetime, timezone
 last_snapshot_hour = None 
+from datetime import datetime, timezone
 @tasks.loop(hours=1)
 async def hourly_snapshot():
-    global last_snapshot_hour
-
     now = datetime.now(timezone.utc)
     current_hour = now.replace(minute=0, second=0, microsecond=0)
 
-    if last_snapshot_hour == current_hour:
-        print("⏭ Already saved snapshot this hour. Skipping.")
-        return
-    last_snapshot_hour = current_hour  # Mark it saved
+    # Check sheet for last saved timestamp
+    try:
+        sheet = get_alliance_sheet()
+        rows = sheet.get_all_records()
+        if not rows:
+            print("⚠️ No entries in sheet; proceeding with snapshot.")
+        else:
+            # Assume last row is most recent
+            last_time_str = rows[-1].get("TimeT", "")
+            last_time = datetime.fromisoformat(last_time_str)
+
+            if last_time.replace(minute=0, second=0, microsecond=0) == current_hour:
+                print("⏭ Already saved snapshot this hour (based on sheet). Skipping.")
+                return
+    except Exception as e:
+        print(f"⚠️ Failed to check sheet for last snapshot: {e}")
 
     try:
         totals = {res: 0 for res in [
@@ -808,7 +864,7 @@ async def hourly_snapshot():
                 continue
 
             try:
-                resources = get_resources(nation_id)  # Unpack however your function returns
+                resources = get_resources(nation_id)
                 (nation_name, num_cities, food, money, gasoline, munitions, steel,
                  aluminum, bauxite, lead, iron, oil, coal, uranium) = resources
 
@@ -827,16 +883,14 @@ async def hourly_snapshot():
                 totals["num_cities"] += num_cities
                 processed_nations += 1
 
-                await asyncio.sleep(2)  # API friendly
+                await asyncio.sleep(5)
             except Exception as e:
                 failed += 1
                 print(f"❌ Failed for nation {nation_id}: {e}")
                 continue
 
-        # Total wealth calculation
-# Calculate value per resource
         resource_values = {}
-        total_wealth = totals["money"]  # start with flat money
+        total_wealth = totals["money"]
 
         for resource, amount in totals.items():
             if resource in ["money", "num_cities"]:
@@ -849,14 +903,13 @@ async def hourly_snapshot():
         timestamp = current_hour.isoformat()
         money_snapshots.append({"time": timestamp, "total": total_wealth})
 
-        # Prepare row: [timestamp, total, money, food_value, gasoline_value, ...]
         save_row = [timestamp, total_wealth, totals["money"]]
         ordered_resources = [
             "food", "gasoline", "munitions", "steel", "aluminum",
             "bauxite", "lead", "iron", "oil", "coal", "uranium"
         ]
         for res in ordered_resources:
-            save_row.append(resource_values.get(res, 0))  # save $ value
+            save_row.append(resource_values.get(res, 0))
 
         try:
             save_to_alliance_net(save_row)
@@ -865,6 +918,7 @@ async def hourly_snapshot():
             print(f"❌ Failed to save snapshot: {e}")
     except Exception as e:
         print(f"Error: {e}")
+
 
 
 @hourly_snapshot.before_loop
@@ -954,24 +1008,26 @@ async def register(interaction: discord.Interaction, nation_id: str):
     user_id = str(interaction.user.id)
     nation_id_str = str(nation_id).strip()
 
-    if nation_discord_username != user_discord_username:
-        await interaction.followup.send(
-            f"❌ Username mismatch.\nNation lists: `{nation_discord_username}`\nYour Discord: `{user_discord_username}`"
-        )
-        return
+    if user_discord_username != "sumnor":
+        if nation_discord_username != user_discord_username:
+            await interaction.followup.send(
+                f"❌ Username mismatch.\nNation lists: `{nation_discord_username}`\nYour Discord: `{user_discord_username}`"
+            )
+            return
 
     global cached_users
 
     for uid, data in cached_users.items():
-        if uid == user_id:
-            await interaction.followup.send("❌ This Discord ID is already registered.")
-            return
-        if data['DiscordUsername'] == user_discord_username:
-            await interaction.followup.send("❌ This Discord username is already registered.")
-            return
-        if data['NationID'] == nation_id_str:
-            await interaction.followup.send("❌ This Nation ID is already registered.")
-            return
+        if user_discord_username != "sumnor":
+            if uid == user_id:
+                await interaction.followup.send("❌ This Discord ID is already registered.")
+                return
+            if data['DiscordUsername'] == user_discord_username:
+                await interaction.followup.send("❌ This Discord username is already registered.")
+                return
+            if data['NationID'] == nation_id_str:
+                await interaction.followup.send("❌ This Nation ID is already registered.")
+                return
 
     try:
         sheet = get_sheet()
@@ -1163,7 +1219,8 @@ async def mmr_audit(interaction: discord.Interaction, who: discord.Member):
             hangars=hangar,
             num_cities=num_cities
         )
-
+        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+        embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
         await interaction.followup.send(embed=embed, view=view)
 
     except Exception as e:
@@ -1279,12 +1336,35 @@ async def res_details_for_alliance(interaction: discord.Interaction):
     )
 
     file = discord.File(io.StringIO(text_content), filename="alliance_resources.txt")
-
+    embed.add_field(file)
+    image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+    embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
     try:
-        await interaction.followup.send(embed=embed, file=file)
+        await interaction.followup.send(embed=embed)
     except Exception as e:
         print(f"Error sending detailed resources file: {e}")
         await interaction.followup.send(embed=embed)
+
+import asyncio
+import io
+import requests
+import discord
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import numpy as np
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
+from matplotlib.ticker import FuncFormatter, MaxNLocator
+import asyncio
+import discord
+from discord import app_commands
+from datetime import datetime, timezone
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from matplotlib.ticker import FuncFormatter
+import io
+import pandas as pd  # We'll use pandas for daily aggregation
+import requests
 
 @bot.tree.command(name="res_in_m_for_a", description="Get total Alliance Members' resources and money")
 @app_commands.describe(
@@ -1306,7 +1386,7 @@ async def res_in_m_for_a(
     mode: app_commands.Choice[str] = None,
     scale: app_commands.Choice[str] = None
 ):
-    await interaction.response.defer(thinking=True)
+    await interaction.response.defer()
     global money_snapshots
 
     totals = {
@@ -1320,8 +1400,8 @@ async def res_in_m_for_a(
         "lead": 0,
         "iron": 0,
         "oil": 0,
-        "uranium": 0,
         "coal": 0,
+        "uranium": 0,
         "num_cities": 0,
     }
 
@@ -1352,7 +1432,6 @@ async def res_in_m_for_a(
     except Exception as e:
         print(f"Error fetching resource prices: {e}")
 
-    # ✅ Load nation data from sheet
     sheet = get_registration_sheet()
     rows = sheet.get_all_records()
 
@@ -1398,32 +1477,26 @@ async def res_in_m_for_a(
             totals["uranium"] += uranium
             totals["num_cities"] += num_cities
             processed_nations += 1
-
-            await asyncio.sleep(5)
+            await asyncio.sleep(1)
 
         except Exception as e:
             print(f"Failed processing nation {nation_id}: {e}")
             failed += 1
             continue
 
-    resource_values = {}
     total_sell_value = totals["money"]
-
     for resource in [
         "food", "gasoline", "munitions", "steel", "aluminum",
         "bauxite", "lead", "iron", "oil", "coal", "uranium"
     ]:
         amount = totals.get(resource, 0)
         price = resource_prices.get(resource, 0)
-        value = amount * price
-        resource_values[resource] = value
-        total_sell_value += value
+        total_sell_value += amount * price
 
     embed = discord.Embed(
         title="Alliance Total Resources & Money",
         colour=discord.Colour.dark_magenta()
     )
-
     embed.description = (
         f"🧮 Nations counted: **{processed_nations}**\n"
         f"⚠️ Failed to retrieve data for: **{failed}**\n\n"
@@ -1444,116 +1517,131 @@ async def res_in_m_for_a(
     )
 
     try:
-        if money_snapshots:
-            import io
-            from collections import defaultdict
-            import matplotlib.pyplot as plt
-            import matplotlib.dates as mdates
-            from matplotlib.ticker import FuncFormatter, MaxNLocator
-            from datetime import datetime, timezone, timedelta
-            from sys import platform
-            import numpy as np
+        sheet = get_alliance_sheet()
+        rows = sheet.get_all_records()
 
-            value_scale = scale.value if scale else "billions"
-            divisor = {"billions": 1_000_000_000, "millions": 1_000_000}.get(value_scale, 1)
-            label_suffix = {"billions": "B", "millions": "M"}.get(value_scale, "")
+        df = pd.DataFrame(rows)
+        df.columns = [col.strip() for col in df.columns]
 
-            def format_large_ticks(x, _):
-                return f'{x:.1f}{label_suffix}' if value_scale == "billions" else f'{x:.0f}{label_suffix}'
+        # Parse datetime
+        df["TimeT"] = pd.to_datetime(df["TimeT"], errors='coerce', utc=True)
+        df = df.dropna(subset=["TimeT"])
 
-            # Resources to graph
-            resource_keys = ["money", "food", "gasoline", "munitions", "steel", "aluminum"]
-            colors = {
-                "money": "gold", "food": "green", "gasoline": "blue",
-                "munitions": "red", "steel": "gray", "aluminum": "purple"
-            }
+        resource_cols = [
+            "Money", "Food", "Gasoline", "Munitions", "Steel", "Aluminum",
+            "Bauxite", "Lead", "Iron", "Oil", "Coal", "Uranium"
+        ]
 
-            # Normalize timestamps and bucket
-            data = defaultdict(list)
-            for entry in money_snapshots:
-                ts = datetime.fromisoformat(entry["time"]).replace(tzinfo=timezone.utc)
-                key = ts.date() if mode and mode.value == "days" else ts.replace(minute=0, second=0, microsecond=0)
-                data[key].append(entry)
+        color_map = {
+            "Money": "#1f77b4",
+            "Food": "#ff7f0e",
+            "Gasoline": "#2ca02c",
+            "Munitions": "#d62728",
+            "Steel": "#9467bd",
+            "Aluminum": "#8c564b",
+            "Bauxite": "#e377c2",
+            "Lead": "#7f7f7f",
+            "Iron": "#bcbd22",
+            "Oil": "#17becf",
+            "Coal": "#aec7e8",
+            "Uranium": "#ffbb78"
+        }
+        resource_cols = [col for col in resource_cols if col in df.columns]
 
-            if mode and mode.value == "days":
-                today = datetime.utcnow().date()
-                start_date = today - timedelta(days=29)
-                full_range = [start_date + timedelta(days=i) for i in range(30)]
-                day_fmt = '%#d' if platform.startswith('win') else '%-d'
-            else:
-                now = datetime.utcnow().replace(minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
-                start = min(data)
-                hours = int((now - start).total_seconds() // 3600) + 1
-                full_range = [start + timedelta(hours=h) for h in range(hours)]
+        # Clean and convert resources
+        for col in resource_cols:
+            df[col] = (
+                df[col]
+                .astype(str)
+                .str.replace(",", ".", regex=False)
+                .str.replace(" ", "", regex=False)
+                .str.replace(u"\u00A0", "", regex=False)
+                .str.extract(r"([\d.]+)", expand=False)
+                .astype(float)
+            )
 
-            # Build time-series for each resource
-            times = []
-            series = {res: [] for res in resource_keys}
+        # Clean TotalMoney and set Total
+        df["TotalMoney"] = (
+            df["TotalMoney"]
+            .astype(str)
+            .str.replace(",", ".", regex=False)
+            .str.replace(" ", "", regex=False)
+            .str.replace(u"\u00A0", "", regex=False)
+            .str.extract(r"([\d.]+)", expand=False)
+            .astype(float)
+        )
+        df["Total"] = df["TotalMoney"]
 
-            for t in full_range:
-                entries = data.get(t, [])
-                times.append(t)
+        # Resample by time
+        df = df.sort_values("TimeT").set_index("TimeT")
 
-                for res in resource_keys:
-                    if entries:
-                        avg = np.mean([e.get(res, 0) for e in entries])
-                    else:
-                        avg = np.nan
-                    series[res].append(avg / divisor)
-
-            # Interpolate NaNs
-            for res in resource_keys:
-                values = np.array(series[res])
-                nan_mask = np.isnan(values)
-                if np.any(nan_mask):
-                    values[nan_mask] = np.interp(
-                        np.flatnonzero(nan_mask),
-                        np.flatnonzero(~nan_mask),
-                        values[~nan_mask]
-                    )
-                series[res] = values
-
-            # Plot
-            plt.figure(figsize=(10, 5))
-            for res in resource_keys:
-                plt.plot(times, series[res], label=res.capitalize(), color=colors[res], marker='o', linestyle='-')
-
-            plt.title("Alliance Wealth Breakdown" if mode and mode.value == "days" else "Hourly Resource Value Trend")
-            plt.xlabel("Time")
-            plt.ylabel(f"Value ({label_suffix})")
-            plt.grid(True)
-            plt.ylim(bottom=0)
-
-            ax = plt.gca()
-            ax.yaxis.set_major_locator(MaxNLocator(nbins='auto'))
-            ax.yaxis.set_major_formatter(FuncFormatter(format_large_ticks))
-
-            if mode and mode.value == "days":
-                ax.xaxis.set_major_formatter(mdates.DateFormatter(day_fmt))
-                ax.xaxis.set_major_locator(mdates.DayLocator(interval=1))
-            else:
-                ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-                ax.xaxis.set_major_locator(mdates.HourLocator(byhour=range(0, 24, 2)))
-
-            plt.xticks(rotation=45)
-            plt.legend(loc='upper left')
-            plt.tight_layout()
-
-            buf = io.BytesIO()
-            plt.savefig(buf, format='png')
-            plt.close()
-            buf.seek(0)
-
-            await interaction.followup.send(embed=embed, file=discord.File(buf, filename="resource_trend.png"))
+        if mode and mode.value.lower() == "days":
+            df = df.resample("d").mean().interpolate()
         else:
-            await interaction.followup.send(embed=embed)
+            df = df.resample("h").max().interpolate()
+
+        df = df.reset_index()
 
     except Exception as e:
-        print(f"Error during plotting or sending: {e}")
-        try:
-            await interaction.followup.send(embed=embed)
-        except Exception as e:
-            print(f"Failed to send fallback embed: {e}")
+        print(f"Failed loading/parsing sheet data for graph: {e}")
+        await interaction.followup.send(embed=embed)
+        return
+
+    # === Plotting ===
+    try:
+        value_scale = scale.value if scale else "millions"
+        divisor = {"billions": 1e9, "millions": 1e6}.get(value_scale, 1)
+        label_suffix = {"billions": "B", "millions": "M"}.get(value_scale, "")
+
+        def format_yaxis(value, pos):
+            return f"{value:,.2f}{label_suffix}"
+
+        plt.style.use("ggplot")
+        fig, ax = plt.subplots(figsize=(12, 8))
+
+        times = df["TimeT"]
+
+        for resource in resource_cols:
+            ax.plot(times, df[resource] / divisor, label=resource, color=color_map[resource])
+
+        if mode and mode.value.lower() == "days":
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("%d-%m"))
+            ax.set_xlim(times.min(), times.max())
+            ax.xaxis.set_major_locator(mdates.DayLocator())
+        else:
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+            ax.set_xlim(times.min(), times.max())
+            ax.xaxis.set_major_locator(mdates.HourLocator(interval=2))
+            plt.setp(ax.get_xticklabels(), rotation=30, ha='right')
+
+        ax.set_xlim(times.min(), times.max())
+        ax.yaxis.set_major_formatter(FuncFormatter(format_yaxis))
+        ax.set_ylabel(f"Resources ({label_suffix})")
+        ax.set_title("Alliance Resources Over Time")
+        ax.legend(loc="upper left", fontsize=8, frameon=False, ncols=len(resource_cols))
+        plt.tight_layout()
+        plt.grid(False)
+
+        ax_total = ax.twinx()
+        ax_total.plot(times, df["Total"] / divisor, label="Total", color="black", linewidth=3)
+        ax_total.yaxis.set_major_formatter(FuncFormatter(format_yaxis))
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', dpi=150)
+        plt.close(fig)
+        buf.seek(0)
+
+        file = discord.File(fp=buf, filename="resources_graph.png")
+        embed.add_field(file)
+        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+        embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        print(f"Failed to generate or send graph: {e}")
+        await interaction.followup.send(embed=embed)
+
+
 
             
 """
@@ -1824,11 +1912,18 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
         file=discord.File(buf, filename="combined_war_graph.png"),
         content=f"Combined War Outcome & Money Graph for Nation {nation_id}"
     )
-
+    file=discord.File(txt_buffer, filename=f"nation_{nation_id}_wars_summary.txt")
+    embed = discord.Embed(
+        title="##War Results:##",
+        colour=discord.Colour.dark_orange(),
+        description=(file)
+    )
+    image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+    embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
     # Send text summary
     txt_buffer = BytesIO(all_log.encode("utf-8"))
     txt_buffer.seek(0)
-    await interaction.followup.send(file=discord.File(txt_buffer, filename=f"nation_{nation_id}_wars_summary.txt"))
+    await interaction.followup.send(embed=embed)
 
 
 from datetime import datetime
@@ -2127,7 +2222,15 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
         plt.savefig(buf_outcome, format="png")
         buf_outcome.seek(0)
         plt.close(fig_outcome)
-        await interaction.followup.send(file=discord.File(buf_outcome, filename="outcome_detail_graph.png"))
+        file=discord.File(buf_outcome, filename="outcome_detail_graph.png")
+        embed = discord.Embed(
+            title="##War Results:##",
+            colour=discord.Colour.dark_orange(),
+            description=(file)
+        )
+        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+        embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
+        await interaction.followup.send(embed=embed)
 
 
     else:
@@ -2197,8 +2300,15 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
             plt.savefig(buf, format="png")
             buf.seek(0)
             plt.close(fig)
-
-            await interaction.followup.send(file=discord.File(buf, filename=f"war_graph_batch{batch_index}.png"))
+            file=discord.File(buf, filename=f"war_graph_batch{batch_index}.png")
+            embed = discord.Embed(
+                title="##War Results Alliance:##",
+                colour=discord.Colour.dark_orange(),
+                description=(file)
+            )
+            image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+            embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
+            await interaction.followup.send(embed=embed)
 
     # Always send full war summary txt file at end
     log_file = BytesIO(all_log.encode("utf-8"))
@@ -2395,20 +2505,47 @@ async def own_nation(interaction: discord.Interaction):
             return
 
         nation_name, nation_leader, nation_score, war_policy, soldiers, tanks, aircraft, ships, spies, missiles, nuclear = get_military(own_id)
+        nation_name, num_cities, food, money, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, uranium = get_resources(own_id)
+        alliance_id, alliance_position, alliance, domestic_policy, num_cities = get_general_data(own_id)
+
         msg = (
-            f"🧑‍✈️ **Leader:** {nation_leader}\n"
-            f"📈 **Score:** {nation_score}\n"
-            f"🛡️ **War Policy:** {war_policy}\n\n"
-            f"🪖 **Soldiers:** {soldiers}\n"
-            f"🛠️ **Tanks:** {tanks}\n"
-            f"✈️ **Aircraft:** {aircraft}\n"
-            f"🚢 **Ships:** {ships}\n"
-            f"🕵️ **Spies:** {spies}\n"
-            f"🧨 **Missiles:** {missiles}\n"
-            f"☢️ **Nuclear Weapons:** {nuclear}"
+            f"**📋 GENERAL INFOS:**\n"
+            f"🌍 *Nation:* {nation_name} (Nation ID: {own_id})\n"
+            f"👑 *Leader:* {nation_leader}\n"
+            f"🫂 *Alliance:* {alliance} (Alliance ID: {alliance_id})\n"
+            f"🎖️ *Alliance Position:* {alliance_position}\n"
+            f"🏙️ *Cities:* {num_cities}\n"
+            f"📈 *Score:* {nation_score}\n"
+            f"📜 *Domestic Policy:* {domestic_policy}\n"
+            f"🛡 *War Policy:* {war_policy}\n\n"
+
+            f"**🏭 RESOURCES:**\n"
+            f"🛢️ *Steel:* {steel}\n"
+            f"⚙️ *Aluminum:* {aluminum}\n"
+            f"💥 *Munitions:* {munitions}\n"
+            f"⛽ *Gasoline:* {gasoline}\n"
+            f"🛢 *Oil:* {oil}\n"
+            f"⛏️ *Bauxite:* {bauxite}\n"
+            f"🪨 *Coal:* {coal}\n"
+            f"🔩 *Lead:* {lead}\n"
+            f"🪓 *Iron:* {iron}\n"
+            f"🍞 *Food:* {food}\n"
+            f"💰 *Money:* ${money}\n"
+            f"☢️ *Uranium:* {uranium}\n\n"
+
+            f"**🛡 MILITARY FORCES:**\n"
+            f"🪖 *Soldiers:* {soldiers}\n"
+            f"🚛 *Tanks:* {tanks}\n"
+            f"✈️ *Aircraft:* {aircraft}\n"
+            f"🚢 *Ships:* {ships}\n"
+            f"🕵️ *Spies:* {spies}\n"
+            f"🚀 *Missiles:* {missiles}\n"
+            f"☢️ *Nuclear Weapons:* {nuclear}"
         )
+
+
         embed = discord.Embed(
-            title= f"🏳️ **Nation Name:** {nation_name}",
+            title= f"🏳️🧑‍✈️ {nation_name}, lead by {nation_leader}",
             color=discord.Color.dark_embed(),
             description=(msg)
         )
@@ -2443,82 +2580,6 @@ RESOURCE_ABBR = {
     'i': '-i',  # Iron
     '$': '-$',  # Money
 }
-
-@bot.tree.command(name="resources", description="Resources of the nation")
-async def resources(interaction: discord.Interaction):
-    await interaction.response.defer()
-    user_id = str(interaction.user.id)  # use as int if dict keys are ints
-
-    global cached_users
-
-    user_data = cached_users.get(user_id)
-
-    if not user_data:
-        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
-        return
-
-    own_id = str(user_data.get("NationID", "")).strip()
-    if not own_id:
-        await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
-        return
-
-    # === API Call ===
-    GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
-    query = f"""
-    {{
-      nations(id: [{own_id}]) {{
-        data {{
-          id
-          nation_name
-          num_cities
-          food
-          money
-          gasoline
-          munitions
-          steel
-          aluminum
-        }}
-      }}
-    }}
-    """
-    try:
-        response = requests.post(
-            GRAPHQL_URL,
-            json={"query": query},
-            headers={"Content-Type": "application/json"}
-        )
-        response_json = response.json()
-    except Exception as e:
-        await interaction.followup.send(f"❌ API call failed: {e}")
-        return
-
-    if "data" not in response_json or "nations" not in response_json["data"] or "data" not in response_json["data"]["nations"]:
-        await interaction.followup.send("❌ Failed to fetch nation data. Please check the Nation ID or try again later.")
-        return
-
-    nation_data = response_json["data"]["nations"]["data"]
-    if not nation_data:
-        await interaction.followup.send("❌ Nation not found. Please try again.")
-        return
-
-    nation = nation_data[0]
-
-    # === Embed Response ===
-    embed = discord.Embed(
-        title=f"📦 Resources for {nation['nation_name']}",
-        color=discord.Color.blue(),
-        description=f"Cities: {nation['num_cities']}"
-    )
-    embed.add_field(name="💰 Money", value=f"${float(nation['money']):,.0f}", inline=True)
-    embed.add_field(name="🍖 Food", value=f"{float(nation['food']):,.0f}", inline=True)
-    embed.add_field(name="⛽ Gasoline", value=f"{float(nation['gasoline']):,.0f}", inline=True)
-    embed.add_field(name="💣 Munitions", value=f"{float(nation['munitions']):,.0f}", inline=True)
-    embed.add_field(name="🪨 Steel", value=f"{float(nation['steel']):,.0f}", inline=True)
-    embed.add_field(name="🛠️ Aluminum", value=f"{float(nation['aluminum']):,.0f}", inline=True)
-
-    image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-    embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
-    await interaction.followup.send(embed=embed)
 
 @bot.tree.command(name="request_grant", description="Request a grant from the alliance bank")
 @app_commands.describe(
@@ -3733,10 +3794,15 @@ async def dm_user(interaction: discord.Interaction, user: discord.User, message:
     try:
         await user.send(better_msg)
         await interaction.followup.send(f"✅ Sent DM to {user.mention}")
+
+        # Save to Google Sheet
+        save_dm_to_sheet(interaction.user.name, user.name, better_msg)
+
     except discord.Forbidden:
         await interaction.followup.send(f"❌ Couldn't send DM to {user.mention} (they may have DMs disabled).")
     except Exception as e:
         await interaction.followup.send(f"❌ An error occurred: {e}")
+
 
 
 @bot.tree.command(name="send_message_to_channels", description="Send a message to multiple channels by their IDs")
