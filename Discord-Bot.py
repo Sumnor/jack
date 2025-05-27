@@ -2535,7 +2535,7 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member):
             f"🫂 *Alliance:* {alliance} (Alliance ID: `{alliance_id}`)\n"
             f"🎖️ *Alliance Position:* {alliance_position}\n"
             f"🏙️ *Cities:* {num_cities}\n"
-            f"🎨 *Color Trade Bloc::* {colour}\n"
+            f"🎨 *Color Trade Bloc:* {colour}\n"
             f"📈 *Score:* {nation_score}\n"
             f"📜 *Domestic Policy:* {domestic_policy}\n"
             f"🛡 *War Policy:* {war_policy}\n\n"
