@@ -1736,6 +1736,88 @@ async def end_conflict(interaction: discord.Interaction, conflict_name: str):
         await interaction.followup.send(f"❌ Failed to end conflict '{conflict_name}'. Check logs for details.")
 """
 
+@bot.tree.command(name="member activity", description="Shows the activity of our members")
+async def member_activity(interaction: discord.Interaction):
+    await interaction.response.defer()
+
+    activish = 0
+    active_w_bloc = 0
+    active_wo_bloc = 0
+    inactive = 0
+
+    try:
+        sheet = get_registration_sheet()
+        rows = sheet.get_all_records()
+        df = pd.DataFrame(rows)
+        df.columns = [col.strip() for col in df.columns]
+        nation_ids = df["NationID"].dropna().astype(int).tolist()
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error loading Nation IDs: {e}")
+        return
+
+    for own_id in nation_ids:
+        try:
+            alliance_id, alliance_position, alliance, domestic_policy, num_cities, colour, activity = get_general_data(own_id)
+            
+            activity_dt = datetime.fromisoformat(activity)
+            now = datetime.now(timezone.utc)
+            delta = now - activity_dt
+            days_inactive = delta.total_seconds() / 86400
+
+            if days_inactive >= 2:
+                inactive += 1
+            elif days_inactive >= 1:
+                activish += 1
+            else:
+                if colour.lower() == "black":
+                    active_w_bloc += 1
+                else:
+                    active_wo_bloc += 1
+        except Exception as e:
+            print(f"Error processing nation ID {own_id}: {e}")
+            continue
+
+    # Create pie chart
+    fig, ax = plt.subplots(figsize=(6, 3), subplot_kw=dict(aspect="equal"))
+
+    data = [active_w_bloc, active_wo_bloc, activish, inactive]
+    labels = [
+        "Active (Correct Bloc)",
+        "Active (Wrong Bloc)",
+        "Activish (1-2 Days)",
+        "Inactive (2+ Days)"
+    ]
+
+    def func(pct, allvals):
+        absolute = int(np.round(pct / 100. * np.sum(allvals)))
+        return f"{pct:.1f}%\n({absolute})"
+
+    wedges, texts, autotexts = ax.pie(data, autopct=lambda pct: func(pct, data),
+                                      textprops=dict(color="w"))
+
+    ax.legend(wedges, labels,
+              title="DS Member Statuses",
+              loc="center left",
+              bbox_to_anchor=(1, 0, 0.5, 1))
+
+    plt.setp(autotexts, size=8, weight="bold")
+    ax.set_title("DS Activity Chart")
+
+    # Save to BytesIO and send as file
+    buffer = BytesIO()
+    plt.savefig(buffer, format="png")
+    buffer.seek(0)
+    file = discord.File(fp=buffer, filename="ds_activity.png")
+
+    embed = discord.Embed(
+        title="📊 DS Activity",
+        description="Breakdown of member activity status.",
+        color=discord.Color.dark_teal()
+    )
+    embed.set_image(url="attachment://ds_activity.png")
+
+    await interaction.followup.send(embed=embed, file=file)    
+
 import discord
 import requests
 from io import BytesIO
