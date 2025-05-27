@@ -55,7 +55,7 @@ cached_sheet_data = []
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
-bot_ey = os.getenv("Key")
+bot_key = os.getenv("Key")
 API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
@@ -979,12 +979,20 @@ async def on_message(message):
         # Step 3: Always send thanks (but do it AFTER all checks)
         await message.channel.send(default_reply)
 
-    await bot.process_commands(message)
-
 @bot.tree.command(name="register", description="Register your Nation ID")
 @app_commands.describe(nation_id="Your Nation ID (numbers only, e.g., 365325)")
 async def register(interaction: discord.Interaction, nation_id: str):
     await interaction.response.defer()
+
+    async def is_banker(interaction):
+        return (
+        any(role.name == "Member" for role in interaction.user.roles)
+            or str(interaction.user.id) == "1148678095176474678"
+        )
+
+    if not await is_banker(interaction):
+        await interaction.followup.send("❌ You need to be a Member to register yourself.")
+        return
 
     if not nation_id.isdigit():
         await interaction.followup.send("❌ Please enter only the Nation ID number, not a link.")
@@ -1046,7 +1054,21 @@ async def register(interaction: discord.Interaction, nation_id: str):
 async def mmr_audit(interaction: discord.Interaction, who: discord.Member):
     try:
         await interaction.response.defer()
+        user_id = str(interaction.user.id)
+    
+        global cached_users  # the dict version
+        
+        user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
+        
+        if not user_data:
+            await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+            return
+        
+        own_id = str(user_data.get("NationID", "")).strip()
 
+        if not own_id:
+                await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+                return
         target_username = who.name.lower()
 
         target_discord_id = None
@@ -1233,7 +1255,32 @@ async def mmr_audit(interaction: discord.Interaction, who: discord.Member):
 @bot.tree.command(name="res_details_for_alliance", description="Get each Alliance Member's resources and money individually")
 async def res_details_for_alliance(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
-    global cached_users
+
+    user_id = str(interaction.user.id)
+    
+    global cached_users  # the dict version
+    
+    user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
+    
+    if not user_data:
+        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        return
+    
+    own_id = str(user_data.get("NationID", "")).strip()
+
+    if not own_id:
+            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+            return
+
+    async def is_banker(interaction):
+        return (
+        any(role.name == "Government member" for role in interaction.user.roles)
+            or str(interaction.user.id) == "1148678095176474678"
+        )
+
+    if not await is_banker(interaction):
+        await interaction.followup.send("❌ You don't have the rights, lil bro.")
+        return
 
     lines = []
     processed_nations = 0
@@ -1389,6 +1436,31 @@ async def res_in_m_for_a(
 ):
     await interaction.response.defer()
     global money_snapshots
+    user_id = str(interaction.user.id)
+    
+    global cached_users  # the dict version
+    
+    user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
+    
+    if not user_data:
+        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        return
+    
+    own_id = str(user_data.get("NationID", "")).strip()
+
+    if not own_id:
+            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+            return
+    
+    async def is_banker(interaction):
+        return (
+        any(role.name == "Government member" for role in interaction.user.roles)
+            or str(interaction.user.id) == "1148678095176474678"
+        )
+
+    if not await is_banker(interaction):
+        await interaction.followup.send("❌ You don't have the rights, lil bro.")
+        return
 
     totals = {
         "money": 0,
@@ -1740,7 +1812,32 @@ async def end_conflict(interaction: discord.Interaction, conflict_name: str):
 @bot.tree.command(name="member_activity", description="Shows the activity of our members")
 async def member_activity(interaction: discord.Interaction):
     await interaction.response.defer()
+    user_id = str(interaction.user.id)
+    
+    global cached_users  # the dict version
+    
+    user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
+    
+    if not user_data:
+        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        return
+    
+    own_id = str(user_data.get("NationID", "")).strip()
 
+    if not own_id:
+            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+            return
+    
+    async def is_banker(interaction):
+        return (
+        any(role.name == "Government member" for role in interaction.user.roles)
+            or str(interaction.user.id) == "1148678095176474678"
+        )
+
+    if not await is_banker(interaction):
+        await interaction.followup.send("❌ You don't have the rights, lil bro.")
+        return
+    
     activish = 0
     activish_wo_bloc = 0
     active_w_bloc = 0
@@ -1802,8 +1899,8 @@ async def member_activity(interaction: discord.Interaction):
     labels = [
         "Active (Correct Bloc)",
         "Active (Wrong Bloc)",
-        "Activish (Correct Bloc, 1-2)",
-        "Activish (Wrong Bloc, 1-2)",
+        "Activish (Correct Bloc, 1-2 Days)",
+        "Activish (Wrong Bloc, 1-2 Days)",
         "Inactive (2+ Days)"
     ]
 
@@ -1884,7 +1981,22 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
     import matplotlib.pyplot as plt
     from io import BytesIO
     import discord
+    user_id = str(interaction.user.id)
+    
+    global cached_users  # the dict version
+    
+    user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
+    
+    if not user_data:
+        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        return
+    
+    own_id = str(user_data.get("NationID", "")).strip()
 
+    if not own_id:
+            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+            return
+    
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
 
     query = """
@@ -2067,6 +2179,22 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
     from io import BytesIO
     import discord
     import requests
+
+    user_id = str(interaction.user.id)
+    
+    global cached_users  # the dict version
+    
+    user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
+    
+    if not user_data:
+        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        return
+    
+    own_id = str(user_data.get("NationID", "")).strip()
+
+    if not own_id:
+            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+            return
 
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
     WARS_PER_GRAPH = 30  # chunk size for batch graphs
@@ -2608,6 +2736,21 @@ async def simulation(interaction: discord.Interaction, nation_id: str, war_type:
 @bot.tree.command(name="nation_info", description="Info on the chosen Nation")
 async def who_nation(interaction: discord.Interaction, who: discord.Member):
     await interaction.response.defer()
+    user_id = str(interaction.user.id)
+    
+    global cached_users  # the dict version
+    
+    user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
+    
+    if not user_data:
+        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        return
+    
+    own_id = str(user_data.get("NationID", "")).strip()
+
+    if not own_id:
+            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+            return
     try:
         target_username = who.name.lower()
 
@@ -3145,67 +3288,124 @@ user_nation_ids = {
 @bot.tree.command(name="help", description="Get the available commands")
 async def help(interaction: discord.Interaction):
     await interaction.response.defer()
+    user_id = str(interaction.user.id)
+    
+    global cached_users  # the dict version
+    
+    user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
+    
+    if not user_data:
+        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        return
+    
+    own_id = str(user_data.get("NationID", "")).strip()
+
+    if not own_id:
+            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+            return
     register_description = (
-        "Register yourself using this command to use the *many amazing* freatures of this bot, developed by **`@masteraced`**\n"
-        "The command is `/register nation_id: 680627`\n"
+        "Register yourself using this command to use the *many amazing* freatures of this bot, developed by **<@722094493343416392>**\n"
+        "The command is /register nation_id: 680627\n"
         "**Note:** The bot only works if you're registered\n"
     )
     warchest_desc = (
         "Calculates the needed amount of materials for a warchest and requests those\n"
         "Once your request was approved, it will inform you by pinging you\n"
-        "The command is `/request_warchest percent: 50% or 100%`\n"
+        "The command is /request_warchest percent: 50% or 100%\n"
     )
     warchest_audit_desc = (
         "Calculates the needed amount of materials for a warchest and generates a message to send to the audited user (no ping)\n"
-        "The command is `/warchest_audit who: 680627`\n"
+        "The command is /warchest_audit who: @sumnor_the_lazy\n"
+    )
+    war_losses_desc = (
+        "Get the war details for your last few wars\n"
+        "The command is /war_losses nation_id: 680627, wars_count: 20\n"
+    )
+    war_losses_alliance_desc = (
+        "Get the war details for the alliance\n"
+        "The command is /war_losses_alliance alliance_id: 10259, war_count: 150, money_more_detail: False\n"
+    )
+    res_in_m_desc = (
+        "Get the worth of the Alliance and their members with a graph\n"
+        "The command is /res_in_m_for_a mode: Hourly, scale: Billions\n "
+    )
+    res_detail_desc = (
+        "Get the exact number of resources and money + the total of the members of the alliance\n"
+        "The command is /res_details_for_alliance"
+    )
+    mmr_audit_desc = (
+        "Get the MMR and the military of the chosen person, with buttons to generate messages to whatever is wrong\n"
+        "The command is /mmr_audit who: @sumnor_the_lazy\n"
+    )
+    member_activity_desc = (
+        "Get a Pie Chart for the member activity\n"
+        "The command is /member_activity\n"
+    )
+    send_message_to_channels_desc = (
+        "Send a message to a few of you chosen channels\n"
+        "The command is /send_message_to_channels channels: #channel message: Pookie :heart:\n"
+    )
+    dm_user_desc = (
+        "Dm one user who is in the server\n"
+        "The command is /dm_user who: @masteraced message: Hello ~Pookie :heart:~\n"
     )
     battle_sim_desc = (
         "Generates an approximate battle based on the military of both nations and shows approximate win-chance\n"
-        "The command is `/battle_sim nation_id: 680627 war_type: Raid`\n"
+        "The command is /battle_sim nation_id: 680627, war_type: Raid\n"
     )
     my_nation_desc = (
-        "Gives you your own nation's military, score and war policy\n"
-        "The command is `/my_nation`\n"
-    )
-    resources_desc = (
-        "Gives you your own nation's resources\n"
-        "The command is `/resources`\n"
+        "Shows some general information about the chosen person's nation\n"
+        "The command is /nation_info who: @sumnor_the_lazy\n"
     )
     request_grant_desc = (
         "Requests the requested materials. This command is to make the EA departments job easier\n"
-        "The command is `/request_grant request: money 9mil, steel 7k, munition 70, ... reason: Warchest`\n"
+        "The command is /request_grant food: 18mil, uranium: 6k, bauxite: 980, ..., reason: Resources for Production, ...\n"
     )
     request_city_desc = (
         "Calculates the approximate cost to buy the requested cities and, if wanted, requests them\n"
-        "The command is `/request_city current_city: 10 target_city: 15`\n"
-        "**Note**: on bigger request the cost inflates a bit\n"
+        "The command is /request_city current_city: 10, target_city: 15\n"
+        "**Note**: On bigger requests the cost inflates a bit\n"
     )
     request_infra_grant_desc = (
         "Calculates the approximate cost of the wanted infra and, if wanted, requests them\n"
-        "The command is `/request_infra_grant current_infra: 10 wanted_infra: 1500 city_amount:10`\n"
-        "**Note**: on bigger request the cost inflates a bit\n"
+        "The command is /request_infra_cost current_infra: 10, target_infra: 1500, city_amount: 10 or if you want it automatically calculated /request_infra_grant target_infra: 2000. This will calculate the cost to get all your cities to 2k infra\n"
+        "**Note**: On bigger requests the cost inflates a bit\n"
     )
     request_project_desc = (
         "Calculates the needed materials and money to get the wanted project and, if wanted, requests it\n"
-        "The command is `/request_project project: Moon Landing`\n"
+        "The command is /request_project project: Moon Landing\n"
     )
     bug_rep_desc = (
         "Report a bug"
-        "The command is `/bug_report bug: insert bug report here`\n"
+        "The command is /bug_report bug: insert bug report here\n"
     )
     gov_msg = (
         "\n***`/register`:***\n"
         f"{register_description}"
         "\n***`/request_warchest`:***\n"
         f"{warchest_desc}"
-        "\n***`/warchest_audit`\n:***"
+        "\n***`/warchest_audit`:***\n"
         f"{warchest_audit_desc}"
+        "\n***`/war_losses`:***\n"
+        f"{war_losses_desc}"
+        "\n***`/war_losses_alliance`:***\n"
+        f"{war_losses_alliance_desc}"
+        "\n***`/res_in_m_for_a`:***\n"
+        f"{res_in_m_desc}"
+        "\n***`/res_details_for_alliance`:***\n"
+        f"{res_detail_desc}"
+        "\n***`/mmr_audit`:***\n"
+        f"{mmr_audit_desc}"
+        "\n***`/member_activity`:***\n"
+        f"{member_activity_desc}"
+        "\n***`/send_message_to_channels`:***\n"
+        f"{send_message_to_channels_desc}"
+        "\n***`/dm_user`:***\n"
+        f"{dm_user_desc}"
         "\n***`/battle_sim`:***\n"
         f"{battle_sim_desc}"
-        "\n***`/my_nation`:***\n"
+        "\n***`/nation_info`:***\n"
         f"{my_nation_desc}"
-        "\n***`/resources`:***\n"
-        f"{resources_desc}"
         "\n***`/request_grant`:***\n"
         f"{request_grant_desc}"
         "\n***`/request_city`:***\n"
@@ -3214,11 +3414,9 @@ async def help(interaction: discord.Interaction):
         f"{request_infra_grant_desc}"
         "\n***`/request_project`:***\n"
         f"{request_project_desc}"
-        "\n***`/bug_report`:***\n"
-        f"{bug_rep_desc}"
     )
     gov_mssg = discord.Embed(
-        title="List of the commands (including the government once):",
+        title="List of the commands (including the government ones):",
         color=discord.Color.purple(),
         description=gov_msg
     )
@@ -3230,12 +3428,14 @@ async def help(interaction: discord.Interaction):
         f"{register_description}"
         "\n***`/request_warchest`:***\n"
         f"{warchest_desc}"
+        "\n***`/war_losses`:***\n"
+        f"{war_losses_desc}"
+        "\n***`/war_losses_alliance`:***\n"
+        f"{war_losses_alliance_desc}"
         "\n***`/battle_sim`:***\n"
         f"{battle_sim_desc}"
-        "\n***`/my_nation`:***\n"
+        "\n***`/nation_info`:***\n"
         f"{my_nation_desc}"
-        "\n***`/resources`:***\n"
-        f"{resources_desc}"
         "\n***`/request_grant`:***\n"
         f"{request_grant_desc}"
         "\n***`/request_city`:***\n"
@@ -3244,8 +3444,6 @@ async def help(interaction: discord.Interaction):
         f"{request_infra_grant_desc}"
         "\n***`/request_project`:***\n"
         f"{request_project_desc}"
-        "\n***`/bug_report`:***\n"
-        f"{bug_rep_desc}"
     )
 
     norm_mssg = discord.Embed(
@@ -3270,7 +3468,22 @@ async def help(interaction: discord.Interaction):
 @app_commands.describe(who="Tag the person you want to audit")
 async def warchest_audit(interaction: discord.Interaction, who: discord.Member):
     await interaction.response.defer()
+    user_id = str(interaction.user.id)
+    
+    global cached_users  # the dict version
+    
+    user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
+    
+    if not user_data:
+        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        return
+    
+    own_id = str(user_data.get("NationID", "")).strip()
 
+    if not own_id:
+            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+            return
+    
     target_username = who.name.lower()
 
     # Find cached discord ID by matching DiscordUsername from cached_users
@@ -3930,7 +4143,30 @@ async def request_project(interaction: Interaction, project_name: str, tech_adva
 )
 async def dm_user(interaction: discord.Interaction, user: discord.User, message: str):
     await interaction.response.defer(ephemeral=True)
+    user_id = str(interaction.user.id)
+    
+    global cached_users  # the dict version
+    
+    user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
+    
+    if not user_data:
+        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        return
+    
+    own_id = str(user_data.get("NationID", "")).strip()
 
+    if not own_id:
+            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+            return
+    async def is_banker(interaction):
+        return (
+        any(role.name == "Government member" for role in interaction.user.roles)
+            or str(interaction.user.id) == "1148678095176474678"
+        )
+
+    if not await is_banker(interaction):
+        await interaction.followup.send("❌ You don't have the rights, lil bro.")
+        return
     better_msg = message.replace(")(", "\n")
     try:
         await user.send(better_msg)
@@ -3953,7 +4189,21 @@ async def dm_user(interaction: discord.Interaction, user: discord.User, message:
 )
 async def send_message_to_channels(interaction: discord.Interaction, channel_ids: str, message: str):
     await interaction.response.defer()
+    user_id = str(interaction.user.id)
+    
+    global cached_users  # the dict version
+    
+    user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
+    
+    if not user_data:
+        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        return
+    
+    own_id = str(user_data.get("NationID", "")).strip()
 
+    if not own_id:
+            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+            return
     # Clean and split channel IDs
     channel_ids_list = [cid.strip().replace("<#", "").replace(">", "") for cid in channel_ids.split()]
 
@@ -3988,36 +4238,5 @@ async def send_message_to_channels(interaction: discord.Interaction, channel_ids
         f"✅ Sent message to **{sent_count}** channel(s).\n"
         f"❌ Failed for **{failed_count}** channel(s)."
     )
-
-
-@bot.tree.command(name="bug_report", description="Report a bug you found")
-@app_commands.describe(bug="Describe the bug and tell me on which command you got it")
-async def bug_report(interaction: discord.Interaction, bug: str):
-    await interaction.response.defer()
-    user_name = interaction.user.name
-    try:
-        with open("Bugs.json", "r") as f:
-            data = json.load(f)  # Make sure we're loading the file as a dictionary, not a string
-    except FileNotFoundError:
-        data = {}  # If file doesn't exist, initialize an empty dictionary
-
-
-    # Add the new registration
-    data[user_name] = {
-        "Bug": bug
-    }
-
-    # Save the updated data to the file
-    try:
-        with open("Bugs.json", "w") as f:
-            json.dump(data, f, indent=4)
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error saving bug report: {e}")
-        return
-
-    await interaction.followup.send("✅ You're report was loged successfully, we will follow-up shortly")
-
-
-
 
 bot.run(bot_key)
