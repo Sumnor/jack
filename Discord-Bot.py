@@ -1741,6 +1741,7 @@ async def member_activity(interaction: discord.Interaction):
     await interaction.response.defer()
 
     activish = 0
+    activish_wo_bloc = 0
     active_w_bloc = 0
     active_wo_bloc = 0
     inactive = 0
@@ -1767,7 +1768,10 @@ async def member_activity(interaction: discord.Interaction):
             if days_inactive >= 2:
                 inactive += 1
             elif days_inactive >= 1:
-                activish += 1
+                if colour.lower() == "black":
+                    activish += 1
+                else:
+                    activish_wo_bloc += 1
             else:
                 if colour.lower() == "black":
                     active_w_bloc += 1
@@ -1781,11 +1785,12 @@ async def member_activity(interaction: discord.Interaction):
     # Create pie chart
     fig, ax = plt.subplots(figsize=(10, 5), subplot_kw=dict(aspect="equal"))
 
-    data = [active_w_bloc, active_wo_bloc, activish, inactive]
+    data = [active_w_bloc, active_wo_bloc, activish, activish_wo_bloc, inactive]
     labels = [
         "Active (Correct Bloc)",
         "Active (Wrong Bloc)",
-        "Activish (1-2 Days)",
+        "Activish with Correct Bloc(1-2 Days)",
+        "Activish with Wrong Bloc(1 -2 Days)",
         "Inactive (2+ Days)"
     ]
 
