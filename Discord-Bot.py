@@ -1802,8 +1802,8 @@ async def member_activity(interaction: discord.Interaction):
     labels = [
         "Active (Correct Bloc)",
         "Active (Wrong Bloc)",
-        "Activish (Correct Bloc, 1-2 Days)",
-        "Activish (Wrong Bloc, 1-2 Days)",
+        "Activish (Correct Bloc, 1-2)",
+        "Activish (Wrong Bloc, 1-2)",
         "Inactive (2+ Days)"
     ]
 
