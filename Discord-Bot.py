@@ -1635,7 +1635,7 @@ async def res_in_m_for_a(
         embed.add_field(file)
         image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
         embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
-        await interaction.followup.send(embed=embed)
+        await interaction.followup.send(embed=embed, file=file)
 
     except Exception as e:
         print(f"Failed to generate or send graph: {e}")
