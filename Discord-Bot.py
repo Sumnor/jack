@@ -1597,7 +1597,7 @@ async def res_in_m_for_a(
             return f"{value:,.2f}{label_suffix}"
 
         plt.style.use("ggplot")
-        fig, ax = plt.subplots(figsize=(12, 8))
+        fig, ax = plt.subplots(figsize=(13, 8))
 
         times = df["TimeT"]
 
