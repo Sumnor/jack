@@ -1335,12 +1335,10 @@ async def res_details_for_alliance(interaction: discord.Interaction):
         colour=discord.Colour.dark_magenta()
     )
 
-    file = discord.File(io.StringIO(text_content), filename="alliance_resources.txt")
-    embed.add_field(file)
     image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
     embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
     try:
-        await interaction.followup.send(embed=embed)
+        await interaction.followup.send(embed=embed,  file=discord.File(io.StringIO(text_content), filename="alliance_resources.txt"))
     except Exception as e:
         print(f"Error sending detailed resources file: {e}")
         await interaction.followup.send(embed=embed)
