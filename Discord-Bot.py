@@ -1736,7 +1736,7 @@ async def end_conflict(interaction: discord.Interaction, conflict_name: str):
         await interaction.followup.send(f"❌ Failed to end conflict '{conflict_name}'. Check logs for details.")
 """
 
-@bot.tree.command(name="member activity", description="Shows the activity of our members")
+@bot.tree.command(name="member_activity", description="Shows the activity of our members")
 async def member_activity(interaction: discord.Interaction):
     await interaction.response.defer()
 
