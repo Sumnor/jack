@@ -1575,10 +1575,13 @@ async def res_in_m_for_a(
 
         if mode and mode.value.lower() == "days":
             df = df.resample("d").mean().interpolate()
+            df = df[df.index >= (df.index.max() - pd.Timedelta(days=7))]
         else:
             df = df.resample("h").max().interpolate()
-
+            df = df[df.index >= (df.index.max() - pd.Timedelta(hours=24))]
+        
         df = df.reset_index()
+
 
     except Exception as e:
         print(f"Failed loading/parsing sheet data for graph: {e}")
