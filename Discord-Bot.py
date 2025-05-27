@@ -55,7 +55,7 @@ cached_sheet_data = []
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
-bot_key = os.getenv("bot_key")
+bot_key = os.getenv("Key")
 API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
@@ -284,7 +284,7 @@ class GrantView(View):
     @button(label="🕒 Delay", style=discord.ButtonStyle.primary, custom_id="grant_delay")
     async def delay_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self.is_government_member(interaction):
-            await interaction.followup.send("❌ You need the 'Banker' role to delay grant requests.", ephemeral=True)
+            await interaction.response.send_message("❌ You need the 'Banker' role to approve grant requests.", ephemeral=True)
             return
 
         try:
@@ -2491,26 +2491,26 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member):
     try:
         target_username = who.name.lower()
 
-        target_discord_id = None
+        own_id = None
         for discord_id, info in cached_users.items():
             if info['DiscordUsername'].lower() == target_username:
-                target_discord_id = discord_id
+                own_id = info.get('NationID')  # or 'own_id' depending on your sheet
                 break
 
-        if target_discord_id is None:
+        if own_id is None:
             await interaction.followup.send(
                 f"❌ Could not find Nation ID for {who.mention}. "
                 "They must be registered in the Google Sheet with their Discord username."
             )
             return
 
-        nation_name, nation_leader, nation_score, war_policy, soldiers, tanks, aircraft, ships, spies, missiles, nuclear = get_military(target_discord_id)
-        nation_name, num_cities, food, money, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, uranium = get_resources(target_discord_id)
-        alliance_id, alliance_position, alliance, domestic_policy, num_cities, colour, activity = get_general_data(target_discord_id)
+        nation_name, nation_leader, nation_score, war_policy, soldiers, tanks, aircraft, ships, spies, missiles, nuclear = get_military(own_id)
+        nation_name, num_cities, food, money, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, uranium = get_resources(own_id)
+        alliance_id, alliance_position, alliance, domestic_policy, num_cities, colour, activity = get_general_data(own_id)
 
         msg = (
             f"**📋 GENERAL INFOS:**\n"
-            f"🌍 *Nation:* {nation_name} (Nation ID: `{target_discord_id}`)\n"
+            f"🌍 *Nation:* {nation_name} (Nation ID: `{own_id}`)\n"
             f"👑 *Leader:* {nation_leader}\n"
             f"🔛 *Active:* {activity}"
             f"🫂 *Alliance:* {alliance} (Alliance ID: `{alliance_id}`)\n"
