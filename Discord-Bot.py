@@ -1783,7 +1783,7 @@ async def member_activity(interaction: discord.Interaction):
             continue
 
     # Create pie chart
-    fig, ax = plt.subplots(figsize=(10, 5), subplot_kw=dict(aspect="equal"))
+    fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(aspect="equal"))
 
     data = [active_w_bloc, active_wo_bloc, activish, activish_wo_bloc, inactive]
     labels = [
