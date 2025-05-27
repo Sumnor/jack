@@ -55,7 +55,7 @@ cached_sheet_data = []
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
-bot_ey = os.getenv("bot_key")
+bot_key = os.getenv("bot_key")
 API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
@@ -1631,11 +1631,9 @@ async def res_in_m_for_a(
         plt.close(fig)
         buf.seek(0)
 
-        file = discord.File(fp=buf, filename="resources_graph.png")
-        embed.add_field(file)
         image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
         embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
-        await interaction.followup.send(embed=embed, file=file)
+        await interaction.followup.send(embed=embed, file=discord.File(fp=buf, filename="resources_graph.png"))
 
     except Exception as e:
         print(f"Failed to generate or send graph: {e}")
@@ -1923,7 +1921,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
     # Send text summary
     txt_buffer = BytesIO(all_log.encode("utf-8"))
     txt_buffer.seek(0)
-    await interaction.followup.send(embed=embed)
+    await interaction.followup.send(embed=embed, file=discord.File(txt_buffer, filename=f"nation_{nation_id}_wars_summary.txt"))
 
 
 from datetime import datetime
