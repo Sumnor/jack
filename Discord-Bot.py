@@ -55,7 +55,7 @@ cached_sheet_data = []
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="/", intents=intents)
-bot_ey = os.getenv("Key")
+bot_key = os.getenv("Key")
 API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
@@ -1330,6 +1330,7 @@ async def res_details_for_alliance(interaction: discord.Interaction):
     )
 
     text_content = "\n".join(lines) + total_resources_line
+    
 
     embed = discord.Embed(
         title="Alliance Members' Resources and Money (Detailed)",
@@ -1745,6 +1746,11 @@ async def member_activity(interaction: discord.Interaction):
     active_w_bloc = 0
     active_wo_bloc = 0
     inactive = 0
+    activish_list = []
+    activish_wo_bloc_list = []
+    active_w_bloc_list = []
+    active_wo_bloc_list = []
+    inactive_list = []
 
     try:
         sheet = get_registration_sheet()
@@ -1758,8 +1764,10 @@ async def member_activity(interaction: discord.Interaction):
 
     for own_id in nation_ids:
         try:
+            military_data = get_military(own_id)
+            nation_name = military_data[0]
+            nation_leader = military_data[1]
             alliance_id, alliance_position, alliance, domestic_policy, num_cities, colour, activity = get_general_data(own_id)
-            
             activity_dt = datetime.fromisoformat(activity)
             now = datetime.now(timezone.utc)
             delta = now - activity_dt
@@ -1767,17 +1775,22 @@ async def member_activity(interaction: discord.Interaction):
 
             if days_inactive >= 2:
                 inactive += 1
+                inactive_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}\n")
             elif days_inactive >= 1:
                 if colour.lower() == "black":
                     activish += 1
+                    activish_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}\n")
                 else:
                     activish_wo_bloc += 1
+                    activish_wo_bloc_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}\n")
             else:
                 if colour.lower() == "black":
                     active_w_bloc += 1
+                    active_w_bloc_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}\n")
                 else:
                     active_wo_bloc += 1
-            await asyncio.sleep(2)
+                    active_wo_bloc_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}\n")
+            await asyncio.sleep(3)
         except Exception as e:
             print(f"Error processing nation ID {own_id}: {e}")
             continue
@@ -1798,8 +1811,7 @@ async def member_activity(interaction: discord.Interaction):
         absolute = int(np.round(pct / 100. * np.sum(allvals)))
         return f"{pct:.1f}%\n({absolute})"
 
-    wedges, texts, autotexts = ax.pie(data, autopct=lambda pct: func(pct, data),
-                                      textprops=dict(color="w"))
+    wedges, texts, autotexts = ax.pie(data, autopct=lambda pct: func(pct, data), textprops=dict(color="w"))
 
     ax.legend(wedges, labels,
               title="DS Member Statuses",
@@ -1814,15 +1826,35 @@ async def member_activity(interaction: discord.Interaction):
     plt.savefig(buffer, format="png")
     buffer.seek(0)
     file = discord.File(fp=buffer, filename="ds_activity.png")
-
     embed = discord.Embed(
         title="📊 DS Activity",
-        description="Breakdown of member activity status.",
+        description="Here are the members not in ideal status categories:",
         color=discord.Color.dark_teal()
     )
+
+    def add_field_chunks(embed, title, lines):
+        if not lines:
+            return
+        current = ""
+        for i, line in enumerate(lines):
+            if len(current) + len(line) > 1024:
+                embed.add_field(name=title if i == 0 else f"{title} (cont.)", value=current, inline=False)
+                current = line
+            else:
+                current += line
+        if current:
+            embed.add_field(name=title if not embed.fields or embed.fields[-1].name != title else f"{title} (cont.)", value=current, inline=False)
+
+    add_field_chunks(embed, "Active (Wrong Bloc)", active_wo_bloc_list)
+    add_field_chunks(embed, "Activish (Correct Bloc)", activish_list)
+    add_field_chunks(embed, "Activish (Wrong Bloc)", activish_wo_bloc_list)
+    add_field_chunks(embed, "Inactive", inactive_list)
+    image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+    embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
     embed.set_image(url="attachment://ds_activity.png")
 
-    await interaction.followup.send(embed=embed, file=file)    
+    await interaction.followup.send(embed=embed, file=file)
+
 
 import discord
 import requests
