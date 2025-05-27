@@ -526,7 +526,9 @@ def get_general_data(nation_id):
                 row.get("alliance_position", "Unknown"),
                 row.get("alliance.name", "None/Unaffiliated"),
                 row.get("domestic_policy", "Unknown"),
-                row.get("num_cities", "/")
+                row.get("num_cities", "/"),
+                row.get("color", "Unknown"),
+                row.get("last_active", "/")
             )
         except IndexError:
             return None
@@ -2483,37 +2485,38 @@ async def simulation(interaction: discord.Interaction, nation_id: str, war_type:
         await interaction.followup.send(f"❌ Error: {e}")
 
 
-@bot.tree.command(name="my_nation", description="Your own Nation")
-async def own_nation(interaction: discord.Interaction):
+@bot.tree.command(name="nation_info", description="Info on the chosen Nation")
+async def who_nation(interaction: discord.Interaction, who: discord.Member):
     await interaction.response.defer()
-
-    user_id = str(interaction.user.id)
     try:
-        global cached_users  # the dict version
-        
-        user_data = cached_users.get(user_id)  # user_id as int, no need to cast to string if keys are ints
-        
-        if not user_data:
-            await interaction.followup.send("❌ You are not registered. Use `/register` first.")
-            return
-        
-        own_id = str(user_data.get("NationID", "")).strip()
+        target_username = who.name.lower()
 
-        if not own_id:
-            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+        target_discord_id = None
+        for discord_id, info in cached_users.items():
+            if info['DiscordUsername'].lower() == target_username:
+                target_discord_id = discord_id
+                break
+
+        if target_discord_id is None:
+            await interaction.followup.send(
+                f"❌ Could not find Nation ID for {who.mention}. "
+                "They must be registered in the Google Sheet with their Discord username."
+            )
             return
 
-        nation_name, nation_leader, nation_score, war_policy, soldiers, tanks, aircraft, ships, spies, missiles, nuclear = get_military(own_id)
-        nation_name, num_cities, food, money, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, uranium = get_resources(own_id)
-        alliance_id, alliance_position, alliance, domestic_policy, num_cities = get_general_data(own_id)
+        nation_name, nation_leader, nation_score, war_policy, soldiers, tanks, aircraft, ships, spies, missiles, nuclear = get_military(target_discord_id)
+        nation_name, num_cities, food, money, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, uranium = get_resources(target_discord_id)
+        alliance_id, alliance_position, alliance, domestic_policy, num_cities, colour, activity = get_general_data(target_discord_id)
 
         msg = (
             f"**📋 GENERAL INFOS:**\n"
-            f"🌍 *Nation:* {nation_name} (Nation ID: {own_id})\n"
+            f"🌍 *Nation:* {nation_name} (Nation ID: `{target_discord_id}`)\n"
             f"👑 *Leader:* {nation_leader}\n"
-            f"🫂 *Alliance:* {alliance} (Alliance ID: {alliance_id})\n"
+            f"🔛 *Active:* {activity}"
+            f"🫂 *Alliance:* {alliance} (Alliance ID: `{alliance_id}`)\n"
             f"🎖️ *Alliance Position:* {alliance_position}\n"
             f"🏙️ *Cities:* {num_cities}\n"
+            f"🎨 *Color Trade Bloc::* {colour}"
             f"📈 *Score:* {nation_score}\n"
             f"📜 *Domestic Policy:* {domestic_policy}\n"
             f"🛡 *War Policy:* {war_policy}\n\n"
