@@ -2508,15 +2508,34 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member):
         nation_name, num_cities, food, money, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, uranium = get_resources(own_id)
         alliance_id, alliance_position, alliance, domestic_policy, num_cities, colour, activity = get_general_data(own_id)
 
+        try:
+            activity_dt = datetime.fromisoformat(activity)
+            now = datetime.now(timezone.utc)
+            delta = now - activity_dt
+        
+            if delta.total_seconds() < 60:
+                activity_str = "just now"
+            elif delta.total_seconds() < 3600:
+                minutes = int(delta.total_seconds() // 60)
+                activity_str = f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+            elif delta.total_seconds() < 86400:
+                hours = int(delta.total_seconds() // 3600)
+                activity_str = f"{hours} hour{'s' if hours != 1 else ''} ago"
+            else:
+                days = int(delta.total_seconds() // 86400)
+                activity_str = f"{days} day{'s' if days != 1 else ''} ago"
+        except Exception:
+            activity_str = "Unknown"
+
         msg = (
             f"**📋 GENERAL INFOS:**\n"
             f"🌍 *Nation:* {nation_name} (Nation ID: `{own_id}`)\n"
             f"👑 *Leader:* {nation_leader}\n"
-            f"🔛 *Active:* {activity}"
+            f"🔛 *Active:* {activity_str}\n"
             f"🫂 *Alliance:* {alliance} (Alliance ID: `{alliance_id}`)\n"
             f"🎖️ *Alliance Position:* {alliance_position}\n"
             f"🏙️ *Cities:* {num_cities}\n"
-            f"🎨 *Color Trade Bloc::* {colour}"
+            f"🎨 *Color Trade Bloc::* {colour}\n"
             f"📈 *Score:* {nation_score}\n"
             f"📜 *Domestic Policy:* {domestic_policy}\n"
             f"🛡 *War Policy:* {war_policy}\n\n"
