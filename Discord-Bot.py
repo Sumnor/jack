@@ -212,17 +212,17 @@ class MMRView(View):
 
 
 class BlueGuy(discord.ui.View):
-    def __init__(self, category=None, data=None, person=None):
+    def __init__(self, category=None, data=None):
         super().__init__(timeout=None)
         self.category = category
         self.data = data or {}
-        self.person = person
 
     @discord.ui.button(label="Request Grant", style=discord.ButtonStyle.green, custom_id="req_money_needed")
     async def send_request(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
+        person = self.data.get("person", None)
         presser = interaction.user.mention
-        if presser != self.person:
+        if presser != person:
             await interaction.followup.send("No :wilted_rose:", ephemeral=True)
             return
 
@@ -3769,8 +3769,9 @@ async def request_city(interaction: discord.Interaction, current_cities: int, ta
             "nation_id": own_id,
             "from": current_cities,
             "city_num": target_cities,
-            "total_cost": total_cost
-        }, person=user_id)
+            "total_cost": total_cost,
+            "person": user_id
+            )
 )
 
 def get_city_data(nation_id: str) -> list[dict]:
@@ -3963,7 +3964,8 @@ async def infra_upgrade_cost(
             "from": current_infra,
             "infra": target_infra,
             "ct_count": city_amount,
-            "total_cost": rounded_total_cost
+            "total_cost": rounded_total_cost,
+            "person": user_id
         }
         
         embed = discord.Embed(
