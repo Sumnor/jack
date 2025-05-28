@@ -3771,7 +3771,7 @@ async def request_city(interaction: discord.Interaction, current_cities: int, ta
             "city_num": target_cities,
             "total_cost": total_cost,
             "person": user_id
-        }
+        })
         
                     )
 
