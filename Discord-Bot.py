@@ -215,8 +215,8 @@ class BlueGuy(discord.ui.View):
     def __init__(self, category=None, data=None, person=None):
         super().__init__(timeout=None)
         self.category = category
-        self.person = person
         self.data = data or {}
+        self.person = person
 
     @discord.ui.button(label="Request Grant", style=discord.ButtonStyle.green, custom_id="req_money_needed")
     async def send_request(self, interaction: discord.Interaction, button: discord.ui.Button):
