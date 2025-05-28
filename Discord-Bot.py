@@ -3772,7 +3772,7 @@ async def request_city(interaction: discord.Interaction, current_cities: int, ta
             "total_cost": total_cost,
             "person": user_id
         }
-)
+                    )
 
 def get_city_data(nation_id: str) -> list[dict]:
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
