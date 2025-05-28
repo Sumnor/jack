@@ -3772,6 +3772,7 @@ async def request_city(interaction: discord.Interaction, current_cities: int, ta
             "total_cost": total_cost,
             "person": user_id
         }
+        
                     )
 
 def get_city_data(nation_id: str) -> list[dict]:
