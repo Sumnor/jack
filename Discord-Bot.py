@@ -77,19 +77,57 @@ UNIT_PRICES = {
 
 BANK_PERMISSION_TYPE = "Nation Deposit to Bank"
 
+class AmountModal(discord.ui.Modal, title="Enter Amount"):
+    amount = discord.ui.TextInput(label="How much?", placeholder="e.g., 50", required=True)
+
+    def __init__(self, on_submit):
+        super().__init__()
+        self.on_submit_callback = on_submit
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await self.on_submit_callback(interaction, self.amount.value)
+
 class MessageView(View):
     def __init__(self, description_text):
         super().__init__()
         self.description_text = description_text
 
     @discord.ui.button(label="Generate Message", style=discord.ButtonStyle.green, custom_id="gm_message_button")
-    async def copy_message_button(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.defer()
-        await interaction.followup.send(
-            f"You are missing the following: \n"
-            f"{self.description_text}\n"
-            f"Use the `/warchest` command in <#1338510585595428895>."
-        )
+    async def copy_message_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Define the modal
+        class AmountModal(discord.ui.Modal, title="Select Warchest Percentage"):
+            amount = discord.ui.TextInput(
+                label="Warchest Percentage",
+                placeholder="50% or 100%",
+                required=True,
+                max_length=4
+            )
+
+            def __init__(self, on_submit):
+                super().__init__()
+                self.on_submit_callback = on_submit
+
+            async def on_submit(self, interaction: discord.Interaction):
+                await self.on_submit_callback(interaction, self.amount.value)
+
+        # Define what to do with the result
+        async def handle_submit(interaction: discord.Interaction, how_much: str):
+            await interaction.response.defer()
+            if how_much == "100%":
+                what = f"Use the `/request_warchest` command in <#1338510585595428895> and request a `100% warchest`."
+            elif how_much == "50%":
+                what = f"Use the `/request_warchest` command in <#1338510585595428895> and request a `50% warchest`. You don't really need a 100% warchest atm"
+            else:
+                what = f"Invalid percentage provided: `{how_much}`"
+
+            await interaction.followup.send(
+                f"You are missing the following:\n"
+                f"{self.description_text}\n\n"
+                f"{what}"
+            )
+
+        # Show modal
+        await interaction.response.send_modal(AmountModal(on_submit=handle_submit))
 
 from discord.ui import View, button
 from discord import ButtonStyle
@@ -1152,10 +1190,10 @@ async def mmr_audit(interaction: discord.Interaction, who: discord.Member):
         if military_data is None:
             await interaction.followup.send("❌ Could not retrieve military data for this nation.")
             return
-
         (
             nation_name,
             leader_name,
+            score,
             warpolicy,
             soldiers,
             tanks,
