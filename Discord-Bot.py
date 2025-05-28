@@ -220,7 +220,7 @@ class BlueGuy(discord.ui.View):
     @discord.ui.button(label="Request Grant", style=discord.ButtonStyle.green, custom_id="req_money_needed")
     async def send_request(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        person = self.data.get("person", None)
+        person = str(self.data.get("person", None))
         presser = interaction.user.mention
         if presser != person:
             await interaction.followup.send("No :wilted_rose:", ephemeral=True)
