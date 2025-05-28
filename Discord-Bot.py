@@ -3923,7 +3923,8 @@ async def infra_upgrade_cost(
             "from": current_infra,
             "infra": target_infra,
             "ct_count": city_amount,
-            "total_cost": cost
+            "total_cost": cost,
+            "person": user_id
         }
 
         embed = discord.Embed(
