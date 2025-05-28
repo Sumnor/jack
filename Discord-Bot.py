@@ -221,7 +221,7 @@ class BlueGuy(discord.ui.View):
     async def send_request(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         person = str(self.data.get("person", None))
-        presser = interaction.user.mention
+        presser = str(interaction.user.mention)
         if presser != person:
             await interaction.followup.send("No :wilted_rose:", ephemeral=True)
             return
@@ -3742,6 +3742,7 @@ async def request_city(interaction: discord.Interaction, current_cities: int, ta
 
     for i in range(current_cities + 1, target_cities + 1):
         cost = compute_city_cost(i, top20Average)
+        user_id = interaction.user.mention
 
         # Apply the rounding logic based on the new rounding criteria
         rounding_multiple = get_rounding_multiple(i)
@@ -4178,7 +4179,7 @@ async def request_project(interaction: Interaction, project_name: str, tech_adva
 
         await interaction.followup.send(
             embed=embed,
-            view=BlueGuy(category="project", data={"nation_name": nation_name, "nation_id": own_id, "project_name": project_name, "materials": mats})
+            view=BlueGuy(category="project", data={"nation_name": nation_name, "nation_id": own_id, "project_name": project_name, "materials": mats, "person": user_id})
         )
     else:
         await interaction.followup.send("❌ Project not found.")
