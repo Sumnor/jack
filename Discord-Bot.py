@@ -3919,6 +3919,7 @@ async def infra_upgrade_cost(
         cost = calculate_infra_cost_for_range(current, target_infra)
         if cost > 900_000:
             cost = math.ceil(cost / 10_000) * 10_000
+        user_id = interaction.user.mention
         data = {
             "nation_name": nation_name,
             "nation_id": nation_id,
@@ -4178,6 +4179,7 @@ async def request_project(interaction: Interaction, project_name: str, tech_adva
             f"\n\n**Requested by:** {interaction.user.mention}\n"
             f"**Reason:**\nBuild project: {project_name.title()}"
         )
+        user_id = interaction.user.mention
 
         await interaction.followup.send(
             embed=embed,
