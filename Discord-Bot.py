@@ -3937,7 +3937,7 @@ async def infra_upgrade_cost(
             color=discord.Color.gold(),
             description=f"Upgrade from {current} to {target_infra}\nEstimated Cost: **${cost:,.0f}**"
         )
-        embed.set_footer(text="Brought to you by Darkstar\nPersonal Contribution by @patrickrickrickpatrick", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
+        embed.set_footer(text="Brought to you by Darkstar\nPersonal Contribution by <@1026284133481189388>", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
         await interaction.followup.send(
             embed=embed,
             view=BlueGuy(category="infra", data=data)
@@ -3998,6 +3998,16 @@ async def infra_upgrade_cost(
     total_cost = calculate_total_infra_cost(current_infra, target_infra, city_amount)
     if total_cost > 900_000:
         total_cost = math.ceil(total_cost / 100_000) * 100_000
+        
+    data = {
+            "nation_name": nation_name,
+            "nation_id": nation_id,
+            "from": current_infra,
+            "infra": target_infra,
+            "ct_count": city_amount,
+            "total_cost": rounded_total_cost,
+            "person": user_id
+        }
 
     embed = discord.Embed(
         title="🛠️ Infrastructure Upgrade Cost",
@@ -4005,7 +4015,7 @@ async def infra_upgrade_cost(
         description=f"From `{current_infra}` to `{target_infra}` for `{city_amount}` city(ies)\nEstimated Cost: **${total_cost:,.0f}**"
     )
     embed.set_footer(text="Brought to you by Darkstar", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
-    await interaction.followup.send(embed=embed, view=BlueGuy(money=total_cost), person=user_id)
+    await interaction.followup.send(embed=embed, view=BlueGuy(data=data))
 
 
 list_of_em = [
