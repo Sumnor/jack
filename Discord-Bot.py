@@ -221,7 +221,7 @@ class BlueGuy(discord.ui.View):
     async def send_request(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         person = str(self.data.get("person", None))
-        presser = str(interaction.user.mention)
+        presser = str(interaction.user.id)
         if presser != person:
             await interaction.followup.send("No :wilted_rose:", ephemeral=True)
             return
