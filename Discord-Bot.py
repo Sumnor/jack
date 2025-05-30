@@ -4009,13 +4009,14 @@ async def infra_upgrade_cost(
             "person": user_id
         }
 
+
     embed = discord.Embed(
         title="🛠️ Infrastructure Upgrade Cost",
         color=discord.Color.green(),
         description=f"From `{current_infra}` to `{target_infra}` for `{city_amount}` city(ies)\nEstimated Cost: **${total_cost:,.0f}**"
     )
     embed.set_footer(text="Brought to you by Darkstar", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
-    await interaction.followup.send(embed=embed, view=BlueGuy(data=data))
+    await interaction.followup.send(embed=embed, view=BlueGuy(category="infra", data=data))
 
 
 list_of_em = [
