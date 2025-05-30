@@ -3742,7 +3742,7 @@ async def request_city(interaction: discord.Interaction, current_cities: int, ta
 
     for i in range(current_cities + 1, target_cities + 1):
         cost = compute_city_cost(i, top20Average)
-        user_id = interaction.user.mention
+        user_id = interaction.user.id
 
         # Apply the rounding logic based on the new rounding criteria
         rounding_multiple = get_rounding_multiple(i)
