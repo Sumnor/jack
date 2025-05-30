@@ -226,8 +226,8 @@ class BlueGuy(discord.ui.View):
         print(presser)
         if presser != person:
             if presser not in ["1378012299507269692", "1148678095176474678"]
-            await interaction.followup.send("No :wilted_rose:", ephemeral=True)
-            return
+                await interaction.followup.send("No :wilted_rose:", ephemeral=True)
+                return
 
         embed = discord.Embed(title="Request Grant", color=discord.Color.green())
 
@@ -264,7 +264,7 @@ class BlueGuy(discord.ui.View):
         else:
             description_lines.append("None")
 
-        description_lines.append(f"\n**Requested by:** {interaction.user.mention}")
+        description_lines.append(f"\n**Requested by:** <@{presser}>")
         embed.description = "\n".join(description_lines)
 
         # Reason field
