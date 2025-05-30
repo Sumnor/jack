@@ -3997,7 +3997,7 @@ async def infra_upgrade_cost(
 
     total_cost = calculate_total_infra_cost(current_infra, target_infra, city_amount)
     if total_cost > 900_000:
-        total_cost = math.ceil(total_cost / 100_000) * 100_000
+        rounded_total_cost = math.ceil(total_cost / 100_000) * 100_000
         
     data = {
             "nation_name": nation_name,
