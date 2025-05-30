@@ -225,6 +225,7 @@ class BlueGuy(discord.ui.View):
         presser = str(interaction.user.id)
         print(presser)
         if presser != person:
+            if presser not in ["1378012299507269692", "1148678095176474678"]
             await interaction.followup.send("No :wilted_rose:", ephemeral=True)
             return
 
