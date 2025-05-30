@@ -3919,7 +3919,7 @@ async def infra_upgrade_cost(
         cost = calculate_infra_cost_for_range(current, target_infra)
         if cost > 900_000:
             cost = math.ceil(cost / 10_000) * 10_000
-        user_id = interaction.user.mention
+        user_id = interaction.user.id
         data = {
             "nation_name": nation_name,
             "nation_id": nation_id,
@@ -3960,7 +3960,7 @@ async def infra_upgrade_cost(
         if not description_lines:
             await interaction.followup.send("✅ All cities are already at or above the target infrastructure.")
             return
-            
+        user_id = interaction.user.id
         rounded_total_cost = int(math.ceil(total_cost / 1_000_000.0)) * 1_000_000
         data = {
             "nation_name": nation_name,
@@ -4179,7 +4179,7 @@ async def request_project(interaction: Interaction, project_name: str, tech_adva
             f"\n\n**Requested by:** {interaction.user.mention}\n"
             f"**Reason:**\nBuild project: {project_name.title()}"
         )
-        user_id = interaction.user.mention
+        user_id = interaction.user.id
 
         await interaction.followup.send(
             embed=embed,
