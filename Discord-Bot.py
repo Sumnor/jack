@@ -2887,12 +2887,10 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member):
 
 
 reasons_for_grant = [
-    app_commands.Choice(name="Warchest", value="warchest"),
-    app_commands.Choice(name="Rebuilding Stage 1", value="rebuilding_stage_1"),
-    app_commands.Choice(name="Rebuilding Stage 2", value="rebuilding_stage_2"),
-    app_commands.Choice(name="Rebuilding Stage 3", value="rebuilding_stage_3"),
-    app_commands.Choice(name="Rebuilding Stage 4", value="rebuilding_stage_4"),
-    app_commands.Choice(name="Project", value="project"),
+    #app_commands.Choice(name="Rebuilding Stage 1", value="rebuilding_stage_1"),
+    #app_commands.Choice(name="Rebuilding Stage 2", value="rebuilding_stage_2"),
+   # app_commands.Choice(name="Rebuilding Stage 3", value="rebuilding_stage_3"),
+   # app_commands.Choice(name="Rebuilding Stage 4", value="rebuilding_stage_4"),
     app_commands.Choice(name="Resources for Production", value="Resources for Production"),
 ]
 
