@@ -400,7 +400,7 @@ class GrantView(View):
                 "Oil": "-o",
                 "Uranium": "-u",
                 "Lead": "-l",
-                "Iron": "-I",
+                "Iron": "-i",
                 "Bauxite": "-b",
                 "Coal": "-c",
             }
