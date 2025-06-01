@@ -26,6 +26,9 @@ from discord.ui import View, Modal, TextInput, button
 from discord.ui import Button, View
 import random
 import os
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
 from io import BytesIO
 import json
 from datetime import datetime
@@ -1020,11 +1023,15 @@ async def hourly_snapshot():
             print(f"❌ Error fetching prices: {e}")
             prices = {}
 
+        seen_ids = set()
+
         for user_id, user_data in cached_users.items():
             nation_id = str(user_data.get("NationID", "")).strip()
-            if not nation_id:
+            if not nation_id or nation_id in seen_ids:
                 failed += 1
                 continue
+
+            seen_ids.add(nation_id)
 
             try:
                 resources = get_resources(nation_id)
@@ -1467,11 +1474,15 @@ async def res_details_for_alliance(interaction: discord.Interaction):
         "num_cities": 0,
     }
 
+    seen_ids = set()
+
     for user_id, user_data in cached_users.items():
-        own_id = str(user_data.get("NationID", "")).strip()
-        if not own_id:
+        nation_id = str(user_data.get("NationID", "")).strip()
+        if not nation_id or nation_id in seen_ids:
             failed += 1
             continue
+
+        seen_ids.add(nation_id)
 
         try:
             result = get_resources(own_id)
@@ -1720,11 +1731,17 @@ async def res_in_m_for_a(
     sheet = get_registration_sheet()
     rows = sheet.get_all_records()
 
-    for row in rows:
-        nation_id = str(row.get("NationID", "")).strip()
-        if not nation_id:
+    seen_ids = set()
+
+    for user_id, user_data in cached_users.items():
+        nation_id = str(user_data.get("NationID", "")).strip()
+        if not nation_id or nation_id in seen_ids:
             failed += 1
             continue
+
+        seen_ids.add(nation_id)
+        # ... proceed
+
 
         try:
             result = get_resources(nation_id)
