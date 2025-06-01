@@ -1473,16 +1473,14 @@ async def res_details_for_alliance(interaction: discord.Interaction):
         "num_cities": 0,
     }
 
-    seen_ids = set()
+    seen_nation_ids = set()
     
-    for user_id, user_data in cached_users.items():
-        nation_id = str(user_data.get("NationID", "")).strip()
-        if not nation_id or nation_id in seen_ids:
-            failed += 1
+    for uid, udata in cached_users.items():
+        nation_id = str(udata.get("NationID", "")).strip()
+        if not nation_id or nation_id in seen_nation_ids:
             continue
-    
-        seen_ids.add(nation_id)
-        # ... proceed
+        seen_nation_ids.add(nation_id)
+
 
 
         try:
@@ -1732,15 +1730,14 @@ async def res_in_m_for_a(
     sheet = get_registration_sheet()
     rows = sheet.get_all_records()
 
-    seen_ids = set()
-    
-    for row in rows:
-        nation_id = str(row.get("NationID", "")).strip()
-        if not nation_id or nation_id in seen_ids:
-            failed += 1
+seen_nation_ids = set()
+
+    for uid, udata in cached_users.items():
+        nation_id = str(udata.get("NationID", "")).strip()
+        if not nation_id or nation_id in seen_nation_ids:
             continue
-    
-        seen_ids.add(nation_id)
+        seen_nation_ids.add(nation_id)
+
 
 
         try:
