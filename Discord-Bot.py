@@ -26,6 +26,9 @@ from discord.ui import View, Modal, TextInput, button
 from discord.ui import Button, View
 import random
 import os
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
 from io import BytesIO
 import json
 from datetime import datetime
@@ -276,8 +279,6 @@ class BlueGuy(discord.ui.View):
 
         await interaction.message.edit(embed=embed, view=GrantView())
 
-
-
 class GrantView(View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -400,7 +401,7 @@ class GrantView(View):
                 "Oil": "-o",
                 "Uranium": "-u",
                 "Lead": "-l",
-                "Iron": "-i",
+                "Iron": "-I",
                 "Bauxite": "-b",
                 "Coal": "-c",
             }
@@ -685,7 +686,7 @@ def get_alliance_sheet():
 
 def get_conflict_sheet():
     client = get_client()
-    return client.open("Alliance Conflict").sheet1  # was incorrectly "Alliance Conflicts"
+    return client.open("AllianceConflict").sheet1  # was incorrectly "Alliance Conflicts"
 
 def get_conflict_data_sheet():
     client = get_client()
@@ -726,13 +727,14 @@ def save_conflict_row(data_row):
 
 def update_conflict_row(row_number, col_number, value):
     try:
-        sheet = get_conflict_data_sheet()
+        sheet = get_conflict_sheet()
         sheet.update_cell(row_number, col_number, value)
-        print("✅ Conflict data updated")
+        print(f"✅ Conflict row {row_number} updated at column {col_number} with value: {value}")
     except Exception as e:
         print(f"❌ Failed to update conflict data: {e}")
+        raise
 
-def log_to_alliance_conflict(name, start, end=None):
+def log_to_alliance_conflict(name, start, end=None, closed="False", enemy_ids="", message=""):
     try:
         sheet = get_conflict_sheet()
         records = sheet.get_all_values()
@@ -740,13 +742,14 @@ def log_to_alliance_conflict(name, start, end=None):
             if row[0].strip().lower() == name.lower():
                 if end:
                     sheet.update_cell(i, 3, end)
-                    print(f"✅ Updated end date for '{name}' in Alliance Conflict")
+                # Optionally update other columns if needed
                 return
-        sheet.append_row([name, start, end or ""])
+        sheet.append_row([name, start, end or "", closed, enemy_ids, message])
         print(f"✅ Logged new conflict '{name}' to Alliance Conflict")
     except Exception as e:
         print(f"❌ Failed to log to Alliance Conflict: {e}")
         print(traceback.format_exc())
+
 
 # --- Caching and Loading Sheet Data ---
 
@@ -781,10 +784,14 @@ def load_conflicts_data():
     try:
         sheet = get_conflict_sheet()
         cached_conflicts = sheet.get_all_records()
+        if cached_conflicts:
+            print(f"Sample conflict row: {cached_conflicts[0]}")
         print(f"✅ Loaded {len(cached_conflicts)} conflicts from sheet.")
+        return sheet
     except Exception as e:
         print(f"❌ Failed to load conflicts sheet data: {e}")
         print(traceback.format_exc())
+        return None
 
 def load_conflict_data():
     global cached_conflict_data
@@ -792,7 +799,7 @@ def load_conflict_data():
         sheet = get_conflict_data_sheet()
         cached_conflict_data = sheet.get_all_records()
         print(f"✅ Loaded {len(cached_conflict_data)} conflict data records from sheet.")
-        return sheet  # <-- This is the fix
+        return sheet
     except Exception as e:
         print(f"❌ Failed to load conflict data sheet: {e}")
         print(traceback.format_exc())
@@ -851,9 +858,120 @@ def load_sheet_data():
         print(traceback.format_exc())
 
 
-from datetime import datetime, timezone
-last_snapshot_hour = None 
-from datetime import datetime, timezone
+@tasks.loop(hours=1)
+async def hourly_war_check():
+    print("⏰ Running hourly war check...")
+    try:
+        sheet = get_conflict_data_sheet()
+        existing_war_ids = set(str(row[3]) for row in sheet.get_all_values()[1:] if row[3])
+
+        load_conflict_data()
+        active_conflicts = [c for c in cached_conflicts if c.get("Closed", "").lower() != "true"]
+
+        for conflict in active_conflicts:
+            enemy_ids = [int(id.strip()) for id in str(conflict.get("EnemyIDs", "")).split(",") if id.strip().isdigit()]
+            if not enemy_ids:
+                continue
+
+            GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
+            headers = {"Content-Type": "application/json"}
+            query = """
+            query AllianceWars($id: [Int], $limit: Int) {
+              alliances(id: $id) {
+                data {
+                  id
+                  name
+                  wars(limit: $limit) {
+                    id
+                    date
+                    end_date
+                    winner_id
+                    att_money_looted
+                    def_money_looted
+                    attacker {
+                      id
+                      nation_name
+                      alliance_id
+                      wars {
+                        id
+                        attacks { money_stolen }
+                      }
+                    }
+                    defender {
+                      id
+                      nation_name
+                      alliance_id
+                      wars {
+                        id
+                        attacks { money_stolen }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            """
+
+            variables = {"id": enemy_ids, "limit": 500}
+
+            try:
+                response = requests.post(GRAPHQL_URL, json={"query": query, "variables": variables}, headers=headers)
+                response.raise_for_status()
+                result = response.json()
+            except Exception as e:
+                print(f"❌ API request failed: {e}")
+                continue
+
+            alliances_wrapper = result.get("data", {}).get("alliances", {})
+            alliances_data = alliances_wrapper.get("data", [])
+            if not alliances_data:
+                continue
+
+            new_wars = []
+
+            for alliance in alliances_data:
+                for war in alliance.get("wars", []):
+                    war_id = str(war.get("id"))
+                    if war_id in existing_war_ids or war.get("end_date"):
+                        continue
+
+                    war_date = war.get("date", "")[:10]
+                    attacker_data = war.get("attacker", {})
+                    defender_data = war.get("defender", {})
+
+                    attacker = attacker_data.get("nation_name", "")
+                    defender = defender_data.get("nation_name", "")
+
+                    result_str = (
+                        "Attacker" if war.get("winner_id") == attacker_data.get("id") else
+                        "Defender" if war.get("winner_id") == defender_data.get("id") else
+                        "Draw"
+                    )
+
+                    att_money = sum((a.get("money_stolen") or 0) for w in attacker_data.get("wars", []) for a in w.get("attacks", []))
+                    def_money = sum((a.get("money_stolen") or 0) for w in defender_data.get("wars", []) for a in w.get("attacks", []))
+
+                    if attacker_data.get("alliance_id") == 10259:
+                        money_gained = att_money
+                        money_lost = def_money
+                    else:
+                        money_gained = def_money
+                        money_lost = att_money
+
+                    new_wars.append([
+                        conflict["Name"], war_date, "", war_id,
+                        attacker, defender, result_str,
+                        str(money_gained), str(money_lost)
+                    ])
+
+            if new_wars:
+                sheet.append_rows(new_wars)
+                print(f"📥 Logged {len(new_wars)} new wars for conflict '{conflict['Name']}'.")
+
+    except Exception as e:
+        print(f"❌ Error in hourly war check: {e}")
+
+
 @tasks.loop(hours=1)
 async def hourly_snapshot():
     now = datetime.now(timezone.utc)
@@ -982,6 +1100,10 @@ async def on_ready():
     print("Starting hourly snapshot task...")
     if not hourly_snapshot.is_running():
         hourly_snapshot.start()
+    if not hasattr(bot, "war_check_started"):  # Prevent multiple starts if on_ready fires again
+        bot.war_check_started = True
+        bot.loop.create_task(hourly_war_check())
+        print("✅ hourly_war_check task started.")
     await bot.tree.sync()
     print(f"✅ Logged in as {bot.user}")
 
@@ -1459,6 +1581,53 @@ from matplotlib.ticker import FuncFormatter
 import io
 import pandas as pd  # We'll use pandas for daily aggregation
 import requests
+'''
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+
+@bot.tree.command(name="check_site", description="Check for messages and buttons on a site.")
+async def check_site(interaction: discord.Interaction):
+    await interaction.response.defer()
+
+    options = Options()
+    options.add_argument("--headless")  # Optional: run in headless mode
+    options.add_argument("user-agent=Mozilla/5.0")  # Helps avoid bot detection
+    driver = webdriver.Chrome(options=options)
+
+    results = []
+
+    try:
+        driver.get("https://politicsandwar.com/obl/host/")
+        page_text = driver.page_source.lower()
+
+        if "login" in page_text:
+            results.append("Login requested")
+
+        if "are you a robot?" in page_text:
+            try:
+                driver.switch_to.frame(driver.find_element(By.XPATH, "//iframe[contains(@src, 'recaptcha')]"))
+                checkbox = driver.find_element(By.ID, "recaptcha-anchor")
+                checkbox.click()
+                driver.switch_to.default_content()
+                results.append("Clicked 'I'm not a robot'")
+            except:
+                results.append("CAPTCHA interaction failed")
+
+        try:
+            host_div = driver.find_element(By.XPATH, "//div[@class='columnheader' and contains(text(), 'Host Home Game')]")
+            host_div.click()
+            results.append("Clicked 'Host Home Game'")
+        except:
+            results.append("'Host Home Game' not found")
+
+        await interaction.followup.send("\n".join(results))
+
+    except Exception as e:
+        await interaction.followup.send(f"Error occurred: {e}")
+    finally:
+        driver.quit()
+        '''
 
 @bot.tree.command(name="res_in_m_for_a", description="Get total Alliance Members' resources and money")
 @app_commands.describe(
@@ -1764,7 +1933,7 @@ async def res_in_m_for_a(
 
 
             
-"""
+
 @bot.tree.command(name="start_conflict", description="Start a new conflict.")
 @app_commands.describe(
     conflict_name="Name of the new conflict",
@@ -1773,20 +1942,121 @@ async def res_in_m_for_a(
 )
 async def start_conflict(interaction: discord.Interaction, conflict_name: str, message_to_members: str = None, enemy_alliance_ids: str = None):
     await interaction.response.defer()
-    load_conflicts_data()
+    load_conflict_data()
+
     if any(c.get("Name", "").lower() == conflict_name.lower() for c in cached_conflicts):
         await interaction.followup.send(f"❌ Conflict '{conflict_name}' already exists.")
         return
 
     enemy_ids = [int(id.strip()) for id in enemy_alliance_ids.split(",") if id.strip().isdigit()] if enemy_alliance_ids else []
+    declaring_alliance_id = 10259
     today = date.today().isoformat()
-    row = [conflict_name, today, "", "False", ",".join(map(str, enemy_ids)), message_to_members or ""]
-    save_conflict_row(row)
 
-    # ✅ Log to Alliance Conflict
-    log_to_alliance_conflict(conflict_name, today)
+    # Save to ConflictData sheet (start row)
 
-    await interaction.followup.send(f"✅ Conflict '{conflict_name}' started. Enemy alliances: {enemy_ids}")
+    # Fetch initial wars (only by 10259)
+    GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
+    headers = {"Content-Type": "application/json"}
+
+    query = """
+    query($id: [Int], $limit: Int) {
+        alliances(id: $id) {
+            data {
+                id
+                name
+                wars(limit: $limit, orderBy: [{ column: DATE, order: DESC }]) {
+                    id
+                    date
+                    end_date
+                    winner_id
+                    att_money_looted
+                    def_money_looted
+                    attacker {
+                        id
+                        nation_name
+                        alliance_id
+                        wars {
+                            id
+                            attacks { money_stolen }
+                        }
+                    }
+                    defender {
+                        id
+                        nation_name
+                        alliance_id
+                        wars {
+                            id
+                            attacks { money_stolen }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    """
+
+    variables = {"id": [declaring_alliance_id], "limit": 50}
+
+    try:
+        response = requests.post(GRAPHQL_URL, json={"query": query, "variables": variables}, headers=headers)
+        response.raise_for_status()
+        result = response.json()
+    except requests.RequestException as e:
+        await interaction.followup.send(f"❌ Error fetching wars: {e}")
+        return
+
+    if "errors" in result:
+        await interaction.followup.send(f"API error: {result['errors']}")
+        return
+
+    sheet = get_conflict_data_sheet()
+    existing_war_ids = set(str(row[3]) for row in sheet.get_all_values()[1:] if row[3])
+
+    alliances = result.get("data", {}).get("alliances", {}).get("data", [])
+    if not alliances:
+        await interaction.followup.send("❌ No alliance data found.")
+        return
+
+    new_wars = []
+    for alliance in alliances:
+        for war in alliance.get("wars", []):
+            war_id = str(war.get("id"))
+            if war_id in existing_war_ids or war.get("end_date"):
+                continue
+
+            war_date = war.get("date", "")[:10]
+            if war_date != today:
+                continue
+
+            attacker = war["attacker"]
+            defender = war["defender"]
+            result_str = (
+                "Attacker" if war.get("winner_id") == attacker.get("id") else
+                "Defender" if war.get("winner_id") == defender.get("id") else
+                "Draw"
+            )
+
+            att_money = sum((a.get("money_stolen") or 0) for w in attacker.get("wars", []) for a in w.get("attacks", []))
+            def_money = sum((a.get("money_stolen") or 0) for w in defender.get("wars", []) for a in w.get("attacks", []))
+
+            # 10259 is attacker alliance; it gains money
+            money_gained = att_money
+            money_lost = def_money
+
+            new_wars.append([
+                conflict_name, war_date, "", war_id,
+                attacker.get("nation_name", ""), defender.get("nation_name", ""),
+                result_str, str(money_gained), str(money_lost)
+            ])
+
+    if new_wars:
+        sheet.append_rows(new_wars)
+
+    # Log to AllianceConflict
+    log_to_alliance_conflict(conflict_name, today, enemy_ids=",".join(map(str, enemy_ids)), message=message_to_members or "")
+
+    await interaction.followup.send(f"✅ Conflict '{conflict_name}' started. Wars today: {len(new_wars)}")
+
 
 @bot.tree.command(name="add_to_conflict", description="Add enemy alliances to an existing conflict.")
 @app_commands.describe(
@@ -1795,14 +2065,17 @@ async def start_conflict(interaction: discord.Interaction, conflict_name: str, m
 )
 async def add_to_conflict(interaction: discord.Interaction, conflict_name: str, enemy_alliance_ids: str):
     await interaction.response.defer()
-    load_conflicts_data()
+
+    # Correctly load conflicts, not conflict_data
+    load_conflicts_data()  # This loads cached_conflicts
+
     row_idx = None
     conflict = None
 
     for i, c in enumerate(cached_conflicts):
         if c.get("Name", "").lower() == conflict_name.lower() and c.get("Closed", "").lower() != "true":
             conflict = c
-            row_idx = i + 2
+            row_idx = i + 2  # +2 for 1-based index and header row
             break
 
     if not conflict:
@@ -1812,13 +2085,27 @@ async def add_to_conflict(interaction: discord.Interaction, conflict_name: str, 
     existing_ids = str(conflict.get("EnemyIDs", ""))
     existing_id_set = set(map(int, filter(str.isdigit, existing_ids.split(",")))) if existing_ids else set()
     new_ids = set(map(int, filter(str.isdigit, enemy_alliance_ids.split(","))))
-
     updated_ids = existing_id_set.union(new_ids)
     updated_ids_str = ",".join(map(str, sorted(updated_ids)))
 
-    update_conflict_row(row_idx, 5, updated_ids_str)
+    sheet = get_conflict_sheet()
+    headers = sheet.row_values(1)
+    try:
+        enemy_col_idx = headers.index("EnemyIDs") + 1  # Convert to 1-based index
+    except ValueError:
+        await interaction.followup.send("❌ Could not find 'EnemyIDs' column.")
+        return
+
+    # Update the sheet cell with new enemy IDs
+    try:
+        update_conflict_row(row_idx, enemy_col_idx, updated_ids_str)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to update conflict row: {e}")
+        return
 
     await interaction.followup.send(f"✅ Added enemy alliances {list(new_ids)} to conflict '{conflict_name}'.")
+
+
 
 @bot.tree.command(name="end_conflict", description="Mark an existing conflict as ended.")
 @app_commands.describe(
@@ -1853,7 +2140,6 @@ async def end_conflict(interaction: discord.Interaction, conflict_name: str):
     except Exception as e:
         print(f"❌ Failed to end conflict '{conflict_name}': {e}")
         await interaction.followup.send(f"❌ Failed to end conflict '{conflict_name}'. Check logs for details.")
-"""
 
 @bot.tree.command(name="member_activity", description="Shows the activity of our members")
 async def member_activity(interaction: discord.Interaction):
@@ -2205,64 +2491,120 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
     await interaction.followup.send(embed=embed, file=discord.File(txt_buffer, filename=f"nation_{nation_id}_wars_summary.txt"))
 
 
-from datetime import datetime
+# Here's the updated and complete code as requested:
+# ✅ Integrated conflict-based graph plotting with proper headers and plotting logic
+# ✅ Conflict name handling, graph title with last update, and graph generation for saved sheet data
+
+from datetime import datetime, date
+from collections import defaultdict
 import matplotlib.pyplot as plt
+from matplotlib.dates import DateFormatter
+import matplotlib.dates as mdates
 from io import BytesIO
 import discord
+import requests
+from discord import app_commands
+from dateutil import parser
 
 @bot.tree.command(name="war_losses_alliance", description="Show recent wars for an alliance with optional detailed stats and conflict mode.")
 @app_commands.describe(
     alliance_id="Alliance ID",
     war_count="Number of recent wars to display (default 30)",
-    money_more_detail="Set to true to show detailed money and outcome graphs (default false)"
+    money_more_detail="Set to true to show detailed money and outcome graphs (default false)",
+    conflict_name="Optional conflict name to get saved war stats and summary graph"
 )
-async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int, war_count: int = 30, money_more_detail: bool = False):
+async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int, war_count: int = 30, money_more_detail: bool = False, conflict_name: str = None):
     await interaction.response.defer()
-
-    from datetime import datetime, date
-    from collections import defaultdict
-    import matplotlib.pyplot as plt
-    from io import BytesIO
-    import discord
-    import requests
-
+    
     user_id = str(interaction.user.id)
-    
-    global cached_users  # the dict version
-    
-    user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
+    global cached_users
+    user_data = cached_users.get(user_id)
     
     if not user_data:
         await interaction.followup.send("❌ You are not registered. Use `/register` first.")
         return
     
     own_id = str(user_data.get("NationID", "")).strip()
-
     if not own_id:
-            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+        await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+        return
+
+    if conflict_name:
+        # ✅ If conflict specified, show graph for saved conflict data
+        try:
+            sheet = get_conflict_data_sheet()
+            all_rows = sheet.get_all_records()
+        except Exception as e:
+            await interaction.followup.send("❌ Failed to load conflict data.")
             return
+
+        # Filter relevant rows
+        relevant_rows = [row for row in all_rows if row.get("Conflict Name", "").lower() == conflict_name.lower()]
+        if not relevant_rows:
+            await interaction.followup.send(f"❌ No saved wars found for conflict '{conflict_name}'.")
+            return
+
+        war_dates = []
+        money_looted = []
+        outcomes = []
+
+        for row in relevant_rows:
+            try:
+                war_date = row.get("War Start Date") or row.get("War Date") or ""
+                dt = datetime.strptime(war_date[:10], "%Y-%m-%d").date()
+                war_dates.append(dt)
+
+                # Looted money
+                att_loot = float(row.get("Total Money Stolen (Attacker)", 0) or 0)
+                def_loot = float(row.get("Total Money Stolen (Defender)", 0) or 0)
+                money_looted.append(att_loot + def_loot)
+
+                # Outcome logic
+                outcome = row.get("Outcome", "").lower()
+                if outcome == "attacker win":
+                    outcomes.append(1)
+                elif outcome == "defender win":
+                    outcomes.append(-1)
+                else:
+                    outcomes.append(0)
+            except Exception as e:
+                print(f"⛔ Skipping bad conflict row: {e}")
+
+        if not war_dates:
+            await interaction.followup.send("❌ No valid data to graph.")
+            return
+
+        fig, ax1 = plt.subplots(figsize=(10, 5))
+
+        ax1.bar(war_dates, money_looted, width=0.8, color="red", label="Money Looted")
+        ax1.set_ylabel("Total Money Looted ($)")
+        ax1.xaxis.set_major_formatter(DateFormatter("%Y-%m-%d"))
+        ax1.xaxis.set_major_locator(mdates.DayLocator(interval=max(1, len(war_dates) // 10)))
+
+        ax2 = ax1.twinx()
+        ax2.plot(war_dates, outcomes, color="blue", marker="o", label="Outcome")
+        ax2.set_ylabel("Outcome")
+        ax2.set_yticks([-1, 0, 1])
+        ax2.set_yticklabels(["Defender Win", "Draw", "Attacker Win"])
+
+        plt.title(f"{conflict_name} - War Losses & Loot (Last update {datetime.now().strftime('%Y-%m-%d')})")
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+
+        buf = BytesIO()
+        plt.savefig(buf, format="png")
+        buf.seek(0)
+        plt.close(fig)
+
+        await interaction.followup.send(file=discord.File(buf, filename=f"{conflict_name}_summary.png"))
+        return
+
+    # ✅ CONTINUES WITH DEFAULT ALLIANCE WAR FETCHING IF NO CONFLICT NAME PROVIDED
 
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
-    WARS_PER_GRAPH = 30  # chunk size for batch graphs
-
-    conflict = None
-    if conflict_name:
-        for c in cached_conflicts:
-            if c.get("Name", "").lower() == conflict_name.lower():
-                conflict = c
-                break
-        if not conflict:
-            await interaction.followup.send(f"❌ Conflict '{conflict_name}' not found.")
-            return
-
     orderBy = [{"column": "ID", "order": "DESC"}]
 
-    query = """
-    query (
-        $id: [Int], 
-        $limit: Int, 
-        $orderBy: [AllianceWarsOrderByOrderByClause!]
-    ) {
+    query = """ query ( $id: [Int], $limit: Int, $orderBy: [AllianceWarsOrderByOrderByClause!] ) {
         alliances(id: $id) {
             data {
                 id
@@ -2274,37 +2616,21 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
                     reason
                     war_type
                     winner_id
-                    attacker {
-                        nation_name
-                        id
-                        alliance_id
-                    }
-                    defender {
-                        nation_name
-                        id
-                        alliance_id
-                    }
+                    attacker { nation_name id alliance_id }
+                    defender { nation_name id alliance_id }
                     att_infra_destroyed
                     def_infra_destroyed
-                    att_money_looted
-                    def_money_looted
                     def_soldiers_lost
                     att_soldiers_lost
-                    attacks {
-                        money_stolen
-                    }
+                    att_money_looted
+                    def_money_looted
+                    attacks { money_stolen }
                 }
             }
         }
-    }
-    """
+    }"""
 
-    variables = {
-        "id": [alliance_id],
-        "limit": 500,
-        "orderBy": orderBy,
-    }
-
+    variables = {"id": [alliance_id], "limit": 500, "orderBy": orderBy}
     headers = {"Content-Type": "application/json"}
 
     try:
@@ -2326,9 +2652,9 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
     alliance = alliances_data[0]
     wars = alliance.get("wars", [])
 
+    # ⚙️ Save matching conflict data to sheet
     if cached_conflicts:
         try:
-            # Load existing saved rows from your sheet
             sheet = get_conflict_data_sheet()
             all_saved_conflict_rows = sheet.get_all_records() or []
         except Exception as e:
@@ -2342,9 +2668,7 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
                 start = datetime.strptime(conflict.get("Start"), "%Y-%m-%d").date()
                 end_str = conflict.get("End")
                 end = datetime.strptime(end_str, "%Y-%m-%d").date() if end_str else date.today()
-                print(f"Conflict '{conflict.get('Name')}' start={start} end={end}")
             except Exception as e:
-                print(f"Skipping conflict due to bad date: {e}")
                 continue
 
             for war in wars:
@@ -2356,13 +2680,9 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
                 try:
                     war_date = datetime.strptime(war_date_str, "%Y-%m-%d").date()
                 except Exception:
-                    print(f"Skipping war {war_id} due to bad date: {war_date_str}")
                     continue
 
-                print(f"Checking war {war_id} on {war_date} against conflict {conflict.get('Name')} ({start} to {end})")
-
                 if start <= war_date <= end:
-                    print(f"War {war_id} matches conflict '{conflict.get('Name')}'")
                     try:
                         attacker = war.get("attacker", {})
                         defender = war.get("defender", {})
@@ -2377,29 +2697,35 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
                         else:
                             outcome = "Draw"
 
-                        money_looted = (war.get("att_money_looted", 0) or 0) + (war.get("def_money_looted", 0) or 0)
+                        att_loot = war.get("att_money_looted", 0) or 0
+                        def_loot = war.get("def_money_looted", 0) or 0
 
-                        # Skip draws with 0 earnings
-                        if outcome == "Draw" and money_looted == 0:
-                            continue
-
-                        new_row = [
+                        sheet.append_row([
                             conflict.get("Name", "Unknown"),
-                            conflict.get("Start", ""),
-                            conflict.get("End", ""),
-                            war_id,
                             attacker.get("nation_name", "Unknown"),
                             defender.get("nation_name", "Unknown"),
-                            outcome,
-                            money_looted
-                        ]
-
-                        load_conflict_data().append_row(new_row)
-                        print(f"✅ Saved war {war_id} to conflict data.")
-                        existing_ids_set.add(war_id)  # prevent saving again
-                        break  # ✅ Only one conflict match per war
+                            war_id,
+                            war.get("war_type", ""),
+                            war.get("reason", ""),
+                            war.get("date", ""),
+                            war.get("end_date", ""),
+                            attacker.get("alliance_id", ""),
+                            defender.get("alliance_id", ""),
+                            war.get("att_infra_destroyed", 0),
+                            war.get("def_infra_destroyed", 0),
+                            war.get("att_soldiers_lost", 0),
+                            war.get("def_soldiers_lost", 0),
+                            att_loot,
+                            def_loot,
+                            outcome
+                        ])
+                        existing_ids_set.add(war_id)
+                        break
                     except Exception as e:
-                        print(f"❌ Failed to save war row: {e}")
+                        print(f"❌ Failed to save conflict war: {e}")
+
+    # ✅ Now back to your existing plotting logic for live wars
+    # ✅ OMITTED FOR SPACE — reuse your existing plotting code below from your message
 
 
 
@@ -2529,6 +2855,7 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
 
 
     else:
+        WARS_PER_GRAPH = 30
         # money_more_detail == False: generate combined graphs in chunks of WARS_PER_GRAPH
         for batch_index, war_batch in enumerate(chunks(wars, WARS_PER_GRAPH), start=1):
             war_results = []
@@ -2887,10 +3214,12 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member):
 
 
 reasons_for_grant = [
-    #app_commands.Choice(name="Rebuilding Stage 1", value="rebuilding_stage_1"),
-    #app_commands.Choice(name="Rebuilding Stage 2", value="rebuilding_stage_2"),
-   # app_commands.Choice(name="Rebuilding Stage 3", value="rebuilding_stage_3"),
-   # app_commands.Choice(name="Rebuilding Stage 4", value="rebuilding_stage_4"),
+    app_commands.Choice(name="Warchest", value="warchest"),
+    app_commands.Choice(name="Rebuilding Stage 1", value="rebuilding_stage_1"),
+    app_commands.Choice(name="Rebuilding Stage 2", value="rebuilding_stage_2"),
+    app_commands.Choice(name="Rebuilding Stage 3", value="rebuilding_stage_3"),
+    app_commands.Choice(name="Rebuilding Stage 4", value="rebuilding_stage_4"),
+    app_commands.Choice(name="Project", value="project"),
     app_commands.Choice(name="Resources for Production", value="Resources for Production"),
 ]
 
