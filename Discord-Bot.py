@@ -1020,15 +1020,17 @@ async def hourly_snapshot():
             print(f"❌ Error fetching prices: {e}")
             prices = {}
 
-        seen_ids = set()
+    seen_ids = set()
+    
+    for user_id, user_data in cached_users.items():
+        nation_id = str(user_data.get("NationID", "")).strip()
+        if not nation_id or nation_id in seen_ids:
+            failed += 1
+            continue
+    
+        seen_ids.add(nation_id)
+        # ... proceed as usual
 
-        for user_id, user_data in cached_users.items():
-            nation_id = str(user_data.get("NationID", "")).strip()
-            if not nation_id or nation_id in seen_ids:
-                failed += 1
-                continue
-
-            seen_ids.add(nation_id)
 
             try:
                 resources = get_resources(nation_id)
@@ -1472,14 +1474,16 @@ async def res_details_for_alliance(interaction: discord.Interaction):
     }
 
     seen_ids = set()
-
+    
     for user_id, user_data in cached_users.items():
         nation_id = str(user_data.get("NationID", "")).strip()
         if not nation_id or nation_id in seen_ids:
             failed += 1
             continue
-
+    
         seen_ids.add(nation_id)
+        # ... proceed
+
 
         try:
             result = get_resources(own_id)
@@ -1729,15 +1733,14 @@ async def res_in_m_for_a(
     rows = sheet.get_all_records()
 
     seen_ids = set()
-
-    for user_id, user_data in cached_users.items():
-        nation_id = str(user_data.get("NationID", "")).strip()
+    
+    for row in rows:
+        nation_id = str(row.get("NationID", "")).strip()
         if not nation_id or nation_id in seen_ids:
             failed += 1
             continue
-
+    
         seen_ids.add(nation_id)
-        # ... proceed
 
 
         try:
