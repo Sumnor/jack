@@ -26,9 +26,6 @@ from discord.ui import View, Modal, TextInput, button
 from discord.ui import Button, View
 import random
 import os
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
 from io import BytesIO
 import json
 from datetime import datetime
