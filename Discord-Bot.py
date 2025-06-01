@@ -1020,16 +1020,16 @@ async def hourly_snapshot():
             print(f"❌ Error fetching prices: {e}")
             prices = {}
 
-    seen_ids = set()
-    
-    for user_id, user_data in cached_users.items():
-        nation_id = str(user_data.get("NationID", "")).strip()
-        if not nation_id or nation_id in seen_ids:
-            failed += 1
-            continue
-    
-        seen_ids.add(nation_id)
-        # ... proceed as usual
+        seen_ids = set()
+        
+        for user_id, user_data in cached_users.items():
+            nation_id = str(user_data.get("NationID", "")).strip()
+            if not nation_id or nation_id in seen_ids:
+                failed += 1
+                continue
+        
+            seen_ids.add(nation_id)
+            # ... proceed as usual
 
 
             try:
