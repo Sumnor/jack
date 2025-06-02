@@ -3361,27 +3361,8 @@ RESOURCE_ABBR = {
     '$': '-$',  # Money
 }
 
-GRANT_REQUEST_CHANNEL_ID = 123456789012345678  # Replace with your channel ID where requests should be sent
-REASON_FOR_GRANT = "Resources for production"
-
-def parse_amount(amount):
-    try:
-        amount = str(amount).lower().replace(",", "").strip()
-        match = re.match(r"^([\d\.]+)\s*(k|m|mil|million)?$", amount)
-        if not match:
-            return 0
-        num, suffix = match.groups()
-        num = float(num)
-        if suffix in ("k",):
-            return int(num * 1_000)
-        elif suffix in ("m", "mil", "million"):
-            return int(num * 1_000_000)
-        return int(num)
-    except Exception:
-        return 0
-
 @bot.tree.command(
-    name="auto_resources_for_prod_req",
+    name="auto_resources_for_prod_req", 
     description="Set up auto resources request for production (bauxite, coal, iron, lead, oil)"
 )
 @app_commands.describe(
@@ -3407,50 +3388,68 @@ async def auto_resources_for_prod_req(
     user_id = str(interaction.user.id)
 
     if visual_confirmation.strip() != "Hypopothamus":
-        await interaction.followup.send("❌ Visual confirmation failed. Please type `Hypopothamus` exactly.", ephemeral=True)
+        await interaction.followup.send(
+            "❌ Visual confirmation failed. Please type `Hypopothamus` exactly.", ephemeral=True
+        )
         return
 
     user_data = cached_users.get(user_id)
     if not user_data:
-        await interaction.followup.send("❌ Could not find your registration info. Please register first.", ephemeral=True)
-        return
-    nation_name = user_data.get("NationName", "")
-    nation_id = user_data.get("NationID", "")
-    if not nation_name or not nation_id:
-        await interaction.followup.send("❌ Could not find your Nation Name or Nation ID in the system.", ephemeral=True)
+        await interaction.followup.send(
+            "❌ You are not registered. Please register first.", ephemeral=True
+        )
         return
 
+    nation_id = user_data.get("NationID", "").strip()
+    if not nation_id:
+        await interaction.followup.send(
+            "❌ Could not find your Nation ID in the registration data.", ephemeral=True
+        )
+        return
+
+    # Google Sheet access
     sheet = get_auto_requests_sheet()
     all_rows = sheet.get_all_values()
     if not all_rows or len(all_rows) < 1:
-        await interaction.followup.send("❌ AutoRequests sheet is empty or not found.", ephemeral=True)
+        await interaction.followup.send(
+            "❌ AutoRequests sheet is empty or not found.", ephemeral=True
+        )
         return
 
     header = all_rows[0]
-
     expected_headers = [
-        "DiscordID", "NationName", "NationID", "Coal", "Oil", "Bauxite", "Lead", "Iron", "TimePeriod", "LastRequested"
+        "DiscordID", "NationID", "Coal", "Oil", "Bauxite", "Lead", "Iron", "TimePeriod", "LastRequested"
     ]
-    # Simple header check
-    for h in expected_headers:
-        if h not in header:
-            await interaction.followup.send(f"❌ Missing expected column '{h}' in AutoRequests sheet.", ephemeral=True)
-            return
+    # Optional: validate headers exist
 
-    col_index = {col: idx for idx, col in enumerate(header)}
+    def parse_amount(amount):
+        try:
+            amount = str(amount).lower().replace(",", "").strip()
+            match = re.match(r"^([\d\.]+)\s*(k|m|mil|million)?$", amount)
+            if not match:
+                return 0
+            num, suffix = match.groups()
+            num = float(num)
+            if suffix in ("k",):
+                return int(num * 1_000)
+            elif suffix in ("m", "mil", "million"):
+                return int(num * 1_000_000)
+            return int(num)
+        except Exception:
+            return 0
 
     data_to_store = {
         "DiscordID": user_id,
-        "NationName": nation_name,
         "NationID": nation_id,
-        "Coal": str(parse_amount(coal)),
-        "Oil": str(parse_amount(oil)),
-        "Bauxite": str(parse_amount(bauxite)),
-        "Lead": str(parse_amount(lead)),
-        "Iron": str(parse_amount(iron)),
+        "Coal": parse_amount(coal),
+        "Oil": parse_amount(oil),
+        "Bauxite": parse_amount(bauxite),
+        "Lead": parse_amount(lead),
+        "Iron": parse_amount(iron),
         "TimePeriod": time_period.strip(),
-        # LastRequested should not be updated here
     }
+
+    col_index = {col: idx for idx, col in enumerate(header)}
 
     rows = all_rows[1:]
     user_row_index = None
@@ -3460,13 +3459,15 @@ async def auto_resources_for_prod_req(
             break
 
     if user_row_index:
-        # Update row except LastRequested
+        # Update existing row but don't overwrite LastRequested
         for key, val in data_to_store.items():
-            if key != "LastRequested" and key in col_index:
+            if key in col_index:
                 sheet.update_cell(user_row_index, col_index[key] + 1, val)
-        await interaction.followup.send("✅ Your auto-request has been updated successfully.", ephemeral=True)
+        await interaction.followup.send(
+            "✅ Your auto-request has been updated successfully.", ephemeral=True
+        )
     else:
-        # Append new row, LastRequested left blank
+        # Append new row with LastRequested blank
         new_row = []
         for col in header:
             if col == "LastRequested":
@@ -3474,11 +3475,9 @@ async def auto_resources_for_prod_req(
             else:
                 new_row.append(data_to_store.get(col, ""))
         sheet.append_row(new_row)
-        await interaction.followup.send("✅ Your auto-request has been added successfully.", ephemeral=True)
-
-# --- Background task to check and send requests ---
-
-
+        await interaction.followup.send(
+            "✅ Your auto-request has been added successfully.", ephemeral=True
+        )
 
 @bot.tree.command(name="disable_auto_request", description="Disable your auto-request for key raw resources")
 async def disable_auto_request(interaction: discord.Interaction):
