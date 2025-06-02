@@ -689,7 +689,9 @@ def get_conflict_data_sheet():
     client = get_client()
     return client.open("ConflictData").sheet1
 
-
+def get_auto_requests_sheet():
+    client = get_client()
+    return client.open("AutoRequests").sheet1  # or .worksheet("SheetName") if needed
 # --- Data Saving Functions ---
 
 def save_to_alliance_net(data_row):
@@ -699,6 +701,29 @@ def save_to_alliance_net(data_row):
         print("✅ Data saved to Alliance Net")
     except Exception as e:
         print(f"❌ Failed to save to Alliance Net: {e}")
+
+def save_auto_request(user_id, nation_id, nation_name, resources, time_period):
+    sheet = get_auto_requests_sheet()
+    values = [
+        user_id,
+        nation_id,
+        nation_name,
+        str(resources.get("Uranium", 0)),
+        str(resources.get("Coal", 0)),
+        str(resources.get("Oil", 0)),
+        str(resources.get("Bauxite", 0)),
+        str(resources.get("Lead", 0)),
+        str(resources.get("Iron", 0)),
+        str(resources.get("Steel", 0)),
+        str(resources.get("Aluminum", 0)),
+        str(resources.get("Gasoline", 0)),
+        str(resources.get("Money", 0)),
+        str(resources.get("Food", 0)),
+        str(resources.get("Munitions", 0)),
+        str(time_period),
+        "",  # LastRequested
+    ]
+    sheet.append_row(values)
 
 def save_dm_to_sheet(sender_name, recipient_name, message):
     sheet = get_dm_sheet()
@@ -854,6 +879,93 @@ def load_sheet_data():
         print(f"❌ Failed to load sheet data: {e}")
         print(traceback.format_exc())
 
+@tasks.loop(hours=1)  # adjust frequency as needed
+async def process_auto_requests():
+    GRANT_REQUEST_CHANNEL_ID = "1338510585595428895"
+    REASON_FOR_GRANT="Resources for Production (Auto)"
+    try:
+        sheet = get_auto_requests_sheet()
+        all_rows = sheet.get_all_values()
+        if not all_rows or len(all_rows) < 2:
+            return
+
+        header = all_rows[0]
+        col_index = {col: idx for idx, col in enumerate(header)}
+
+        rows = all_rows[1:]
+
+        channel = bot.get_channel(GRANT_REQUEST_CHANNEL_ID)
+        if channel is None:
+            print("Grant request channel not found!")
+            return
+
+        now = datetime.utcnow()
+
+        for i, row in enumerate(rows, start=2):
+            try:
+                discord_id = row[col_index["DiscordID"]].strip()
+                nation_name = row[col_index["NationName"]].strip()
+                nation_id = row[col_index["NationID"]].strip()
+                time_period_days = int(row[col_index["TimePeriod"]].strip() or "1")
+
+                # Parse LastRequested date
+                last_requested_str = row[col_index["LastRequested"]].strip()
+                if last_requested_str:
+                    last_requested = datetime.strptime(last_requested_str, "%Y-%m-%d %H:%M:%S")
+                else:
+                    last_requested = datetime.min
+
+                # Check if time period elapsed
+                if now - last_requested < timedelta(days=time_period_days):
+                    continue
+
+                # Parse resource amounts
+                requested_resources = {}
+                for res in ["Coal", "Oil", "Bauxite", "Lead", "Iron"]:
+                    val_str = row[col_index[res]].strip()
+                    amount = parse_amount(val_str)
+                    if amount > 0:
+                        requested_resources[res] = amount
+
+                if not requested_resources:
+                    continue  # no resources requested, skip
+
+                # Build embed description
+                formatted_lines = [
+                    f"{resource}: {amount:,}".replace(",", ".")
+                    for resource, amount in requested_resources.items()
+                ]
+                description_text = "\n".join(formatted_lines)
+
+                embed = discord.Embed(
+                    title="💰 Grant Request",
+                    color=discord.Color.gold(),
+                    description=(
+                        f"**Nation:** {nation_name} (`{nation_id}`)\n"
+                        f"**Requested by:** <@{discord_id}>\n"
+                        f"**Request:**\n{description_text}\n"
+                        f"**Reason:** {REASON_FOR_GRANT}\n"
+                    )
+                )
+                image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+                embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
+
+                await channel.send(embed=embed)
+
+                # Update LastRequested timestamp
+                sheet.update_cell(i, col_index["LastRequested"] + 1, now.strftime("%Y-%m-%d %H:%M:%S"))
+
+            except Exception as inner_ex:
+                print(f"Error processing row {i}: {inner_ex}")
+
+    except Exception as ex:
+        print(f"Error in process_auto_requests task: {ex}")
+
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user}!")
+    if not process_auto_requests.is_running():
+        process_auto_requests.start()
 
 @tasks.loop(hours=1)
 async def hourly_war_check():
@@ -3225,12 +3337,12 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member):
 
 
 reasons_for_grant = [
-    app_commands.Choice(name="Warchest", value="warchest"),
-    app_commands.Choice(name="Rebuilding Stage 1", value="rebuilding_stage_1"),
-    app_commands.Choice(name="Rebuilding Stage 2", value="rebuilding_stage_2"),
-    app_commands.Choice(name="Rebuilding Stage 3", value="rebuilding_stage_3"),
-    app_commands.Choice(name="Rebuilding Stage 4", value="rebuilding_stage_4"),
-    app_commands.Choice(name="Project", value="project"),
+    #app_commands.Choice(name="Warchest", value="warchest"),
+    #app_commands.Choice(name="Rebuilding Stage 1", value="rebuilding_stage_1"),
+   # app_commands.Choice(name="Rebuilding Stage 2", value="rebuilding_stage_2"),
+    #app_commands.Choice(name="Rebuilding Stage 3", value="rebuilding_stage_3"),
+    #app_commands.Choice(name="Rebuilding Stage 4", value="rebuilding_stage_4"),
+    #app_commands.Choice(name="Project", value="project"),
     app_commands.Choice(name="Resources for Production", value="Resources for Production"),
 ]
 
@@ -3248,6 +3360,166 @@ RESOURCE_ABBR = {
     'i': '-i',  # Iron
     '$': '-$',  # Money
 }
+
+GRANT_REQUEST_CHANNEL_ID = 123456789012345678  # Replace with your channel ID where requests should be sent
+REASON_FOR_GRANT = "Resources for production"
+
+def parse_amount(amount):
+    try:
+        amount = str(amount).lower().replace(",", "").strip()
+        match = re.match(r"^([\d\.]+)\s*(k|m|mil|million)?$", amount)
+        if not match:
+            return 0
+        num, suffix = match.groups()
+        num = float(num)
+        if suffix in ("k",):
+            return int(num * 1_000)
+        elif suffix in ("m", "mil", "million"):
+            return int(num * 1_000_000)
+        return int(num)
+    except Exception:
+        return 0
+
+@bot.tree.command(
+    name="auto_resources_for_prod_req",
+    description="Set up auto resources request for production (bauxite, coal, iron, lead, oil)"
+)
+@app_commands.describe(
+    coal="Amount of coal requested",
+    oil="Amount of oil requested",
+    bauxite="Amount of bauxite requested",
+    lead="Amount of lead requested",
+    iron="Amount of iron requested",
+    time_period="How often would you want this requested in days",
+    visual_confirmation="Type `Hypopothamus` for further confirmation"
+)
+async def auto_resources_for_prod_req(
+    interaction: discord.Interaction,
+    coal: str = "0",
+    oil: str = "0",
+    bauxite: str = "0",
+    lead: str = "0",
+    iron: str = "0",
+    time_period: str = "1",
+    visual_confirmation: str = ""
+):
+    await interaction.response.defer(ephemeral=True)
+    user_id = str(interaction.user.id)
+
+    if visual_confirmation.strip() != "Hypopothamus":
+        await interaction.followup.send("❌ Visual confirmation failed. Please type `Hypopothamus` exactly.", ephemeral=True)
+        return
+
+    user_data = cached_users.get(user_id)
+    if not user_data:
+        await interaction.followup.send("❌ Could not find your registration info. Please register first.", ephemeral=True)
+        return
+    nation_name = user_data.get("NationName", "")
+    nation_id = user_data.get("NationID", "")
+    if not nation_name or not nation_id:
+        await interaction.followup.send("❌ Could not find your Nation Name or Nation ID in the system.", ephemeral=True)
+        return
+
+    sheet = get_auto_requests_sheet()
+    all_rows = sheet.get_all_values()
+    if not all_rows or len(all_rows) < 1:
+        await interaction.followup.send("❌ AutoRequests sheet is empty or not found.", ephemeral=True)
+        return
+
+    header = all_rows[0]
+
+    expected_headers = [
+        "DiscordID", "NationName", "NationID", "Coal", "Oil", "Bauxite", "Lead", "Iron", "TimePeriod", "LastRequested"
+    ]
+    # Simple header check
+    for h in expected_headers:
+        if h not in header:
+            await interaction.followup.send(f"❌ Missing expected column '{h}' in AutoRequests sheet.", ephemeral=True)
+            return
+
+    col_index = {col: idx for idx, col in enumerate(header)}
+
+    data_to_store = {
+        "DiscordID": user_id,
+        "NationName": nation_name,
+        "NationID": nation_id,
+        "Coal": str(parse_amount(coal)),
+        "Oil": str(parse_amount(oil)),
+        "Bauxite": str(parse_amount(bauxite)),
+        "Lead": str(parse_amount(lead)),
+        "Iron": str(parse_amount(iron)),
+        "TimePeriod": time_period.strip(),
+        # LastRequested should not be updated here
+    }
+
+    rows = all_rows[1:]
+    user_row_index = None
+    for idx, row in enumerate(rows, start=2):
+        if len(row) > col_index["DiscordID"] and row[col_index["DiscordID"]] == user_id:
+            user_row_index = idx
+            break
+
+    if user_row_index:
+        # Update row except LastRequested
+        for key, val in data_to_store.items():
+            if key != "LastRequested" and key in col_index:
+                sheet.update_cell(user_row_index, col_index[key] + 1, val)
+        await interaction.followup.send("✅ Your auto-request has been updated successfully.", ephemeral=True)
+    else:
+        # Append new row, LastRequested left blank
+        new_row = []
+        for col in header:
+            if col == "LastRequested":
+                new_row.append("")
+            else:
+                new_row.append(data_to_store.get(col, ""))
+        sheet.append_row(new_row)
+        await interaction.followup.send("✅ Your auto-request has been added successfully.", ephemeral=True)
+
+# --- Background task to check and send requests ---
+
+
+
+@bot.tree.command(name="disable_auto_request", description="Disable your auto-request for key raw resources")
+async def disable_auto_request(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+
+    user_id = str(interaction.user.id)
+    sheet = get_auto_requests_sheet()
+    all_rows = sheet.get_all_values()
+
+    if not all_rows or len(all_rows) < 2:
+        await interaction.followup.send("⚠️ No auto-requests found in the sheet.", ephemeral=True)
+        return
+
+    header = all_rows[0]
+    rows = all_rows[1:]
+
+    try:
+        discord_idx = header.index("DiscordID")
+        tracked_resources = ["Bauxite", "Coal", "Iron", "Oil", "Lead"]
+        resource_indices = [header.index(r) for r in tracked_resources]
+    except ValueError as e:
+        await interaction.followup.send(f"❌ Header missing: {e}", ephemeral=True)
+        return
+
+    deleted = False
+    for i, row in enumerate(rows, start=2):  # start=2 for correct sheet row index
+        if row[discord_idx] != user_id:
+            continue
+
+        try:
+            if any(int(row[j].replace(",", "")) > 0 for j in resource_indices):
+                sheet.delete_rows(i)
+                deleted = True
+                break
+        except ValueError:
+            continue  # Skip malformed rows
+
+    if deleted:
+        await interaction.followup.send("✅ Your auto-request for raw resources has been disabled.", ephemeral=True)
+    else:
+        await interaction.followup.send("⚠️ No active auto-request for those resources found under your account.", ephemeral=True)
 
 @bot.tree.command(name="request_grant", description="Request a grant from the alliance bank")
 @app_commands.describe(
