@@ -1746,21 +1746,20 @@ async def check_site(interaction: discord.Interaction):
         driver.quit()
         '''
 
-@bot.command(name="auto_week_summary", description="See the total materials which are requested for this week")
-async def auto_week_summary(ctx):
+@bot.tree.command(name="auto_week_summary", description="See the total materials which are requested for this week")
+async def auto_week_summary(interaction: discord.Interaction):
     try:
         sheet = get_auto_requests_sheet()
         all_rows = await asyncio.to_thread(sheet.get_all_values)
 
         if not all_rows or len(all_rows) < 2:
-            await ctx.send("No data available.")
+            await interaction.response.send_message("No data available.", ephemeral=True)
             return
 
         header = all_rows[0]
         col_index = {col: idx for idx, col in enumerate(header)}
         rows = all_rows[1:]
 
-        # Totals in resources per week
         total_week = {res: 0 for res in ["Coal", "Oil", "Bauxite", "Lead", "Iron"]}
 
         for row in rows:
@@ -1793,11 +1792,12 @@ async def auto_week_summary(ctx):
         )
         embed.set_footer(text="Calculated from current auto-request data")
 
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
 
     except Exception as e:
-        print(f"Error in /autoweeksummary: {e}")
-        await ctx.send("❌ Error generating summary.")
+        print(f"Error in /auto_week_summary: {e}")
+        await interaction.response.send_message("❌ Error generating summary.", ephemeral=True)
+
 
 
 @bot.tree.command(name="res_in_m_for_a", description="Get total Alliance Members' resources and money")
