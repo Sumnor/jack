@@ -879,7 +879,7 @@ def load_sheet_data():
         print(f"❌ Failed to load sheet data: {e}")
         print(traceback.format_exc())
 
-@tasks.loop(hours=1)  # adjust frequency as needed
+@tasks.loop(minutes=1)  # adjust frequency as needed
 async def process_auto_requests():
     GRANT_REQUEST_CHANNEL_ID = "1338510585595428895"
     REASON_FOR_GRANT="Resources for Production (Auto)"
