@@ -1540,34 +1540,36 @@ async def res_details_for_alliance(interaction: discord.Interaction):
 
     user_id = str(interaction.user.id)
     
-    global cached_users  # the dict version
-    
-    user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
+    # Find the user's data directly from the rows
+    user_data = next(
+        (r for r in rows if str(r.get("DiscordID", "")).strip() == user_id),
+        None
+    )
     
     if not user_data:
         await interaction.followup.send("❌ You are not registered. Use `/register` first.")
         return
     
     own_id = str(user_data.get("NationID", "")).strip()
-
+    
     if not own_id:
-            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
-            return
-
+        await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+        return
+    
     async def is_banker(interaction):
         return (
-        any(role.name == "Government member" for role in interaction.user.roles)
-            or str(interaction.user.id) == "1148678095176474678"
+            any(role.name == "Government member" for role in interaction.user.roles)
+            or user_id == "1148678095176474678"
         )
-
+    
     if not await is_banker(interaction):
         await interaction.followup.send("❌ You don't have the rights, lil bro.")
         return
-
+    
     lines = []
     processed_nations = 0
     failed = 0
-
+    
     totals = {
         "money": 0,
         "food": 0,
@@ -1583,16 +1585,13 @@ async def res_details_for_alliance(interaction: discord.Interaction):
         "uranium": 0,
         "num_cities": 0,
     }
-
-    seen_ids = set()
-
-    for user_id, user_data in cached_users.items():
-        nation_id = str(user_data.get("NationID", "")).strip()
+    
+    for row in rows:
+        nation_id = str(row.get("NationID", "")).strip()
+        row_user_id = str(row.get("DiscordID", "")).strip()
         if not nation_id or nation_id in seen_ids:
             failed += 1
             continue
-
-        seen_ids.add(nation_id)
 
         try:
             result = get_resources(own_id)
@@ -1895,16 +1894,12 @@ async def res_in_m_for_a(
     sheet = get_registration_sheet()
     rows = sheet.get_all_records()
 
-    seen_ids = set()
-
-    for user_id, user_data in cached_users.items():
-        nation_id = str(user_data.get("NationID", "")).strip()
+    for row in rows:
+        nation_id = str(row.get("NationID", "")).strip()
+        user_id = str(row.get("DiscordID", "")).strip()
         if not nation_id or nation_id in seen_ids:
             failed += 1
             continue
-
-        seen_ids.add(nation_id)
-        # ... proceed
 
 
         try:
