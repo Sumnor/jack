@@ -904,25 +904,27 @@ async def process_auto_requests():
 
         now = datetime.now(timezone.utc)
 
-        for i, row in enumerate(rows, start=2):
+        for i, row in enumerate(rows, start=3):
             try:
                 nation_id = row[col_index["NationID"]].strip()
+                if not nation_id or not nation_id.isdigit():
+                    raise ValueError(f"Invalid NationID in row {i}: '{nation_id}'")
 
-                # Get nation name from API
                 nation_info_df = graphql_request(nation_id)
                 if nation_info_df is None or nation_info_df.empty:
-                    nation_name = "Unknown"
-                else:
-                    nation_name = nation_info_df.loc[0, "nation_name"]
+                    raise ValueError(f"No nation data found for NationID '{nation_id}' in row {i}")
 
+                nation_name = nation_info_df.loc[0, "nation_name"]
                 discord_id = row[col_index["DiscordID"]].strip()
-                time_period_days = int(float(row[col_index["TimePeriod"]].strip() or "1"))
+
+                time_period_raw = row[col_index["TimePeriod"]].strip()
+                time_period_days = int(float(time_period_raw)) if time_period_raw else 1
 
                 last_requested_str = row[col_index["LastRequested"]].strip()
-                if last_requested_str:
-                    last_requested = datetime.strptime(last_requested_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-                else:
-                    last_requested = datetime.min.replace(tzinfo=timezone.utc)
+                last_requested = (
+                    datetime.strptime(last_requested_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                    if last_requested_str else datetime.min.replace(tzinfo=timezone.utc)
+                )
 
                 if now - last_requested < timedelta(days=time_period_days):
                     continue
@@ -930,14 +932,20 @@ async def process_auto_requests():
                 requested_resources = {}
                 for res in ["Coal", "Oil", "Bauxite", "Lead", "Iron"]:
                     val_str = row[col_index[res]].strip()
-                    amount = parse_amount(val_str)
-                    if amount > 0:
-                        requested_resources[res] = amount
+                    if not val_str:
+                        continue
+                    try:
+                        amount = parse_amount(val_str)
+                        if amount > 0:
+                            requested_resources[res] = amount
+                    except Exception:
+                        print(f"Invalid amount format in row {i} for {res}: '{val_str}'")
+                        continue
 
                 if not requested_resources:
                     continue
 
-                formatted_lines = [f"{resource}: {amount:,}".replace(",", ".") for resource, amount in requested_resources.items()]
+                formatted_lines = [f"{res}: {amount:,}".replace(",", ".") for res, amount in requested_resources.items()]
                 description_text = "\n".join(formatted_lines)
 
                 embed = discord.Embed(
@@ -947,7 +955,7 @@ async def process_auto_requests():
                         f"**Nation:** {nation_name} ({nation_id})\n"
                         f"**Requested by:** <@{discord_id}>\n"
                         f"**Request:**\n{description_text}\n"
-                        f"**Reason:** {REASON_FOR_GRANT}\n"
+                        f"**Reason:** {REASON_FOR_GRANT}"
                     )
                 )
                 image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
@@ -955,7 +963,6 @@ async def process_auto_requests():
 
                 await channel.send(embed=embed, view=GrantView())
 
-                # Update LastRequested timestamp asynchronously
                 await asyncio.to_thread(sheet.update_cell, i, col_index["LastRequested"] + 1, now.strftime("%Y-%m-%d %H:%M:%S"))
 
             except Exception as inner_ex:
