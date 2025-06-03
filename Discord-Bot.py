@@ -1593,7 +1593,7 @@ async def res_details_for_alliance(interaction: discord.Interaction):
         row_user_id = str(row.get("DiscordID", "")).strip()
 
         try:
-            result = get_resources(own_id)
+            result = get_resources(nation_id)
             if len(result) != 14:
                 raise ValueError("Invalid result length from get_resources")
 
