@@ -879,7 +879,7 @@ def load_sheet_data():
         print(f"❌ Failed to load sheet data: {e}")
         print(traceback.format_exc())
 
-@tasks.loop(minutes=1)
+@tasks.loop(hours=1)
 async def process_auto_requests():
     GRANT_REQUEST_CHANNEL_ID = "1338510585595428895"
     REASON_FOR_GRANT = "Resources for Production (Auto)"
@@ -3399,11 +3399,16 @@ async def auto_resources_for_prod_req(
             "❌ You are not registered. Please register first.", ephemeral=True
         )
         return
-
+    
     nation_id = user_data.get("NationID", "").strip()
     if not nation_id:
         await interaction.followup.send(
             "❌ Could not find your Nation ID in the registration data.", ephemeral=True
+        )
+        return
+    if time_period <  "1":
+        await interaction.followup.send(
+            "❌  The minimum is 1 day, no less", ephemeral=True
         )
         return
 
