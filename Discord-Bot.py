@@ -1208,6 +1208,7 @@ async def on_ready():
     bot.add_view(GrantView())   # Register persistent view
     bot.add_view(BlueGuy()) 
     load_sheet_data()
+    load_registration_data()
     print("Starting hourly snapshot task...")
     if not hourly_snapshot.is_running():
         hourly_snapshot.start()
