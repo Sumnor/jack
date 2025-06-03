@@ -3343,7 +3343,7 @@ reasons_for_grant = [
     #app_commands.Choice(name="Rebuilding Stage 3", value="rebuilding_stage_3"),
     #app_commands.Choice(name="Rebuilding Stage 4", value="rebuilding_stage_4"),
     #app_commands.Choice(name="Project", value="project"),
-    app_commands.Choice(name="Uranium and Food", value="Uranium and Food")
+    app_commands.Choice(name="Uranium and Food", value="Uranium and Food"),
     app_commands.Choice(name="Resources for Production", value="Resources for Production"),
 ]
 
