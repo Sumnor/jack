@@ -916,7 +916,7 @@ async def process_auto_requests():
                     nation_name = nation_info_df.loc[0, "nation_name"]
 
                 discord_id = row[col_index["DiscordID"]].strip()
-                time_period_days = int(row[col_index["TimePeriod"]].strip() or "1")
+                time_period_days = int(float(row[col_index["TimePeriod"]].strip() or "1"))
 
                 last_requested_str = row[col_index["LastRequested"]].strip()
                 if last_requested_str:
