@@ -888,7 +888,6 @@ async def process_auto_requests():
         sheet = get_auto_requests_sheet()
         registration_sheet = get_registration_sheet()
 
-        # Run blocking calls in thread to avoid blocking async loop
         all_rows = await asyncio.to_thread(sheet.get_all_values)
         registration_rows = await asyncio.to_thread(registration_sheet.get_all_values)
 
@@ -916,14 +915,21 @@ async def process_auto_requests():
         for i, row in enumerate(rows, start=2):
             try:
                 nation_id = row[col_index["NationID"]].strip()
-                nation_name = "Unknown"
+                nation_name = None
 
-                # ONLY fetch nation_name from registration sheet
+                # Try to get nation name from registration sheet
                 for reg_row in registration_rows[1:]:
-                    if len(reg_row) > reg_col_index["NationID"] and reg_row[reg_col_index["NationID"]].strip() == nation_id:
-                        if len(reg_row) > reg_col_index["NationName"]:
-                            nation_name = reg_row[reg_col_index["NationName"]].strip()
+                    if reg_row[reg_col_index["NationID"]].strip() == nation_id:
+                        nation_name = reg_row[reg_col_index["NationName"]].strip()
                         break
+
+                # If not found, use GraphQL API
+                if not nation_name:
+                    df = graphql_request(nation_id)
+                    if df is not None and "nation_name" in df.columns:
+                        nation_name = df.at[0, "nation_name"]
+                    else:
+                        nation_name = "Unknown"
 
                 discord_id = row[col_index["DiscordID"]].strip()
                 time_period_days = int(row[col_index["TimePeriod"]].strip() or "1")
@@ -965,7 +971,6 @@ async def process_auto_requests():
 
                 await channel.send(embed=embed)
 
-                # Update LastRequested timestamp asynchronously
                 await asyncio.to_thread(sheet.update_cell, i, col_index["LastRequested"] + 1, now.strftime("%Y-%m-%d %H:%M:%S"))
 
             except Exception as inner_ex:
@@ -973,6 +978,7 @@ async def process_auto_requests():
 
     except Exception as ex:
         print(f"Error in process_auto_requests task: {ex}")
+
 
 @tasks.loop(hours=1)
 async def hourly_war_check():
