@@ -1589,9 +1589,6 @@ async def res_details_for_alliance(interaction: discord.Interaction):
     for row in rows:
         nation_id = str(row.get("NationID", "")).strip()
         row_user_id = str(row.get("DiscordID", "")).strip()
-        if not nation_id or nation_id in seen_ids:
-            failed += 1
-            continue
 
         try:
             result = get_resources(own_id)
@@ -1897,10 +1894,6 @@ async def res_in_m_for_a(
     for row in rows:
         nation_id = str(row.get("NationID", "")).strip()
         user_id = str(row.get("DiscordID", "")).strip()
-        if not nation_id or nation_id in seen_ids:
-            failed += 1
-            continue
-
 
         try:
             result = get_resources(nation_id)
