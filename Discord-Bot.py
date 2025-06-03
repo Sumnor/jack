@@ -961,12 +961,6 @@ async def process_auto_requests():
     except Exception as ex:
         print(f"Error in process_auto_requests task: {ex}")
 
-@bot.event
-async def on_ready():
-    print(f"Logged in as {bot.user}!")
-    if not process_auto_requests.is_running():
-        process_auto_requests.start()
-
 @tasks.loop(hours=1)
 async def hourly_war_check():
     print("⏰ Running hourly war check...")
@@ -1213,6 +1207,8 @@ async def on_ready():
     print("Starting hourly snapshot task...")
     if not hourly_snapshot.is_running():
         hourly_snapshot.start()
+    if not process_auto_requests.is_running():
+        process_auto_requests.start()
     if not hasattr(bot, "war_check_started"):  # Prevent multiple starts if on_ready fires again
         bot.war_check_started = True
         bot.loop.create_task(hourly_war_check())
@@ -3408,7 +3404,6 @@ async def auto_resources_for_prod_req(
         )
         return
 
-    # Google Sheet access
     sheet = get_auto_requests_sheet()
     all_rows = sheet.get_all_values()
     if not all_rows or len(all_rows) < 1:
@@ -3418,10 +3413,7 @@ async def auto_resources_for_prod_req(
         return
 
     header = all_rows[0]
-    expected_headers = [
-        "DiscordID", "NationID", "Coal", "Oil", "Bauxite", "Lead", "Iron", "TimePeriod", "LastRequested"
-    ]
-    # Optional: validate headers exist
+    col_index = {col: idx for idx, col in enumerate(header)}
 
     def parse_amount(amount):
         try:
@@ -3439,6 +3431,8 @@ async def auto_resources_for_prod_req(
         except Exception:
             return 0
 
+    now_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+
     data_to_store = {
         "DiscordID": user_id,
         "NationID": nation_id,
@@ -3450,8 +3444,6 @@ async def auto_resources_for_prod_req(
         "TimePeriod": time_period.strip(),
     }
 
-    col_index = {col: idx for idx, col in enumerate(header)}
-
     rows = all_rows[1:]
     user_row_index = None
     for idx, row in enumerate(rows, start=2):
@@ -3460,19 +3452,19 @@ async def auto_resources_for_prod_req(
             break
 
     if user_row_index:
-        # Update existing row but don't overwrite LastRequested
         for key, val in data_to_store.items():
             if key in col_index:
                 sheet.update_cell(user_row_index, col_index[key] + 1, val)
+        # Set LastRequested to now
+        sheet.update_cell(user_row_index, col_index["LastRequested"] + 1, now_str)
         await interaction.followup.send(
             "✅ Your auto-request has been updated successfully.", ephemeral=True
         )
     else:
-        # Append new row with LastRequested blank
         new_row = []
         for col in header:
             if col == "LastRequested":
-                new_row.append("")
+                new_row.append(now_str)
             else:
                 new_row.append(data_to_store.get(col, ""))
         sheet.append_row(new_row)
