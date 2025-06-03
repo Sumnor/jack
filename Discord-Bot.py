@@ -904,6 +904,15 @@ async def process_auto_requests():
 
         now = datetime.now(timezone.utc)
 
+        # Map resource columns once for quick lookup
+        resource_columns = {
+            "Coal": col_index["Coal"],
+            "Oil": col_index["Oil"],
+            "Bauxite": col_index["Bauxite"],
+            "Lead": col_index["Lead"],
+            "Iron": col_index["Iron"],
+        }
+
         for i, row in enumerate(rows, start=2):
             try:
                 nation_id = row[col_index["NationID"]].strip()
@@ -928,8 +937,8 @@ async def process_auto_requests():
                     continue
 
                 requested_resources = {}
-                for res in ["Coal", "Oil", "Bauxite", "Lead", "Iron"]:
-                    val_str = row[col_index[res]].strip()
+                for res in resource_columns:
+                    val_str = row[resource_columns[res]].strip()
                     amount = parse_amount(val_str)
                     if amount > 0:
                         requested_resources[res] = amount
@@ -937,6 +946,12 @@ async def process_auto_requests():
                 if not requested_resources:
                     continue
 
+                # Update resource columns in the sheet for this row
+                for resource, amount in requested_resources.items():
+                    col = resource_columns[resource] + 1  # gspread is 1-indexed
+                    await asyncio.to_thread(sheet.update_cell, i, col, str(amount))
+
+                # Prepare embed message
                 formatted_lines = [f"{resource}: {amount:,}".replace(",", ".") for resource, amount in requested_resources.items()]
                 description_text = "\n".join(formatted_lines)
 
