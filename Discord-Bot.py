@@ -1746,6 +1746,60 @@ async def check_site(interaction: discord.Interaction):
         driver.quit()
         '''
 
+@bot.command(name="auto_week_summary", description="See the total materials which are requested for this week")
+async def auto_week_summary(ctx):
+    try:
+        sheet = get_auto_requests_sheet()
+        all_rows = await asyncio.to_thread(sheet.get_all_values)
+
+        if not all_rows or len(all_rows) < 2:
+            await ctx.send("No data available.")
+            return
+
+        header = all_rows[0]
+        col_index = {col: idx for idx, col in enumerate(header)}
+        rows = all_rows[1:]
+
+        # Totals in resources per week
+        total_week = {res: 0 for res in ["Coal", "Oil", "Bauxite", "Lead", "Iron"]}
+
+        for row in rows:
+            if not any(row):  # skip empty rows
+                continue
+            try:
+                time_period = float(row[col_index["TimePeriod"]]) if row[col_index["TimePeriod"]] else 1
+                if time_period <= 0:
+                    continue
+
+                for res in total_week:
+                    val_str = row[col_index[res]].strip()
+                    amount = float(val_str) if val_str else 0
+                    per_day = amount / time_period
+                    total_week[res] += per_day * 5  # Weekly total
+            except Exception as row_ex:
+                print(f"Skipping row due to error: {row_ex}")
+                continue
+
+        formatted = [f"{emoji} **{res}**: {int(amount):,}".replace(",", ".") for res, emoji, amount in zip(
+            ["Coal", "Oil", "Bauxite", "Lead", "Iron"],
+            ["🪨", "🛢️", "🟤", "🪫", "⛓️"],
+            total_week.values()
+        )]
+
+        embed = discord.Embed(
+            title="📦 Auto-Requested Weekly Summary",
+            description="\n".join(formatted),
+            color=discord.Color.blue()
+        )
+        embed.set_footer(text="Calculated from current auto-request data")
+
+        await ctx.send(embed=embed)
+
+    except Exception as e:
+        print(f"Error in /autoweeksummary: {e}")
+        await ctx.send("❌ Error generating summary.")
+
+
 @bot.tree.command(name="res_in_m_for_a", description="Get total Alliance Members' resources and money")
 @app_commands.describe(
     mode="Group data by time unit",
