@@ -879,75 +879,73 @@ def load_sheet_data():
         print(f"❌ Failed to load sheet data: {e}")
         print(traceback.format_exc())
 
-@tasks.loop(minutes=1)  # adjust frequency as needed
+@tasks.loop(minutes=1)
 async def process_auto_requests():
     GRANT_REQUEST_CHANNEL_ID = "1338510585595428895"
     REASON_FOR_GRANT = "Resources for Production (Auto)"
+
     try:
         sheet = get_auto_requests_sheet()
-        all_rows = sheet.get_all_values()
+        registration_sheet = get_registration_sheet()
+
+        # Run blocking calls in thread to avoid blocking async loop
+        all_rows = await asyncio.to_thread(sheet.get_all_values)
+        registration_rows = await asyncio.to_thread(registration_sheet.get_all_values)
+
         if not all_rows or len(all_rows) < 2:
             return
 
         header = all_rows[0]
         col_index = {col: idx for idx, col in enumerate(header)}
 
+        reg_header = registration_rows[0]
+        reg_col_index = {col: idx for idx, col in enumerate(reg_header)}
+
         rows = all_rows[1:]
 
         guild = bot.get_guild(1186655069530243183)
         channel = guild.get_channel(int(GRANT_REQUEST_CHANNEL_ID)) if guild else None
         print(f"Guild: {guild}, Channel: {channel}")
+
         if channel is None:
             print("Grant request channel not found!")
             return
 
         now = datetime.now(timezone.utc)
 
-        registration_sheet = get_registration_sheet()
-        registration_rows = registration_sheet.get_all_values()
-        reg_header = registration_rows[0]
-        reg_col_index = {col: idx for idx, col in enumerate(reg_header)}
-
         for i, row in enumerate(rows, start=2):
             try:
                 nation_id = row[col_index["NationID"]].strip()
                 nation_name = "Unknown"
-        
-                # Get nation name from registrations sheet by nation_id
+
                 for reg_row in registration_rows[1:]:
                     if reg_row[reg_col_index["NationID"]].strip() == nation_id:
                         nation_name = reg_row[reg_col_index["NationName"]].strip()
                         break
-        
+
                 discord_id = row[col_index["DiscordID"]].strip()
                 time_period_days = int(row[col_index["TimePeriod"]].strip() or "1")
-        
+
                 last_requested_str = row[col_index["LastRequested"]].strip()
                 if last_requested_str:
                     last_requested = datetime.strptime(last_requested_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
                 else:
                     last_requested = datetime.min.replace(tzinfo=timezone.utc)
-        
-                # Check if time period elapsed
+
                 if now - last_requested < timedelta(days=time_period_days):
                     continue
-        
-                # Parse requested resources
+
                 requested_resources = {}
                 for res in ["Coal", "Oil", "Bauxite", "Lead", "Iron"]:
                     val_str = row[col_index[res]].strip()
                     amount = parse_amount(val_str)
                     if amount > 0:
                         requested_resources[res] = amount
-        
+
                 if not requested_resources:
                     continue
 
-                # Format resource amounts (with dot as thousand separator)
-                formatted_lines = [
-                    f"{resource}: {amount:,}".replace(",", ".")
-                    for resource, amount in requested_resources.items()
-                ]
+                formatted_lines = [f"{resource}: {amount:,}".replace(",", ".") for resource, amount in requested_resources.items()]
                 description_text = "\n".join(formatted_lines)
 
                 embed = discord.Embed(
@@ -965,8 +963,8 @@ async def process_auto_requests():
 
                 await channel.send(embed=embed)
 
-                # Update LastRequested timestamp in sheet
-                sheet.update_cell(i, col_index["LastRequested"] + 1, now.strftime("%Y-%m-%d %H:%M:%S"))
+                # Update LastRequested timestamp asynchronously
+                await asyncio.to_thread(sheet.update_cell, i, col_index["LastRequested"] + 1, now.strftime("%Y-%m-%d %H:%M:%S"))
 
             except Exception as inner_ex:
                 print(f"Error processing row {i}: {inner_ex}")
