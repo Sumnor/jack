@@ -912,35 +912,36 @@ async def process_auto_requests():
             try:
                 nation_id = row[col_index["NationID"]].strip()
                 nation_name = "Unknown"
-
-                # Lookup NationName by NationID in registration sheet
+        
+                # Get nation name from registrations sheet by nation_id
                 for reg_row in registration_rows[1:]:
                     if reg_row[reg_col_index["NationID"]].strip() == nation_id:
                         nation_name = reg_row[reg_col_index["NationName"]].strip()
                         break
-
+        
                 discord_id = row[col_index["DiscordID"]].strip()
                 time_period_days = int(row[col_index["TimePeriod"]].strip() or "1")
-
+        
                 last_requested_str = row[col_index["LastRequested"]].strip()
                 if last_requested_str:
                     last_requested = datetime.strptime(last_requested_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
                 else:
                     last_requested = datetime.min.replace(tzinfo=timezone.utc)
-
+        
                 # Check if time period elapsed
                 if now - last_requested < timedelta(days=time_period_days):
                     continue
-
+        
+                # Parse requested resources
                 requested_resources = {}
                 for res in ["Coal", "Oil", "Bauxite", "Lead", "Iron"]:
                     val_str = row[col_index[res]].strip()
                     amount = parse_amount(val_str)
                     if amount > 0:
                         requested_resources[res] = amount
-
+        
                 if not requested_resources:
-                    continue  # no resources requested, skip
+                    continue
 
                 # Format resource amounts (with dot as thousand separator)
                 formatted_lines = [
