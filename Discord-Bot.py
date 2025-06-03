@@ -3343,6 +3343,7 @@ reasons_for_grant = [
     #app_commands.Choice(name="Rebuilding Stage 3", value="rebuilding_stage_3"),
     #app_commands.Choice(name="Rebuilding Stage 4", value="rebuilding_stage_4"),
     #app_commands.Choice(name="Project", value="project"),
+    app_commands.Choice(name="Uranium and Food", value="Uranium and Food")
     app_commands.Choice(name="Resources for Production", value="Resources for Production"),
 ]
 
@@ -3519,10 +3520,11 @@ async def disable_auto_request(interaction: discord.Interaction):
         await interaction.followup.send("✅ Your auto-request for raw resources has been disabled.", ephemeral=True)
     else:
         await interaction.followup.send("⚠️ No active auto-request for those resources found under your account.", ephemeral=True)
-
+        
 @bot.tree.command(name="request_for_ing", description="Request a grant for another member ingame with a screenshot")
 @app_commands.describe(
     nation_id="Nation ID of the person you're requesting for",
+    screenshot="Screenshot proving this grant request is legitimate",
     uranium="Amount of uranium requested",
     coal="Amount of coal requested",
     oil="Amount of oil requested",
@@ -3539,6 +3541,7 @@ async def disable_auto_request(interaction: discord.Interaction):
 async def request_for_ing(
     interaction: discord.Interaction,
     nation_id: str,
+    screenshot: discord.Attachment,
     uranium: str = "0",
     coal: str = "0",
     oil: str = "0",
@@ -3556,8 +3559,8 @@ async def request_for_ing(
     user_id = str(interaction.user.id)
 
     try:
-        if not interaction.attachments:
-            await interaction.followup.send("❌ You must attach a screenshot to support this request.", ephemeral=True)
+        if not screenshot.content_type.startswith("image/"):
+            await interaction.followup.send("❌ The screenshot must be an image.", ephemeral=True)
             return
 
         nation_id = nation_id.strip()
@@ -3605,20 +3608,20 @@ async def request_for_ing(
             color=discord.Color.gold(),
             description=(
                 f"**Nation:** {nation_name} (`{nation_id}`)\n"
-                f"**Requested by (discord):** {interaction.user.mention}\n"
+                f"**Requested by:** {interaction.user.mention}\n"
                 f"**Request:**\n{description_text}\n"
                 f"**Reason:** Player support (with screenshot)\n"
             )
         )
+        embed.set_image(url=screenshot.url)
         image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
         embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
 
-        file = await interaction.attachments[0].to_file()
-
-        await interaction.followup.send(embed=embed, file=file, view=GrantView())
+        await interaction.followup.send(embed=embed, view=GrantView())
 
     except Exception as e:
         await interaction.followup.send(f"❌ An unexpected error occurred: {e}", ephemeral=True)
+
 
 
 @bot.tree.command(name="request_grant", description="Request a grant from the alliance bank")
