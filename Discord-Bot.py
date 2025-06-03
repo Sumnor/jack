@@ -1538,6 +1538,8 @@ async def mmr_audit(interaction: discord.Interaction, who: discord.Member):
 async def res_details_for_alliance(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
 
+    sheet = get_registration_sheet()
+    rows = sheet.get_all_records()
     user_id = str(interaction.user.id)
     
     # Find the user's data directly from the rows
