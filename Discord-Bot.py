@@ -953,7 +953,7 @@ async def process_auto_requests():
                 image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
                 embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
 
-                await channel.send(embed=embed)
+                await channel.send(embed=embed, view=GrantView())
 
                 # Update LastRequested timestamp asynchronously
                 await asyncio.to_thread(sheet.update_cell, i, col_index["LastRequested"] + 1, now.strftime("%Y-%m-%d %H:%M:%S"))
