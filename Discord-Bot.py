@@ -901,7 +901,7 @@ async def process_auto_requests():
             print("Grant request channel not found!")
             return
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         registration_sheet = get_registration_sheet()
         registration_rows = registration_sheet.get_all_values()
         reg_header = registration_rows[0]
@@ -915,11 +915,10 @@ async def process_auto_requests():
                     if reg_row[reg_col_index["NationID"]].strip() == nation_id:
                         nation_name = reg_row[reg_col_index["NationName"]].strip()
                         break
+        
                 discord_id = row[col_index["DiscordID"]].strip()
-                nation_name = row[col_index["NationName"]].strip()
-                nation_id = row[col_index["NationID"]].strip()
                 time_period_days = int(row[col_index["TimePeriod"]].strip() or "1")
-
+                nation_id = row[col_index["NationID"]].strip()
                 # Parse LastRequested date
                 last_requested_str = row[col_index["LastRequested"]].strip()
                 if last_requested_str:
