@@ -894,7 +894,9 @@ async def process_auto_requests():
 
         rows = all_rows[1:]
 
-        channel = bot.get_channel(int(GRANT_REQUEST_CHANNEL_ID))
+        guild = bot.get_guild(1186655069530243183)
+        channel = guild.get_channel(int(GRANT_REQUEST_CHANNEL_ID)) if guild else None
+        print(f"Guild: {guild}, Channel: {channel}")
         if channel is None:
             print("Grant request channel not found!")
             return
