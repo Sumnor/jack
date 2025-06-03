@@ -881,22 +881,18 @@ def load_sheet_data():
 
 @tasks.loop(minutes=1)
 async def process_auto_requests():
-    GRANT_REQUEST_CHANNEL_ID = 1338510585595428895  # int, not string
+    GRANT_REQUEST_CHANNEL_ID = "1338510585595428895"
     REASON_FOR_GRANT = "Resources for Production (Auto)"
 
     try:
-        # get sheets (blocking, run in thread)
-        sheet = await asyncio.to_thread(get_auto_requests_sheet)
-        registration_sheet = await asyncio.to_thread(get_registration_sheet)
+        sheet = get_auto_requests_sheet()
+        registration_sheet = get_registration_sheet()
 
+        # Run blocking calls in thread to avoid blocking async loop
         all_rows = await asyncio.to_thread(sheet.get_all_values)
         registration_rows = await asyncio.to_thread(registration_sheet.get_all_values)
 
         if not all_rows or len(all_rows) < 2:
-            print("No data in AutoRequests sheet.")
-            return
-        if not registration_rows or len(registration_rows) < 2:
-            print("No data in Registration sheet.")
             return
 
         header = all_rows[0]
@@ -905,20 +901,12 @@ async def process_auto_requests():
         reg_header = registration_rows[0]
         reg_col_index = {col: idx for idx, col in enumerate(reg_header)}
 
-        # Required columns check
-        required_cols = ["NationID", "DiscordID", "TimePeriod", "LastRequested", "Coal", "Oil", "Bauxite", "Lead", "Iron"]
-        for col in required_cols:
-            if col not in col_index:
-                print(f"Missing required column '{col}' in AutoRequests sheet!")
-                return
-        if "NationName" not in reg_col_index or "NationID" not in reg_col_index:
-            print("Missing 'NationName' or 'NationID' in Registration sheet!")
-            return
-
         rows = all_rows[1:]
 
         guild = bot.get_guild(1186655069530243183)
-        channel = guild.get_channel(GRANT_REQUEST_CHANNEL_ID) if guild else None
+        channel = guild.get_channel(int(GRANT_REQUEST_CHANNEL_ID)) if guild else None
+        print(f"Guild: {guild}, Channel: {channel}")
+
         if channel is None:
             print("Grant request channel not found!")
             return
@@ -930,6 +918,7 @@ async def process_auto_requests():
                 nation_id = row[col_index["NationID"]].strip()
                 nation_name = "Unknown"
 
+                # ONLY fetch nation_name from registration sheet
                 for reg_row in registration_rows[1:]:
                     if len(reg_row) > reg_col_index["NationID"] and reg_row[reg_col_index["NationID"]].strip() == nation_id:
                         if len(reg_row) > reg_col_index["NationName"]:
@@ -976,7 +965,7 @@ async def process_auto_requests():
 
                 await channel.send(embed=embed)
 
-                # Update LastRequested timestamp (run in thread)
+                # Update LastRequested timestamp asynchronously
                 await asyncio.to_thread(sheet.update_cell, i, col_index["LastRequested"] + 1, now.strftime("%Y-%m-%d %H:%M:%S"))
 
             except Exception as inner_ex:
