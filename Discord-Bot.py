@@ -886,13 +886,12 @@ async def process_auto_requests():
 
     try:
         sheet = get_auto_requests_sheet()
-        all_rows = await asyncio.to_thread(sheet.get_all_values)
-        if not all_rows or len(all_rows) < 2:
+        all_data = await asyncio.to_thread(sheet.get_all_records)  # cleaner than get_all_values
+        if not all_data:
             return
 
-        header = all_rows[0]
+        header = list(all_data[0].keys())
         col_index = {col: idx for idx, col in enumerate(header)}
-        rows = all_rows[1:]
 
         guild = bot.get_guild(1186655069530243183)
         channel = guild.get_channel(int(GRANT_REQUEST_CHANNEL_ID)) if guild else None
@@ -904,23 +903,21 @@ async def process_auto_requests():
 
         now = datetime.now(timezone.utc)
 
-        for i, row in enumerate(rows, start=3):
+        for i, row in enumerate(all_data, start=2):  # row numbers start at 2 (after header)
             try:
-                nation_id = row[col_index["NationID"]].strip()
-                if not nation_id or not nation_id.isdigit():
-                    raise ValueError(f"Invalid NationID in row {i}: '{nation_id}'")
+                nation_id = str(row.get("NationID", "")).strip()
+                if not nation_id:
+                    print(f"Skipping row {i} due to empty NationID")
+                    continue
 
+                # Get nation name from API
                 nation_info_df = graphql_request(nation_id)
-                if nation_info_df is None or nation_info_df.empty:
-                    raise ValueError(f"No nation data found for NationID '{nation_id}' in row {i}")
+                nation_name = nation_info_df.loc[0, "nation_name"] if nation_info_df is not None and not nation_info_df.empty else "Unknown"
 
-                nation_name = nation_info_df.loc[0, "nation_name"]
-                discord_id = row[col_index["DiscordID"]].strip()
+                discord_id = str(row.get("DiscordID", "")).strip()
+                time_period_days = int(float(row.get("TimePeriod", 1)))
 
-                time_period_raw = row[col_index["TimePeriod"]].strip()
-                time_period_days = int(float(time_period_raw)) if time_period_raw else 1
-
-                last_requested_str = row[col_index["LastRequested"]].strip()
+                last_requested_str = str(row.get("LastRequested", "")).strip()
                 last_requested = (
                     datetime.strptime(last_requested_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
                     if last_requested_str else datetime.min.replace(tzinfo=timezone.utc)
@@ -931,21 +928,15 @@ async def process_auto_requests():
 
                 requested_resources = {}
                 for res in ["Coal", "Oil", "Bauxite", "Lead", "Iron"]:
-                    val_str = row[col_index[res]].strip()
-                    if not val_str:
-                        continue
-                    try:
-                        amount = parse_amount(val_str)
-                        if amount > 0:
-                            requested_resources[res] = amount
-                    except Exception:
-                        print(f"Invalid amount format in row {i} for {res}: '{val_str}'")
-                        continue
+                    val_str = str(row.get(res, "")).strip()
+                    amount = parse_amount(val_str)
+                    if amount > 0:
+                        requested_resources[res] = amount
 
                 if not requested_resources:
                     continue
 
-                formatted_lines = [f"{res}: {amount:,}".replace(",", ".") for res, amount in requested_resources.items()]
+                formatted_lines = [f"{resource}: {amount:,}".replace(",", ".") for resource, amount in requested_resources.items()]
                 description_text = "\n".join(formatted_lines)
 
                 embed = discord.Embed(
@@ -955,7 +946,7 @@ async def process_auto_requests():
                         f"**Nation:** {nation_name} ({nation_id})\n"
                         f"**Requested by:** <@{discord_id}>\n"
                         f"**Request:**\n{description_text}\n"
-                        f"**Reason:** {REASON_FOR_GRANT}"
+                        f"**Reason:** {REASON_FOR_GRANT}\n"
                     )
                 )
                 image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
@@ -963,7 +954,10 @@ async def process_auto_requests():
 
                 await channel.send(embed=embed, view=GrantView())
 
-                await asyncio.to_thread(sheet.update_cell, i, col_index["LastRequested"] + 1, now.strftime("%Y-%m-%d %H:%M:%S"))
+                # Update LastRequested timestamp asynchronously
+                await asyncio.to_thread(
+                    sheet.update_cell, i, col_index["LastRequested"] + 1, now.strftime("%Y-%m-%d %H:%M:%S")
+                )
 
             except Exception as inner_ex:
                 print(f"Error processing row {i}: {inner_ex}")
