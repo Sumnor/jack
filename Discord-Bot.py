@@ -882,7 +882,7 @@ def load_sheet_data():
 @tasks.loop(minutes=1)  # adjust frequency as needed
 async def process_auto_requests():
     GRANT_REQUEST_CHANNEL_ID = "1338510585595428895"
-    REASON_FOR_GRANT="Resources for Production (Auto)"
+    REASON_FOR_GRANT = "Resources for Production (Auto)"
     try:
         sheet = get_auto_requests_sheet()
         all_rows = sheet.get_all_values()
@@ -902,35 +902,36 @@ async def process_auto_requests():
             return
 
         now = datetime.now(timezone.utc)
+
         registration_sheet = get_registration_sheet()
         registration_rows = registration_sheet.get_all_values()
         reg_header = registration_rows[0]
         reg_col_index = {col: idx for idx, col in enumerate(reg_header)}
+
         for i, row in enumerate(rows, start=2):
             try:
                 nation_id = row[col_index["NationID"]].strip()
                 nation_name = "Unknown"
-                
+
+                # Lookup NationName by NationID in registration sheet
                 for reg_row in registration_rows[1:]:
                     if reg_row[reg_col_index["NationID"]].strip() == nation_id:
                         nation_name = reg_row[reg_col_index["NationName"]].strip()
                         break
-        
+
                 discord_id = row[col_index["DiscordID"]].strip()
                 time_period_days = int(row[col_index["TimePeriod"]].strip() or "1")
-                nation_id = row[col_index["NationID"]].strip()
-                # Parse LastRequested date
+
                 last_requested_str = row[col_index["LastRequested"]].strip()
                 if last_requested_str:
-                    last_requested = datetime.strptime(last_requested_str, "%Y-%m-%d %H:%M:%S")
+                    last_requested = datetime.strptime(last_requested_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
                 else:
-                    last_requested = datetime.min
+                    last_requested = datetime.min.replace(tzinfo=timezone.utc)
 
                 # Check if time period elapsed
                 if now - last_requested < timedelta(days=time_period_days):
                     continue
 
-                # Parse resource amounts
                 requested_resources = {}
                 for res in ["Coal", "Oil", "Bauxite", "Lead", "Iron"]:
                     val_str = row[col_index[res]].strip()
@@ -941,7 +942,7 @@ async def process_auto_requests():
                 if not requested_resources:
                     continue  # no resources requested, skip
 
-                # Build embed description
+                # Format resource amounts (with dot as thousand separator)
                 formatted_lines = [
                     f"{resource}: {amount:,}".replace(",", ".")
                     for resource, amount in requested_resources.items()
@@ -963,7 +964,7 @@ async def process_auto_requests():
 
                 await channel.send(embed=embed)
 
-                # Update LastRequested timestamp
+                # Update LastRequested timestamp in sheet
                 sheet.update_cell(i, col_index["LastRequested"] + 1, now.strftime("%Y-%m-%d %H:%M:%S"))
 
             except Exception as inner_ex:
