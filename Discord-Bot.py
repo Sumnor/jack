@@ -886,20 +886,12 @@ async def process_auto_requests():
 
     try:
         sheet = get_auto_requests_sheet()
-        registration_sheet = get_registration_sheet()
-
         all_rows = await asyncio.to_thread(sheet.get_all_values)
-        registration_rows = await asyncio.to_thread(registration_sheet.get_all_values)
-
         if not all_rows or len(all_rows) < 2:
             return
 
         header = all_rows[0]
         col_index = {col: idx for idx, col in enumerate(header)}
-
-        reg_header = registration_rows[0]
-        reg_col_index = {col: idx for idx, col in enumerate(reg_header)}
-
         rows = all_rows[1:]
 
         guild = bot.get_guild(1186655069530243183)
@@ -915,21 +907,13 @@ async def process_auto_requests():
         for i, row in enumerate(rows, start=2):
             try:
                 nation_id = row[col_index["NationID"]].strip()
-                nation_name = None
 
-                # Try to get nation name from registration sheet
-                for reg_row in registration_rows[1:]:
-                    if reg_row[reg_col_index["NationID"]].strip() == nation_id:
-                        nation_name = reg_row[reg_col_index["NationName"]].strip()
-                        break
-
-                # If not found, use GraphQL API
-                if not nation_name:
-                    df = graphql_request(nation_id)
-                    if df is not None and "nation_name" in df.columns:
-                        nation_name = df.at[0, "nation_name"]
-                    else:
-                        nation_name = "Unknown"
+                # Get nation name from API
+                nation_info_df = graphql_request(nation_id)
+                if nation_info_df is None or nation_info_df.empty:
+                    nation_name = "Unknown"
+                else:
+                    nation_name = nation_info_df.loc[0, "nation_name"]
 
                 discord_id = row[col_index["DiscordID"]].strip()
                 time_period_days = int(row[col_index["TimePeriod"]].strip() or "1")
@@ -971,6 +955,7 @@ async def process_auto_requests():
 
                 await channel.send(embed=embed)
 
+                # Update LastRequested timestamp asynchronously
                 await asyncio.to_thread(sheet.update_cell, i, col_index["LastRequested"] + 1, now.strftime("%Y-%m-%d %H:%M:%S"))
 
             except Exception as inner_ex:
@@ -978,7 +963,6 @@ async def process_auto_requests():
 
     except Exception as ex:
         print(f"Error in process_auto_requests task: {ex}")
-
 
 @tasks.loop(hours=1)
 async def hourly_war_check():
