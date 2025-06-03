@@ -902,9 +902,19 @@ async def process_auto_requests():
             return
 
         now = datetime.utcnow()
-
+        registration_sheet = get_registration_sheet()
+        registration_rows = registration_sheet.get_all_values()
+        reg_header = registration_rows[0]
+        reg_col_index = {col: idx for idx, col in enumerate(reg_header)}
         for i, row in enumerate(rows, start=2):
             try:
+                nation_id = row[col_index["NationID"]].strip()
+                nation_name = "Unknown"
+                
+                for reg_row in registration_rows[1:]:
+                    if reg_row[reg_col_index["NationID"]].strip() == nation_id:
+                        nation_name = reg_row[reg_col_index["NationName"]].strip()
+                        break
                 discord_id = row[col_index["DiscordID"]].strip()
                 nation_name = row[col_index["NationName"]].strip()
                 nation_id = row[col_index["NationID"]].strip()
