@@ -3520,6 +3520,107 @@ async def disable_auto_request(interaction: discord.Interaction):
     else:
         await interaction.followup.send("⚠️ No active auto-request for those resources found under your account.", ephemeral=True)
 
+@bot.tree.command(name="request_for_ing", description="Request a grant for another member ingame with a screenshot")
+@app_commands.describe(
+    nation_id="Nation ID of the person you're requesting for",
+    uranium="Amount of uranium requested",
+    coal="Amount of coal requested",
+    oil="Amount of oil requested",
+    bauxite="Amount of bauxite requested",
+    lead="Amount of lead requested",
+    iron="Amount of iron requested",
+    steel="Amount of steel requested",
+    aluminum="Amount of aluminum requested",
+    gasoline="Amount of gasoline requested",
+    money="Amount of money requested",
+    food="Amount of food requested",
+    munitions="Amount of munitions requested"
+)
+async def request_for_ing(
+    interaction: discord.Interaction,
+    nation_id: str,
+    uranium: str = "0",
+    coal: str = "0",
+    oil: str = "0",
+    bauxite: str = "0",
+    lead: str = "0",
+    iron: str = "0",
+    steel: str = "0",
+    aluminum: str = "0",
+    gasoline: str = "0",
+    money: str = "0",
+    food: str = "0",
+    munitions: str = "0"
+):
+    await interaction.response.defer()
+    user_id = str(interaction.user.id)
+
+    try:
+        if not interaction.attachments:
+            await interaction.followup.send("❌ You must attach a screenshot to support this request.", ephemeral=True)
+            return
+
+        nation_id = nation_id.strip()
+        if not nation_id.isdigit():
+            await interaction.followup.send("❌ Nation ID must be a number.", ephemeral=True)
+            return
+
+        nation_data = get_military(nation_id)
+        if not nation_data:
+            await interaction.followup.send("❌ Could not retrieve nation data.", ephemeral=True)
+            return
+
+        nation_name = nation_data[0]
+
+        raw_inputs = {
+            "Uranium": uranium,
+            "Coal": coal,
+            "Oil": oil,
+            "Bauxite": bauxite,
+            "Lead": lead,
+            "Iron": iron,
+            "Steel": steel,
+            "Aluminum": aluminum,
+            "Gasoline": gasoline,
+            "Money": money,
+            "Food": food,
+            "Munitions": munitions,
+        }
+
+        resources = {k: parse_amount(v) for k, v in raw_inputs.items()}
+        requested_resources = {k: v for k, v in resources.items() if v > 0}
+
+        if not requested_resources:
+            await interaction.followup.send("❌ You must request at least one resource.", ephemeral=True)
+            return
+
+        formatted_lines = [
+            f"{resource}: {amount:,}".replace(",", ".")
+            for resource, amount in requested_resources.items()
+        ]
+        description_text = "\n".join(formatted_lines)
+
+        embed = discord.Embed(
+            title="💰 Grant Request (ING)",
+            color=discord.Color.gold(),
+            description=(
+                f"**Nation:** {nation_name} (`{nation_id}`)\n"
+                f"**Requested by (discord):** {interaction.user.mention}\n"
+                f"**Request:**\n{description_text}\n"
+                f"**Reason:** Player support (with screenshot)\n"
+            )
+        )
+        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+        embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
+
+        file = await interaction.attachments[0].to_file()
+
+        await interaction.followup.send(embed=embed, file=file, view=GrantView())
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ An unexpected error occurred: {e}", ephemeral=True)
+
+
 @bot.tree.command(name="request_grant", description="Request a grant from the alliance bank")
 @app_commands.describe(
     reason="Select the reason for your grant request.",
