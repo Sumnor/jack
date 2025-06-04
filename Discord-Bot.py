@@ -572,7 +572,9 @@ def get_general_data(nation_id):
                 row.get("domestic_policy", "Unknown"),
                 row.get("num_cities", "/"),
                 row.get("color", "Unknown"),
-                row.get("last_active", "/")
+                row.get("last_active", "/"),
+                row.get("project", "Unknown"),
+                row.get("turns_since_last_project", "/"),
             )
         except IndexError:
             return None
@@ -3310,8 +3312,24 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member):
 
         nation_name, nation_leader, nation_score, war_policy, soldiers, tanks, aircraft, ships, spies, missiles, nuclear = get_military(own_id)
         nation_name, num_cities, food, money, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, uranium = get_resources(own_id)
-        alliance_id, alliance_position, alliance, domestic_policy, num_cities, colour, activity = get_general_data(own_id)
-
+        gen_data = get_general_data(own_id)
+        
+        if not gen_data:
+            await interaction.followup.send("❌ Failed to fetch general data.")
+            return
+        
+        (
+            alliance_id,
+            alliance_position,
+            alliance,
+            domestic_policy,
+            num_cities,
+            colour,
+            activity,
+            project,
+            turns_since_last_project
+        ) = gen_data
+        
         try:
             activity_dt = datetime.fromisoformat(activity)
             now = datetime.now(timezone.utc)
