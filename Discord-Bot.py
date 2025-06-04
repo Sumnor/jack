@@ -3689,7 +3689,7 @@ async def request_for_ing(
 @app_commands.choices(reason=reasons_for_grant)
 async def request_grant(
     interaction: discord.Interaction,
-    reason: app_commands.Choice[str],
+    reason: str,
     uranium: str = "0",
     coal: str = "0",
     oil: str = "0",
