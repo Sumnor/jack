@@ -475,7 +475,7 @@ def graphql_request(nation_id):
           color
           war_policy
           domestic_policy
-          project
+          projects
           turns_since_last_project
           continent
           num_cities
@@ -575,7 +575,7 @@ def get_general_data(nation_id):
                 row.get("num_cities", "/"),
                 row.get("color", "Unknown"),
                 row.get("last_active", "/"),
-                row.get("project", "Unknown"),
+                row.get("projects", "Unknown"),
                 row.get("turns_since_last_project", "/"),
             )
         except IndexError:
