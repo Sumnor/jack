@@ -475,6 +475,8 @@ def graphql_request(nation_id):
           color
           war_policy
           domestic_policy
+          project
+          turns_since_last_project
           continent
           num_cities
           score
