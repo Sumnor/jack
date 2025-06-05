@@ -1226,7 +1226,24 @@ async def on_ready():
     print(f"✅ Logged in as {bot.user}")
 
 # Global dictionary to track last bot message sent to each user (by user ID)
+@bot.event
+async def on_message(message):
+    # Avoid replying to itself
+   ignored_user_ids = {bot.user.id, 1167879888892608663, 1148678095176474678}
 
+    # Skip if author is in the ignored list
+    if message.author.id in ignored_user_ids:
+        return
+
+    # Check for target guild and 🥀 emoji in content
+    if message.guild and message.guild.id == TARGET_GUILD_ID and "🥀" in message.content:
+        try:
+            await message.reply("I see your wilted flower 🥀")
+        except discord.Forbidden:
+            print("Missing permission to reply in this channel.")
+    
+    # Allow commands to still work
+    await bot.process_commands(message)
 # Store last bot messages
 last_bot_dm = {}
 
