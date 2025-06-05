@@ -3745,6 +3745,7 @@ async def request_grant(
         nation_name = nation_data[0]
         if reason.title() in ["Warchest", "WC", "Wc"]:
             await interaction.followup.send("❌ Don't use `/request_grant`, use `/request_warchest`", ephemeral=True)
+            return
         # Parse input values
         raw_inputs = {
             "Uranium": uranium,
