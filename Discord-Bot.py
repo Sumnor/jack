@@ -1229,9 +1229,9 @@ async def on_ready():
 @bot.event
 async def on_message(message):
     # Avoid replying to itself
-   ignored_user_ids = {bot.user.id, 1167879888892608663, 1148678095176474678}
+    ignored_user_ids = {bot.user.id, 1167879888892608663, 1148678095176474678}
 
-    # Skip if author is in the ignored list
+    # Skip if author is in the ignored lis
     if message.author.id in ignored_user_ids:
         return
 
