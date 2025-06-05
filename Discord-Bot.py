@@ -2317,31 +2317,31 @@ async def end_conflict(interaction: discord.Interaction, conflict_name: str):
 async def member_activity(interaction: discord.Interaction):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
-    
-    global cached_users  # the dict version
-    
-    user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
-    
+
+    global cached_users
+
+    user_data = cached_users.get(user_id)
+
     if not user_data:
         await interaction.followup.send("❌ You are not registered. Use `/register` first.")
         return
-    
+
     own_id = str(user_data.get("NationID", "")).strip()
 
     if not own_id:
-            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
-            return
-    
+        await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+        return
+
     async def is_banker(interaction):
         return (
-        any(role.name == "Government member" for role in interaction.user.roles)
+            any(role.name == "Government member" for role in interaction.user.roles)
             or str(interaction.user.id) == "1148678095176474678"
         )
 
     if not await is_banker(interaction):
         await interaction.followup.send("❌ You don't have the rights, lil bro.")
         return
-    
+
     activish = 0
     activish_wo_bloc = 0
     active_w_bloc = 0
@@ -2368,8 +2368,19 @@ async def member_activity(interaction: discord.Interaction):
             military_data = get_military(own_id)
             nation_name = military_data[0]
             nation_leader = military_data[1]
-            alliance_id, alliance_position, alliance, domestic_policy, num_cities, colour, activity = get_general_data(own_id)
-            activity_dt = datetime.fromisoformat(activity)
+            result = get_general_data(own_id)
+            if result is None or len(result) < 7:
+                print(f"Missing data for nation {own_id}")
+                continue
+
+            alliance_id, alliance_position, alliance, domestic_policy, num_cities, colour, activity, *_ = result
+
+            try:
+                activity_dt = datetime.fromisoformat(activity)
+            except (ValueError, TypeError):
+                print(f"Invalid activity date for nation {own_id}: {activity}")
+                continue
+
             now = datetime.now(timezone.utc)
             delta = now - activity_dt
             days_inactive = delta.total_seconds() / 86400
@@ -2396,10 +2407,15 @@ async def member_activity(interaction: discord.Interaction):
             print(f"Error processing nation ID {own_id}: {e}")
             continue
 
+    data = [active_w_bloc, active_wo_bloc, activish, activish_wo_bloc, inactive]
+
+    if sum(data) == 0:
+        await interaction.followup.send("⚠️ No activity data available to generate chart.")
+        return
+
     # Create pie chart
     fig, ax = plt.subplots(figsize=(8, 4), subplot_kw=dict(aspect="equal"))
 
-    data = [active_w_bloc, active_wo_bloc, activish, activish_wo_bloc, inactive]
     labels = [
         "Active (Correct Bloc)",
         "Active (Wrong Bloc)",
@@ -2422,11 +2438,11 @@ async def member_activity(interaction: discord.Interaction):
     plt.setp(autotexts, size=8, weight="bold")
     ax.set_title("DS Activity Chart")
 
-    # Save to BytesIO and send as file
     buffer = BytesIO()
     plt.savefig(buffer, format="png")
     buffer.seek(0)
     file = discord.File(fp=buffer, filename="ds_activity.png")
+
     embed = discord.Embed(
         title="📊 DS Activity",
         description="Here are the members not in ideal status categories:",
@@ -2450,11 +2466,13 @@ async def member_activity(interaction: discord.Interaction):
     add_field_chunks(embed, "Activish (Correct Bloc)", activish_list)
     add_field_chunks(embed, "Activish (Wrong Bloc)", activish_wo_bloc_list)
     add_field_chunks(embed, "Inactive", inactive_list)
+
     image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
     embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
     embed.set_image(url="attachment://ds_activity.png")
 
     await interaction.followup.send(embed=embed, file=file)
+
 
 
 import discord
