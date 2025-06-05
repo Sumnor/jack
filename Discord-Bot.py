@@ -3727,7 +3727,7 @@ async def request_for_ing(
 
 
 
-@bot.tree.command(name="request_miscellaneous", description="Request a custom amount of resources from the alliance bank (not a warchest, use `/request_warchest` for that")
+@bot.tree.command(name="request_miscellaneous", description="Request a custom amount of resources from the alliance bank")
 @app_commands.describe(
     reason="Select the reason for your grant request.",
     uranium="Amount of uranium requested",
