@@ -3780,7 +3780,7 @@ async def request_grant(
                 f"**Nation:** {nation_name} (`{own_id}`)\n"
                 f"**Requested by:** {interaction.user.mention}\n"
                 f"**Request:**\n{description_text}\n"
-                f"**Reason:** {reason.value.title()}\n"
+                f"**Reason:** {reason.title()}\n"
             )
         )
         image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
