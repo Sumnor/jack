@@ -3708,7 +3708,7 @@ async def request_for_ing(
     food="Amount of food requested",
     munitions="Amount of munitions requested"
 )
-@app_commands.choices(reason=reasons_for_grant)
+#@app_commands.choices(reason=reasons_for_grant)
 async def request_grant(
     interaction: discord.Interaction,
     reason: str,
