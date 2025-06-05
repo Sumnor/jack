@@ -1227,8 +1227,9 @@ async def on_ready():
 
 # Global dictionary to track last bot message sent to each user (by user ID)
 @bot.event
-async def on_message(message):
+async def on_messages(message):
     # Avoid replying to itself
+    TARGET_GUILD_ID = 1186655069530243183
     ignored_user_ids = {bot.user.id, 1167879888892608663, 1148678095176474678}
 
     # Skip if author is in the ignored lis
