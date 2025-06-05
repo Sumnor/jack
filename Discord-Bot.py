@@ -1260,6 +1260,13 @@ async def on_message(message):
                 print("No permission to reply in this channel")
             except Exception as e:
                 print(f"Error replying: {e}")
+        elif ":honest_reaction:" in message.content:
+            try: 
+                await message.reply("https://tenor.com/bMYJ6.gif")
+            except discord.Forbidden:
+                print("No permission to reply in this channel")
+            except Exception as e:
+                print(f"Error replying: {e}")
 
 
     # Your 2nd logic: Handle direct messages to the bot
