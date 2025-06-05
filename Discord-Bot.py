@@ -54,8 +54,9 @@ cached_sheet_data = []
 
 load_dotenv("cred.env")
 intents = discord.Intents.default()
+intents.message_content = True
 bot = commands.Bot(command_prefix="/", intents=intents)
-bot_ke = os.getenv("Key")
+bot_key = os.getenv("Key")
 API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
@@ -1225,51 +1226,55 @@ async def on_ready():
     await bot.tree.sync()
     print(f"✅ Logged in as {bot.user}")
 
-# Global dictionary to track last bot message sent to each user (by user ID)
-    # Avoid replying to itself
-    TARGET_GUILD_ID = 1186655069530243183
-    ignored_user_ids = {bot.user.id, 1167879888892608663}
-
 @bot.event
 async def on_message(message):
-    if message.author.bot:
-        return  # ignore bots including itself
-    
-    print(f"Message from {message.author} in {message.guild} content: {message.content}")
-
-    if message.guild and message.guild.id == TARGET_GUILD_ID:
-        if "🥀" in message.content:
-            print("🥀 detected! Replying...")
-            try:
-                await message.reply("🥀")
-            except discord.Forbidden:
-                print("No permission to reply in this channel.")
-    
-    await bot.process_commands(message)
-
-# Store last bot messages
-last_bot_dm = {}
-
-@bot.event
-async def on_message(message):
+    # Ignore all bots including yourself
     if message.author.bot:
         return
 
-    if message.guild is None:
+    # Debug print for any message
+    #print(f"Message from {message.author} in guild {message.guild} content: {message.content}")
+
+    # Your 1st logic: Respond to wilted rose in target guild excluding ignored users
+    TARGET_GUILD_ID = 1186655069530243183
+    IGNORED_USER_IDS = {1167879888892608663, 1148678095176474678}
+    
+    if message.guild and message.guild.id == TARGET_GUILD_ID:
+        if message.author.id in IGNORED_USER_IDS:
+            #print(f"Ignored user {message.author} in target guild")
+            return
+
+        if "🥀" in message.content:
+            #print("🥀 detected, replying...")
+            try:
+                await message.reply("🥀")
+                #print("Reply sent successfully")
+            except discord.Forbidden:
+                print("No permission to reply in this channel")
+            except Exception as e:
+                print(f"Error replying: {e}")
+        elif "🌻" in message.content:
+            try:
+                await message.reply("https://tenor.com/LPuCUdzFpS.gif")
+            except discord.Forbidden:
+                print("No permission to reply in this channel")
+            except Exception as e:
+                print(f"Error replying: {e}")
+
+
+    # Your 2nd logic: Handle direct messages to the bot
+    if message.guild is None:  # DM channel
         default_reply = "Thanks for your message! We'll get back to you soon."
 
-        # Step 1: Look back at what the bot last said before this user message
         last_bot_msg = None
         async for msg in message.channel.history(limit=20, before=message.created_at):
             if msg.author == bot.user:
                 last_bot_msg = msg.content
                 break
 
-        # Step 2: If last thing bot said was NOT the default reply, send to staff
         if last_bot_msg != default_reply:
             log_channel_id = 1262301979242401822
             log_channel = bot.get_channel(log_channel_id)
-
             if log_channel:
                 embed = discord.Embed(
                     title="New DM received",
@@ -1282,8 +1287,11 @@ async def on_message(message):
                 )
                 await log_channel.send(embed=embed)
 
-        # Step 3: Always send thanks (but do it AFTER all checks)
         await message.channel.send(default_reply)
+
+    # Make sure commands still work
+    await bot.process_commands(message)
+
 
 @bot.tree.command(name="register", description="Register your Nation ID")
 @app_commands.describe(nation_id="Your Nation ID (numbers only, e.g., 365325)")
