@@ -125,13 +125,13 @@ def format_group(groups):
         lines.append(f"Builds of {city_label} {city_names}:\n" + ", ".join(builds))
     return "\n\n".join(lines) or "No data found."
 
-class NationInfoView(ui.View):
+class NationInfoView(View):
     def __init__(self, nation_id, original_embed):
         super().__init__(timeout=300)
         self.nation_id = nation_id
         self.original_embed = original_embed
 
-    @ui.button(label="Show Builds", style=ButtonStyle.primary)
+    @discord.ui.button(label="Show Builds", style=ButtonStyle.primary, custom_id="show_builds_button")
     async def show_builds(self, interaction: discord.Interaction, button: ui.Button):
         df = graphql_cities(self.nation_id)
         if not df or df.empty:
@@ -144,7 +144,7 @@ class NationInfoView(ui.View):
         embed = Embed(title="🏙️ City Builds", description=text, color=interaction.guild.me.color)
         await interaction.response.edit_message(embed=embed, view=BackCloseView(self.nation_id, self.original_embed))
 
-    @ui.button(label="Show Projects", style=ButtonStyle.secondary)
+    @discord.ui.button(label="Show Projects", style=ButtonStyle.secondary, custom_id="show_proj_button")
     async def show_projects(self, interaction: discord.Interaction, button: ui.Button):
         df = graphql_cities(self.nation_id)
         if not df or df.empty:
@@ -157,22 +157,22 @@ class NationInfoView(ui.View):
         embed = Embed(title="🚀 Nation Projects", description=text, color=interaction.guild.me.color)
         await interaction.response.edit_message(embed=embed, view=BackCloseView(self.nation_id, self.original_embed))
 
-    @ui.button(label="Close", style=ButtonStyle.danger)
-    async def close(self, interaction: discord.Interaction, button: ui.Button):
+    @discord.ui.button(label="Close", style=ButtonStyle.danger, custom_id="del_button")
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.message.delete()
 
-class BackCloseView(ui.View):
+class BackCloseView(View):
     def __init__(self, nation_id, original_embed):
         super().__init__(timeout=300)
         self.nation_id = nation_id
         self.original_embed = original_embed
 
-    @ui.button(label="Back", style=ButtonStyle.secondary)
-    async def back(self, interaction: discord.Interaction, button: ui.Button):
+    @discord.ui.button(label="Back", style=ButtonStyle.secondary, custom_id="back_button")
+    async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.edit_message(embed=self.original_embed, view=NationInfoView(self.nation_id, self.original_embed))
 
-    @ui.button(label="Close", style=ButtonStyle.danger)
-    async def close(self, interaction: discord.Interaction, button: ui.Button):
+    @discord.ui.button(label="Close", style=ButtonStyle.danger, custom_id="close_button")
+    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.message.delete()
 
 BANK_PERMISSION_TYPE = "Nation Deposit to Bank"
