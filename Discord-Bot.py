@@ -227,7 +227,6 @@ class NationInfoView(discord.ui.View):
                 
     @discord.ui.button(label="Show Projects", style=discord.ButtonStyle.secondary)
     async def projects_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer(ephemeral=True)
     
         nation_id = self.nation_id
         df = graphql_cities(nation_id)
