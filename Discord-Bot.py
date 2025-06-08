@@ -157,14 +157,14 @@ class NationInfoView(discord.ui.View):
     async def builds_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         nation_id = self.nation_id
         df = graphql_cities(nation_id)
-    
-        if df is None or "data" not in df or not df["data"]:
+        if df is None or df.empty:
             await interaction.response.send_message("❌ Failed to fetch or parse city data.", ephemeral=True)
             return
-    
+        
         try:
-            cities = df["data"][0].get("cities", [])
-            num_cities = len(cities)
+            nation = df.iloc[0]
+            cities = nation.get("cities", [])
+
     
             grouped = {}
             for city in cities:
