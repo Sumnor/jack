@@ -81,7 +81,7 @@ BUILD_KEYS = [
     "subway", "supermarket", "bank", "shopping_mall", "stadium",
     "lead_mine", "iron_mine", "bauxite_mine", "coal_mine", "oil_well",
     "uranium_mine", "oil_refinery", "aluminum_refinery", "steel_mill",
-    "munitions_factory", "factory", "hangar", "drydock"
+    "munitions_factory", "factory", "hangar", "drydock", "num_cities"
 ]
 
 PROJECT_KEYS = [
