@@ -76,13 +76,31 @@ UNIT_PRICES = {
     "nuclear": 1750000
 }
 
-BUILD_KEYS = [
-    "barracks", "farm", "police_station", "hospital", "recycling_center",
-    "subway", "supermarket", "bank", "shopping_mall", "stadium",
-    "lead_mine", "iron_mine", "bauxite_mine", "coal_mine", "oil_well",
-    "uranium_mine", "oil_refinery", "aluminum_refinery", "steel_mill",
-    "munitions_factory", "factory", "hangar", "drydock", "num_cities"
-]
+BUILD_CATEGORIES = {
+    "Power Plants": [
+        "coal_power", "oil_power", "wind_power", "nuclear_power"
+    ],
+    "Raw Resources": [
+        "coal_mine", "oil_well", "uranium_mine", "lead_mine",
+        "iron_mine", "bauxite_mine", "farm"
+    ],
+    "Manufacturing": [
+        "oil_refinery", "aluminum_refinery", "steel_mill",
+        "recycling_center", "factory", "munitions_factory",
+        "hangar", "drydock"
+    ],
+    "Civil": [
+        "police_station", "hospital", "subway", "stadium"
+    ],
+    "Commerce": [
+        "supermarket", "bank", "shopping_mall"
+    ],
+    "Military": [
+        "barracks"
+    ]
+}
+
+BUILD_KEYS = [k for v in BUILD_CATEGORIES.values() for k in v]
 
 PROJECT_KEYS = [
     "iron_works", "bauxite_works", "arms_stockpile", "emergency_gasoline_reserve",
@@ -153,6 +171,116 @@ class NationInfoView(discord.ui.View):
 
         await interaction.response.edit_message(embed=embed, view=self)
 
+@discord.ui.button(label="Show Builds", style=discord.ButtonStyle.primary)
+async def builds_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    nation_id = self.nation_id
+    df = graphql_cities(nation_id)
+    if df is None or df.empty:
+        await interaction.response.send_message("❌ Failed to fetch or parse city data.", ephemeral=True)
+        return
+
+    try:
+        nation = df.iloc[0]
+        num_cities = nation.get("num_cities", 999999)
+        cities = nation.get("cities", [])
+
+        grouped = {}
+        for city in cities:
+            infra = city.get("infrastructure", 0)
+            build_signature = tuple((key, city.get(key, 0)) for key in BUILD_KEYS)
+            grouped.setdefault(build_signature, []).append((city["name"], infra))
+
+        description = ""
+        for build, city_list in grouped.items():
+            count = len(city_list)
+            header = f"🏙️ **{count}/{num_cities} have this build:**\n"
+            build_lines = [f"{name} (Infra: {infra})" for name, infra in city_list]
+
+            # Organize build details by category
+            category_lines = []
+            build_dict = dict(build)
+            for cat, keys in BUILD_CATEGORIES.items():
+                parts = [f"{k.replace('_', ' ').title()}: {build_dict.get(k, 0)}"
+                         for k in keys if k in build_dict and build_dict[k]]
+                if parts:
+                    category_lines.append(f"🔹 __{cat}__:\n" + "\n".join(f"• {p}" for p in parts))
+
+            build_desc = "\n".join(category_lines)
+            block = header + "\n".join(build_lines) + f"\n\n{build_desc}\n\n"
+
+            if len(description) + len(block) > 3900:
+                break  # stay within embed limit
+            description += block
+
+        if not description:
+            description = "No valid build data found."
+
+        embed = discord.Embed(title="Grouped City Builds", description=description, color=discord.Color.blurple())
+        embed.set_footer(text="Data fetched live from Politics & War API")
+
+        self.clear_items()
+        self.add_item(BackButton(self.original_embed, self))
+        self.add_item(CloseButton())
+
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error while formatting builds: {e}", ephemeral=True)
+@discord.ui.button(label="Show Builds", style=discord.ButtonStyle.primary)
+async def builds_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    nation_id = self.nation_id
+    df = graphql_cities(nation_id)
+    if df is None or df.empty:
+        await interaction.response.send_message("❌ Failed to fetch or parse city data.", ephemeral=True)
+        return
+
+    try:
+        nation = df.iloc[0]
+        num_cities = nation.get("num_cities", 999999)
+        cities = nation.get("cities", [])
+
+        grouped = {}
+        for city in cities:
+            infra = city.get("infrastructure", 0)
+            build_signature = tuple((key, city.get(key, 0)) for key in BUILD_KEYS)
+            grouped.setdefault(build_signature, []).append((city["name"], infra))
+
+        description = ""
+        for build, city_list in grouped.items():
+            count = len(city_list)
+            header = f"🏙️ **{count}/{num_cities} have this build:**\n"
+            build_lines = [f"{name} (Infra: {infra})" for name, infra in city_list]
+
+            # Organize build details by category
+            category_lines = []
+            build_dict = dict(build)
+            for cat, keys in BUILD_CATEGORIES.items():
+                parts = [f"{k.replace('_', ' ').title()}: {build_dict.get(k, 0)}"
+                         for k in keys if k in build_dict and build_dict[k]]
+                if parts:
+                    category_lines.append(f"🔹 __{cat}__:\n" + "\n".join(f"• {p}" for p in parts))
+
+            build_desc = "\n".join(category_lines)
+            block = header + "\n".join(build_lines) + f"\n\n{build_desc}\n\n"
+
+            if len(description) + len(block) > 3900:
+                break  # stay within embed limit
+            description += block
+
+        if not description:
+            description = "No valid build data found."
+
+        embed = discord.Embed(title="Grouped City Builds", description=description, color=discord.Color.blurple())
+        embed.set_footer(text="Data fetched live from Politics & War API")
+
+        self.clear_items()
+        self.add_item(BackButton(self.original_embed, self))
+        self.add_item(CloseButton())
+
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error while formatting builds: {e}", ephemeral=True)
     @discord.ui.button(label="Show Builds", style=discord.ButtonStyle.primary)
     async def builds_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         nation_id = self.nation_id
@@ -160,12 +288,11 @@ class NationInfoView(discord.ui.View):
         if df is None or df.empty:
             await interaction.response.send_message("❌ Failed to fetch or parse city data.", ephemeral=True)
             return
-        
+    
         try:
             nation = df.iloc[0]
-            num_cities = nation.get("num_cities", "99999999")
+            num_cities = nation.get("num_cities", 999999)
             cities = nation.get("cities", [])
-
     
             grouped = {}
             for city in cities:
@@ -178,11 +305,21 @@ class NationInfoView(discord.ui.View):
                 count = len(city_list)
                 header = f"🏙️ **{count}/{num_cities} have this build:**\n"
                 build_lines = [f"{name} (Infra: {infra})" for name, infra in city_list]
-                build_desc = " | ".join([f"{k.replace('_', ' ').title()}: {v}" for k, v in build])
-                block = header + "\n".join(build_lines) + f"\n🔧 **Build**: {build_desc}\n\n"
+    
+                # Organize build details by category
+                category_lines = []
+                build_dict = dict(build)
+                for cat, keys in BUILD_CATEGORIES.items():
+                    parts = [f"{k.replace('_', ' ').title()}: {build_dict.get(k, 0)}"
+                             for k in keys if k in build_dict and build_dict[k]]
+                    if parts:
+                        category_lines.append(f"🔹 __{cat}__:\n" + "\n".join(f"• {p}" for p in parts))
+    
+                build_desc = "\n".join(category_lines)
+                block = header + "\n".join(build_lines) + f"\n\n{build_desc}\n\n"
     
                 if len(description) + len(block) > 3900:
-                    break  # keep embed within limit
+                    break  # stay within embed limit
                 description += block
     
             if not description:
@@ -191,7 +328,6 @@ class NationInfoView(discord.ui.View):
             embed = discord.Embed(title="Grouped City Builds", description=description, color=discord.Color.blurple())
             embed.set_footer(text="Data fetched live from Politics & War API")
     
-            # Update buttons: only show Back + Close
             self.clear_items()
             self.add_item(BackButton(self.original_embed, self))
             self.add_item(CloseButton())
@@ -199,13 +335,7 @@ class NationInfoView(discord.ui.View):
             await interaction.response.edit_message(embed=embed, view=self)
     
         except Exception as e:
-            try:
-                await interaction.followup.send(f"❌ Error while formatting builds: {e}", ephemeral=True)
-            except discord.errors.NotFound:
-                print(f"❌ Could not send error message: {e}")
-
-
-    
+            await interaction.followup.send(f"❌ Error while formatting builds: {e}", ephemeral=True)
 
             
     @discord.ui.button(label="Show Projects", style=discord.ButtonStyle.secondary)
@@ -229,8 +359,14 @@ class NationInfoView(discord.ui.View):
                     projects_status.append(f"{proj.replace('_', ' ').title()}")
     
             chunks = [projects_status[i:i + 20] for i in range(0, len(projects_status), 20)]
+            embed = discord.Embed (
+                title = "Projects",
+                colour = discord.Colour.purple
+            )
             for chunk in chunks:
-                await interaction.followup.send("\n".join(chunk), ephemeral=True)
+                embed.add_field(chunk)
+                await interaction.followup.send("\n".join(chunk))
+            await interaction.response.edit_message(embed=embed, view=self)
     
         except Exception as e:
             await interaction.followup.send(f"❌ Error while formatting projects: {e}", ephemeral=True)
