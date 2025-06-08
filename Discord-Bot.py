@@ -3632,6 +3632,7 @@ async def simulation(interaction: discord.Interaction, nation_id: str, war_type:
 @bot.tree.command(name="nation_info", description="Info on the chosen Nation")
 async def who_nation(interaction: discord.Interaction, who: discord.Member):
     await interaction.response.defer()
+    user_id = str(interaction.user.id)
 
     async def is_banker(interaction):
         return (
