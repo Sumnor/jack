@@ -3683,8 +3683,8 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member):
         image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
         embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
 
-        # Send with buttons view
-        view = NationInfoView(nation_id=own_id, embed)
+        nation_id = own_id
+        view = NationInfoView(nation_id, embed)
         view.add_item(CloseButton())
         await interaction.followup.send(embed=embed, view=view)
 
