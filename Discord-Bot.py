@@ -155,8 +155,7 @@ class NationInfoView(discord.ui.View):
 
     @discord.ui.button(label="Show Builds", style=discord.ButtonStyle.primary)
     async def builds_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        nation_id = self.nation_id
-        df = graphql_cities(nation_id)
+        df = graphql_cities(self.nation_id)
     
         if df is None or "data" not in df or not df["data"]:
             await interaction.response.send_message("❌ Failed to fetch or parse city data.", ephemeral=True)
@@ -172,33 +171,37 @@ class NationInfoView(discord.ui.View):
                 build_signature = tuple((key, city.get(key, 0)) for key in BUILD_KEYS)
                 grouped.setdefault(build_signature, []).append((city["name"], infra))
     
-            message_chunks = []
-            current_chunk = ""
-    
+            description = ""
             for build, city_list in grouped.items():
                 count = len(city_list)
                 header = f"🏙️ **{count}/{num_cities} have this build:**\n"
-                build_lines = [f"\t{name} (Infra: {infra})" for name, infra in city_list]
-                build_desc = "\t" + "\t".join([f"{k.replace('_', ' ').title()}: {v}" for k, v in build])
-                block = header + "\n".join(build_lines) + f"\n🔧 **Build**:\n{build_desc}\n\n"
+                build_lines = [f"{name} (Infra: {infra})" for name, infra in city_list]
+                build_desc = " | ".join([f"{k.replace('_', ' ').title()}: {v}" for k, v in build])
+                block = header + "\n".join(build_lines) + f"\n🔧 **Build**: {build_desc}\n\n"
     
-                if len(current_chunk) + len(block) > 1900:
-                    message_chunks.append(current_chunk)
-                    current_chunk = ""
-                current_chunk += block
+                if len(description) + len(block) > 3900:
+                    break  # keep embed within limit
+                description += block
     
-            if current_chunk:
-                message_chunks.append(current_chunk)
+            if not description:
+                description = "No valid build data found."
     
-            for chunk in message_chunks:
-                await interaction.followup.send(chunk, ephemeral=True)
+            embed = discord.Embed(title="Grouped City Builds", description=description, color=discord.Color.blurple())
+            embed.set_footer(text="Data fetched live from Politics & War API")
+    
+            # Update buttons: only show Back + Close
+            self.clear_items()
+            self.add_item(BackButton(self.original_embed, self))
+            self.add_item(CloseButton())
+    
+            await interaction.response.edit_message(embed=embed, view=self)
     
         except Exception as e:
-            # Fallback message in case of exception
             try:
                 await interaction.followup.send(f"❌ Error while formatting builds: {e}", ephemeral=True)
             except discord.errors.NotFound:
                 print(f"❌ Could not send error message: {e}")
+
 
     
 
