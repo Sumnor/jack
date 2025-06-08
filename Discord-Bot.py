@@ -4078,7 +4078,7 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
             elif res == 'food':
                 new_value = resource_value - nr_a_f_minus
                 foo_n = 0 if new_value >= 0 else -new_value
-
+        
         request_lines = []
         if money_n > 0:
             request_lines.append(f"Money: {round(money_n):,.0f}\n")
@@ -4093,8 +4093,15 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
         if all_n > 0:
             request_lines.append(f"Aluminum: {round(all_n):,.0f}")
         
-        request_lines = ' '.join(request_lines)
-        description_text = request_lines
+        description_text = ''.join(request_lines).strip()
+        
+        if not description_text:
+            await interaction.followup.send(
+                f"You already possess all needed resources for a {percent_value} warchest",
+                ephemeral=True
+            )
+            return
+
         embed = discord.Embed(
             title="💰 Grant Request",
             color=discord.Color.gold(),
