@@ -153,47 +153,47 @@ class NationInfoView(discord.ui.View):
 
         await interaction.response.edit_message(embed=embed, view=self)
 
-@discord.ui.button(label="Show Builds", style=discord.ButtonStyle.primary)
-async def builds_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-    nation_id = self.nation_id
-    df = graphql_cities(nation_id)
-
-    if df is None:
-        await interaction.response.send_message("❌ Failed to fetch city data.", ephemeral=True)
-        return
-
-    try:
-        cities = df["data"][0]["cities"]
-
-        grouped = {}
-        for city in cities:
-            infra = city.get("infrastructure", 0)
-            build_signature = tuple((key, city.get(key, 0)) for key in BUILD_KEYS)
-            grouped.setdefault(build_signature, []).append((city["name"], infra))
-
-        message_chunks = []
-        current_chunk = ""
-
-        for build, city_list in grouped.items():
-            header = f"🏙️ **{len(city_list)}/{len(cities)} cities have this build:**\n"
-            build_lines = [f"\t{name} (Infra: {infra})" for name, infra in city_list]  # <- Tab added here
-            build_desc = "\t" + "\t".join([f"{k.replace('_', ' ').title()}: {v}" for k, v in build])  # <- Tab added here
-            block = header + "\n".join(build_lines) + f"\n🔧 **Build**:\n{build_desc}\n\n"
-
-            if len(current_chunk) + len(block) > 1900:
+    @discord.ui.button(label="Show Builds", style=discord.ButtonStyle.primary)
+    async def builds_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        nation_id = self.nation_id
+        df = graphql_cities(nation_id)
+    
+        if df is None:
+            await interaction.response.send_message("❌ Failed to fetch city data.", ephemeral=True)
+            return
+    
+        try:
+            cities = df["data"][0]["cities"]
+    
+            grouped = {}
+            for city in cities:
+                infra = city.get("infrastructure", 0)
+                build_signature = tuple((key, city.get(key, 0)) for key in BUILD_KEYS)
+                grouped.setdefault(build_signature, []).append((city["name"], infra))
+    
+            message_chunks = []
+            current_chunk = ""
+    
+            for build, city_list in grouped.items():
+                header = f"🏙️ **{len(city_list)}/{len(cities)} cities have this build:**\n"
+                build_lines = [f"\t{name} (Infra: {infra})" for name, infra in city_list]  # <- Tab added here
+                build_desc = "\t" + "\t".join([f"{k.replace('_', ' ').title()}: {v}" for k, v in build])  # <- Tab added here
+                block = header + "\n".join(build_lines) + f"\n🔧 **Build**:\n{build_desc}\n\n"
+    
+                if len(current_chunk) + len(block) > 1900:
+                    message_chunks.append(current_chunk)
+                    current_chunk = ""
+                current_chunk += block
+    
+            if current_chunk:
                 message_chunks.append(current_chunk)
-                current_chunk = ""
-            current_chunk += block
-
-        if current_chunk:
-            message_chunks.append(current_chunk)
-
-        for chunk in message_chunks:
-            await interaction.followup.send(chunk, ephemeral=True)
-
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error while formatting builds: {e}", ephemeral=True)
-
+    
+            for chunk in message_chunks:
+                await interaction.followup.send(chunk, ephemeral=True)
+    
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error while formatting builds: {e}", ephemeral=True)
+    
 
             
     @discord.ui.button(label="Show Projects", style=discord.ButtonStyle.secondary)
