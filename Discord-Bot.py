@@ -76,6 +76,105 @@ UNIT_PRICES = {
     "nuclear": 1750000
 }
 
+BUILD_KEYS = [
+    "barracks", "farm", "police_station", "hospital", "recycling_center",
+    "subway", "supermarket", "bank", "shopping_mall", "stadium",
+    "lead_mine", "iron_mine", "bauxite_mine", "coal_mine", "oil_well",
+    "uranium_mine", "oil_refinery", "aluminum_refinery", "steel_mill",
+    "munitions_factory", "factory", "hangar", "drydock",
+]
+
+PROJECT_KEYS = [
+    "iron_works", "bauxite_works", "arms_stockpile", "emergency_gasoline_reserve",
+    "mass_irrigation", "international_trade_center", "missile_launch_pad",
+    "nuclear_research_facility", "iron_dome", "vital_defense_system",
+    "central_intelligence_agency", "center_for_civil_engineering", "propaganda_bureau",
+    "uranium_enrichment_program", "urban_planning", "advanced_urban_planning",
+    "space_program", "spy_satellite", "moon_landing", "pirate_economy",
+    "recycling_initiative", "telecommunications_satellite", "green_technologies",
+    "arable_land_agency", "clinical_research_center", "specialized_police_training_program",
+    "advanced_engineering_corps", "government_support_agency",
+    "research_and_development_center", "metropolitan_planning", "military_salvage",
+    "fallout_shelter", "activity_center", "bureau_of_domestic_affairs",
+    "advanced_pirate_economy", "mars_landing", "surveillance_network",
+    "guiding_satellite", "nuclear_launch_facility", "military_research_center",
+    "military_doctrine"
+]
+
+def group_by_keys(cities, keys):
+    groups = defaultdict(list)
+    for city in cities:
+        # Create a tuple of (key, value) for these keys to group identical builds/projects
+        profile = tuple((k, city.get(k, False)) for k in keys)
+        groups[profile].append(f"{city['name']}({city['id']})")
+    return groups
+
+def format_group(groups):
+    lines = []
+    for profile, cities_list in groups.items():
+        city_label = "city" if len(cities_list) == 1 else "cities"
+        city_names = ", ".join(cities_list)
+        builds = []
+        for key, val in profile:
+            if val:
+                # For boolean True or int >0 display
+                display_val = val if not isinstance(val, bool) else "Yes"
+                builds.append(f"{key.replace('_',' ').title()}: {display_val}")
+        if not builds:
+            builds.append("No buildings/projects")
+        lines.append(f"Builds of {city_label} {city_names}:\n" + ", ".join(builds))
+    return "\n\n".join(lines) or "No data found."
+
+class NationInfoView(ui.View):
+    def __init__(self, nation_id, original_embed):
+        super().__init__(timeout=300)
+        self.nation_id = nation_id
+        self.original_embed = original_embed
+
+    @ui.button(label="Show Builds", style=ButtonStyle.primary)
+    async def show_builds(self, interaction: discord.Interaction, button: ui.Button):
+        df = graphql_cities(self.nation_id)
+        if not df or df.empty:
+            await interaction.response.send_message("No city/build info found.", ephemeral=True)
+            return
+        cities = df.iloc[0]['cities']
+        groups = group_by_keys(cities, BUILD_KEYS)
+        text = format_group(groups)
+
+        embed = Embed(title="🏙️ City Builds", description=text, color=interaction.guild.me.color)
+        await interaction.response.edit_message(embed=embed, view=BackCloseView(self.nation_id, self.original_embed))
+
+    @ui.button(label="Show Projects", style=ButtonStyle.secondary)
+    async def show_projects(self, interaction: discord.Interaction, button: ui.Button):
+        df = graphql_cities(self.nation_id)
+        if not df or df.empty:
+            await interaction.response.send_message("No project info found.", ephemeral=True)
+            return
+        cities = df.iloc[0]['cities']
+        groups = group_by_keys(cities, PROJECT_KEYS)
+        text = format_group(groups)
+
+        embed = Embed(title="🚀 Nation Projects", description=text, color=interaction.guild.me.color)
+        await interaction.response.edit_message(embed=embed, view=BackCloseView(self.nation_id, self.original_embed))
+
+    @ui.button(label="Close", style=ButtonStyle.danger)
+    async def close(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.message.delete()
+
+class BackCloseView(ui.View):
+    def __init__(self, nation_id, original_embed):
+        super().__init__(timeout=300)
+        self.nation_id = nation_id
+        self.original_embed = original_embed
+
+    @ui.button(label="Back", style=ButtonStyle.secondary)
+    async def back(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.response.edit_message(embed=self.original_embed, view=NationInfoView(self.nation_id, self.original_embed))
+
+    @ui.button(label="Close", style=ButtonStyle.danger)
+    async def close(self, interaction: discord.Interaction, button: ui.Button):
+        await interaction.message.delete()
+
 BANK_PERMISSION_TYPE = "Nation Deposit to Bank"
 
 class AmountModal(discord.ui.Modal, title="Enter Amount"):
@@ -458,6 +557,123 @@ def get_military_o(nation_id):
     nuclear = get_first_value(extract_stat("Nuclear Weapons:"))
 
     return nation_name, nation_leader, nation_rank, nation_score, war_policy, soldiers, tanks, aircraft, ships, spies, missiles, nuclear
+    
+def graphql_cities(nation_id):
+    GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
+    
+    query = f"""
+        {{
+          nations(id: [{nation_id}]) {{
+            data {{
+              num_cities
+              cities {{
+                name
+                id
+                infrastructure
+                land
+                powered
+                oil_power
+                wind_power
+                coal_power
+                nuclear_power
+                coal_mine
+                oil_well
+                uranium_mine
+                barracks
+                farm
+                police_station
+                hospital
+                recycling_center
+                subway
+                supermarket
+                bank
+                shopping_mall
+                stadium
+                lead_mine
+                iron_mine
+                bauxite_mine
+                oil_refinery
+                aluminum_refinery
+                steel_mill
+                munitions_factory
+                factory
+                hangar
+                drydock
+                projects
+                project_bits
+                iron_works
+                bauxite_works
+                arms_stockpile
+                emergency_gasoline_reserve
+                mass_irrigation
+                international_trade_center
+                missile_launch_pad
+                nuclear_research_facility
+                iron_dome
+                vital_defense_system
+                central_intelligence_agency
+                center_for_civil_engineering
+                propaganda_bureau
+                uranium_enrichment_program
+                urban_planning
+                advanced_urban_planning
+                space_program
+                spy_satellite
+                moon_landing
+                pirate_economy
+                recycling_initiative
+                telecommunications_satellite
+                green_technologies
+                arable_land_agency
+                clinical_research_center
+                specialized_police_training_program
+                advanced_engineering_corps
+                government_support_agency
+                research_and_development_center
+                metropolitan_planning
+                military_salvage
+                fallout_shelter
+                activity_center
+                bureau_of_domestic_affairs
+                advanced_pirate_economy
+                mars_landing
+                surveillance_network
+                guiding_satellite
+                nuclear_launch_facility
+                military_research_center
+                military_doctrine
+              }}
+            }}
+          }}
+        }}
+        """
+    try:
+        response = requests.post(
+            GRAPHQL_URL,
+            json={"query": query},
+            headers={"Content-Type": "application/json"}
+        )
+        response.raise_for_status()
+        json_data = response.json()
+
+        if "errors" in json_data:
+            print("GraphQL Errors:", json_data["errors"])
+            return None
+
+        nations_data = json_data.get("data", {}).get("nations", {}).get("data", [])
+        if not nations_data:
+            print("No nation data found.")
+            return None
+
+        df = pd.json_normalize(nations_data)
+        return df
+
+    except requests.RequestException as e:
+        print(f"HTTP Error during GraphQL request: {e}")
+        return None
+    except (KeyError, TypeError, json.JSONDecodeError) as e:
+        print(f"Parsing Error: {e}")
+        return None
 
 def graphql_request(nation_id):
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
@@ -537,6 +753,15 @@ def graphql_request(nation_id):
         print(f"Parsing Error: {e}")
         return None
 
+def get_city_data(nation_id):
+    df = graphql_cities(nation_id)
+    if df is not None:
+        try:
+            row = df.iloc[0]  # since the query returns one nation only
+            return row.to_dict()
+        except IndexError:
+            return None
+    return None
 
 def get_resources(nation_id):
     df = graphql_request(nation_id)
@@ -3335,44 +3560,40 @@ async def simulation(interaction: discord.Interaction, nation_id: str, war_type:
 async def who_nation(interaction: discord.Interaction, who: discord.Member):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
-    
-    global cached_users  # the dict version
-    
-    user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
-    
+
+    global cached_users
+
+    user_data = cached_users.get(user_id)
+
     if not user_data:
         await interaction.followup.send("❌ You are not registered. Use `/register` first.")
         return
-    
-    own_id = str(user_data.get("NationID", "")).strip()
 
-    if not own_id:
-            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
-            return
-    try:
+    own_id = None
+    if who == interaction.user:
+        # If asking for self info, get own nation ID directly
+        own_id = str(user_data.get("NationID", "")).strip()
+    else:
         target_username = who.name.lower()
-
-        own_id = None
         for discord_id, info in cached_users.items():
             if info['DiscordUsername'].lower() == target_username:
-                own_id = info.get('NationID')  # or 'own_id' depending on your sheet
+                own_id = info.get('NationID')
                 break
 
-        if own_id is None:
-            await interaction.followup.send(
-                f"❌ Could not find Nation ID for {who.mention}. "
-                "They must be registered in the Google Sheet with their Discord username."
-            )
-            return
+    if not own_id:
+        await interaction.followup.send(f"❌ Could not find Nation ID for {who.mention}. They must be registered.")
+        return
 
+    # Assuming you have get_military, get_resources, get_general_data functions working
+    try:
         nation_name, nation_leader, nation_score, war_policy, soldiers, tanks, aircraft, ships, spies, missiles, nuclear = get_military(own_id)
         nation_name, num_cities, food, money, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, uranium = get_resources(own_id)
         gen_data = get_general_data(own_id)
-        
+
         if not gen_data:
             await interaction.followup.send("❌ Failed to fetch general data.")
             return
-        
+
         (
             alliance_id,
             alliance_position,
@@ -3384,12 +3605,13 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member):
             project,
             turns_since_last_project
         ) = gen_data
-        
+
+        # Format last activity time as you had it
         try:
+            from datetime import datetime, timezone
             activity_dt = datetime.fromisoformat(activity)
             now = datetime.now(timezone.utc)
             delta = now - activity_dt
-        
             if delta.total_seconds() < 60:
                 activity_str = "just now"
             elif delta.total_seconds() < 3600:
@@ -3443,15 +3665,18 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member):
             f"☢️ *Nuclear Weapons:* {nuclear}"
         )
 
-
-        embed = discord.Embed(
-            title= f"🏳️🧑‍✈️ {nation_name}, lead by {nation_leader}",
+        embed = Embed(
+            title=f"🏳️🧑‍✈️ {nation_name}, lead by {nation_leader}",
             color=discord.Color.dark_embed(),
-            description=(msg)
+            description=msg
         )
         image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-        embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
-        await interaction.followup.send(embed=embed)
+        embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
+
+        # Send with buttons view
+        view = NationInfoView(own_id, embed)
+        await interaction.followup.send(embed=embed, view=view)
+
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {e}")
 
