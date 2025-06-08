@@ -224,7 +224,7 @@ class NationInfoView(discord.ui.View):
         except Exception as e:
             await interaction.followup.send(f"❌ Error while formatting builds: {e}", ephemeral=True)
 
-            
+                
     @discord.ui.button(label="Show Projects", style=discord.ButtonStyle.secondary)
     async def projects_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
@@ -242,21 +242,22 @@ class NationInfoView(discord.ui.View):
     
             for proj in PROJECT_KEYS:
                 emoji = "✅" if nation.get(proj, False) else "❌"
-                if emoji != "❌":    
+                if emoji == "✅":
                     projects_status.append(f"{proj.replace('_', ' ').title()}")
     
             chunks = [projects_status[i:i + 20] for i in range(0, len(projects_status), 20)]
-            embed = discord.Embed (
-                title = "Projects",
-                colour = discord.Colour.purple()
+            embed = discord.Embed(
+                title="Projects",
+                colour=discord.Colour.purple()
             )
             for chunk in chunks:
-                embed.add_field(chunk)
-                await interaction.followup.send("\n".join(chunk))
-            await interaction.response.edit_message(embed=embed, view=self)
+                embed.add_field(name="Projects", value="\n".join(chunk), inline=False)
+    
+            await interaction.followup.edit_message(embed=embed, view=self)
     
         except Exception as e:
             await interaction.followup.send(f"❌ Error while formatting projects: {e}", ephemeral=True)
+
 
 
 class BackButton(discord.ui.Button):
