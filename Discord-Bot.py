@@ -3633,7 +3633,8 @@ async def simulation(interaction: discord.Interaction, nation_id: str, war_type:
 async def who_nation(interaction: discord.Interaction, who: discord.Member):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
-    user_mention = str(interaction.who.id)
+    user_mention = str(interaction.user.mention)
+    print(who, user_mention)
     async def is_banker(interaction):
         return (
             any(role.name == "Government member" for role in interaction.user.roles)
