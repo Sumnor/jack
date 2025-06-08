@@ -155,11 +155,13 @@ class NationInfoView(discord.ui.View):
 
     @discord.ui.button(label="Show Builds", style=discord.ButtonStyle.primary)
     async def builds_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+    
         nation_id = self.nation_id
         df = graphql_cities(nation_id)
     
-        if df is None:
-            await interaction.response.send_message("❌ Failed to fetch city data.", ephemeral=True)
+        if df is None or df.empty:
+            await interaction.followup.send("❌ Failed to fetch city data.", ephemeral=True)
             return
     
         try:
@@ -168,7 +170,10 @@ class NationInfoView(discord.ui.View):
             for city in cities:
                 name = city["name"]
                 infra = city.get("infrastructure", 0)
-                builds = [f"{key.replace('_', ' ').title()}: {city.get(key, 0)}" for key in BUILD_KEYS]
+                builds = [
+                    f"{key.replace('_', ' ').title()}: {city.get(key, 0) or 0}"
+                    for key in BUILD_KEYS
+                ]
                 line = f"🏙️ **{name}** | Infra: {infra} | " + " | ".join(builds)
                 message_lines.append(line)
     
@@ -178,18 +183,21 @@ class NationInfoView(discord.ui.View):
     
         except Exception as e:
             await interaction.followup.send(f"❌ Error while formatting builds: {e}", ephemeral=True)
+
             
     @discord.ui.button(label="Show Projects", style=discord.ButtonStyle.secondary)
     async def projects_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+    
         nation_id = self.nation_id
         df = graphql_cities(nation_id)
     
-        if df is None:
-            await interaction.response.send_message("❌ Failed to fetch project data.", ephemeral=True)
+        if df is None or df.empty:
+            await interaction.followup.send("❌ Failed to fetch project data.", ephemeral=True)
             return
     
         try:
-            cities = df.iloc[0]
+            nation = df.iloc[0]
             projects_status = []
     
             for proj in PROJECT_KEYS:
@@ -202,6 +210,7 @@ class NationInfoView(discord.ui.View):
     
         except Exception as e:
             await interaction.followup.send(f"❌ Error while formatting projects: {e}", ephemeral=True)
+
 
 class BackButton(discord.ui.Button):
     def __init__(self, original_embed, parent_view):
@@ -610,55 +619,13 @@ def get_military_o(nation_id):
     
 def graphql_cities(nation_id):
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
-    
+
     query = f"""
     {{
       nations(id: [{nation_id}]) {{
         data {{
           num_cities
-          projects
-          project_bits
-          iron_works
-          bauxite_works
-          arms_stockpile
-          emergency_gasoline_reserve
-          mass_irrigation
-          international_trade_center
-          missile_launch_pad
-          nuclear_research_facility
-          iron_dome
-          vital_defense_system
-          central_intelligence_agency
-          center_for_civil_engineering
-          propaganda_bureau
-          uranium_enrichment_program
-          urban_planning
-          advanced_urban_planning
-          space_program
-          spy_satellite
-          moon_landing
-          pirate_economy
-          recycling_initiative
-          telecommunications_satellite
-          green_technologies
-          arable_land_agency
-          clinical_research_center
-          specialized_police_training_program
-          advanced_engineering_corps
-          government_support_agency
-          research_and_development_center
-          metropolitan_planning
-          military_salvage
-          fallout_shelter
-          activity_center
-          bureau_of_domestic_affairs
-          advanced_pirate_economy
-          mars_landing
-          surveillance_network
-          guiding_satellite
-          nuclear_launch_facility
-          military_research_center
-          military_doctrine
+          {"".join(f"{proj}\\n" for proj in PROJECT_KEYS)}
           cities {{
             name
             id
@@ -706,7 +673,6 @@ def graphql_cities(nation_id):
         )
         response.raise_for_status()
         json_data = response.json()
-        print(json_data)
 
         if "errors" in json_data:
             print("GraphQL Errors:", json_data["errors"])
