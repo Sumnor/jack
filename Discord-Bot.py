@@ -155,7 +155,8 @@ class NationInfoView(discord.ui.View):
 
     @discord.ui.button(label="Show Builds", style=discord.ButtonStyle.primary)
     async def builds_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        df = graphql_cities(self.nation_id)
+        nation_id = self.nation_id
+        df = graphql_cities(nation_id)
     
         if df is None or "data" not in df or not df["data"]:
             await interaction.response.send_message("❌ Failed to fetch or parse city data.", ephemeral=True)
