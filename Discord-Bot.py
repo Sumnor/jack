@@ -86,8 +86,7 @@ BUILD_CATEGORIES = {
     ],
     "Manufacturing": [
         "oil_refinery", "aluminum_refinery", "steel_mill",
-        "recycling_center", "factory", "munitions_factory",
-        "hangar", "drydock"
+        "recycling_center", "munitions_factory"
     ],
     "Civil": [
         "police_station", "hospital", "subway", "stadium"
@@ -96,7 +95,7 @@ BUILD_CATEGORIES = {
         "supermarket", "bank", "shopping_mall"
     ],
     "Military": [
-        "barracks"
+        "barracks", "factory", "hangar", "drydock"
     ]
 }
 
@@ -251,7 +250,7 @@ class NationInfoView(discord.ui.View):
             chunks = [projects_status[i:i + 20] for i in range(0, len(projects_status), 20)]
             embed = discord.Embed (
                 title = "Projects",
-                colour = discord.Colour.purple
+                colour = discord.Colour.purple()
             )
             for chunk in chunks:
                 embed.add_field(chunk)
