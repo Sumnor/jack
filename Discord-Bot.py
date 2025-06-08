@@ -620,12 +620,15 @@ def get_military_o(nation_id):
 def graphql_cities(nation_id):
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
 
+    # Add project fields separately from cities
+    project_fields = "\n".join(PROJECT_KEYS)
+
     query = f"""
     {{
       nations(id: [{nation_id}]) {{
         data {{
           num_cities
-          {"".join(f"{proj}\\n" for proj in PROJECT_KEYS)}
+          {project_fields}
           cities {{
             name
             id
