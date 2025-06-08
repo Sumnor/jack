@@ -3632,15 +3632,14 @@ async def simulation(interaction: discord.Interaction, nation_id: str, war_type:
 @bot.tree.command(name="nation_info", description="Info on the chosen Nation")
 async def who_nation(interaction: discord.Interaction, who: discord.Member):
     await interaction.response.defer()
-    user_id = str(interaction.user.id)
-    user_mention = str(interaction.user.mention)
-    print(who, user_mention)
+
     async def is_banker(interaction):
         return (
             any(role.name == "Government member" for role in interaction.user.roles)
-            or str(interaction.user.id) == "1148678095176474678"
+            or interaction.user.id == 1148678095176474678
         )
-    if user_id != user_mention:
+
+    if interaction.user.id != who.id:
         if not await is_banker(interaction):
             await interaction.followup.send("❌ You don't have the rights, lil bro.")
             return
