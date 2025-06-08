@@ -3634,15 +3634,15 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
     user_mention = str(interaction.user.mention)
-    if who != user_mention:
-        if not await is_banker(interaction):
-            await interaction.followup.send("❌ You don't have the rights, lil bro.")
-            return
     async def is_banker(interaction):
         return (
             any(role.name == "Government member" for role in interaction.user.roles)
             or str(interaction.user.id) == "1148678095176474678"
         )
+    if who != user_mention:
+        if not await is_banker(interaction):
+            await interaction.followup.send("❌ You don't have the rights, lil bro.")
+            return
         
     global cached_users
 
