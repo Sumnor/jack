@@ -78,21 +78,19 @@ UNIT_PRICES = {
 
 BUILD_CATEGORIES = {
     "Power Plants": [
-        "coal_power", "oil_power", "wind_power", "nuclear_power"
+        "coal_power", "oil_power", "nuclear_power", "wind_power"
     ],
     "Raw Resources": [
-        "coal_mine", "oil_well", "uranium_mine", "lead_mine",
-        "iron_mine", "bauxite_mine", "farm"
+        "coal_mine", "iron_mine", "lead_mine", "farm", "oil_well", "uranium_mine", "bauxite_mine"
     ],
     "Manufacturing": [
-        "oil_refinery", "aluminum_refinery", "steel_mill",
-        "recycling_center", "munitions_factory"
+        "oil_refinery", "steel_mill", "aluminum_refinery", "munitions_factory"
     ],
     "Civil": [
-        "police_station", "hospital", "subway", "stadium"
+        "police_station", "hospital", "recycling_center", "subway"
     ],
     "Commerce": [
-        "supermarket", "bank", "shopping_mall"
+        "supermarket", "bank", "shopping_mall", "stadium"
     ],
     "Military": [
         "barracks", "factory", "hangar", "drydock"
