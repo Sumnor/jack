@@ -81,7 +81,7 @@ BUILD_KEYS = [
     "subway", "supermarket", "bank", "shopping_mall", "stadium",
     "lead_mine", "iron_mine", "bauxite_mine", "coal_mine", "oil_well",
     "uranium_mine", "oil_refinery", "aluminum_refinery", "steel_mill",
-    "munitions_factory", "factory", "hangar", "drydock",
+    "munitions_factory", "factory", "hangar", "drydock"
 ]
 
 PROJECT_KEYS = [
@@ -101,79 +101,89 @@ PROJECT_KEYS = [
     "military_doctrine"
 ]
 
-def group_by_keys(cities, keys):
-    groups = defaultdict(list)
-    for city in cities:
-        # Create a tuple of (key, value) for these keys to group identical builds/projects
-        profile = tuple((k, city.get(k, False)) for k in keys)
-        groups[profile].append(f"{city['name']}({city['id']})")
-    return groups
-
-def format_group(groups):
-    lines = []
-    for profile, cities_list in groups.items():
-        city_label = "city" if len(cities_list) == 1 else "cities"
-        city_names = ", ".join(cities_list)
-        builds = []
-        for key, val in profile:
-            if val:
-                # For boolean True or int >0 display
-                display_val = val if not isinstance(val, bool) else "Yes"
-                builds.append(f"{key.replace('_',' ').title()}: {display_val}")
-        if not builds:
-            builds.append("No buildings/projects")
-        lines.append(f"Builds of {city_label} {city_names}:\n" + ", ".join(builds))
-    return "\n\n".join(lines) or "No data found."
-
-class NationInfoView(View):
-    def __init__(self, nation_id, original_embed):
-        super().__init__(timeout=300)
+class NationInfoView(discord.ui.View):
+    def __init__(self, nation_id, embed):
+        super().__init__(timeout=120)
         self.nation_id = nation_id
-        self.original_embed = original_embed
+        self.original_embed = embed
 
-    @discord.ui.button(label="Show Builds", style=ButtonStyle.primary, custom_id="show_builds_button")
-    async def show_builds(self, interaction: discord.Interaction, button: discord.ui.Button):
-        df = graphql_cities(self.nation_id)
-        if not df or df.empty:
-            await interaction.response.send_message("No city/build info found.", ephemeral=True)
+    async def fetch_and_group(self, keys):
+        cities = graphql_cities(self.nation_id)
+        if not cities:
+            return None, "Failed to get city data."
+
+        # Group cities by their "buildings/projects" signature (only those with >0 or True)
+        groups = defaultdict(list)
+        for city in cities:
+            # Build a tuple of (key=value) only for keys that are positive or True
+            present = tuple(
+                (key, city.get(key))
+                for key in keys
+                if city.get(key) and (city.get(key) != 0 and city.get(key) is not False)
+            )
+            groups[present].append(city["name"] + f"({city['id']})")
+
+        return groups, None
+
+    async def show_grouped(self, interaction, keys, title):
+        groups, err = await self.fetch_and_group(keys)
+        if err:
+            await interaction.response.send_message(err, ephemeral=True)
             return
-        cities = df.iloc[0]['cities']
-        groups = group_by_keys(cities, BUILD_KEYS)
-        text = format_group(groups)
 
-        embed = Embed(title="🏙️ City Builds", description=text, color=interaction.guild.me.color)
-        await interaction.response.edit_message(embed=embed, view=BackCloseView(self.nation_id, self.original_embed))
+        description = ""
+        for build_tuple, city_names in groups.items():
+            # Format build names with their quantities or True status
+            build_desc = ", ".join(
+                f"{k.replace('_', ' ').title()}: {v}" if not isinstance(v, bool) else f"{k.replace('_', ' ').title()}"
+                for k, v in build_tuple
+            )
+            description += f"**{build_desc}**\nCities: {', '.join(city_names)}\n\n"
 
-    @discord.ui.button(label="Show Projects", style=ButtonStyle.secondary, custom_id="show_proj_button")
-    async def show_projects(self, interaction: discord.Interaction, button: discord.ui.Button):
-        df = graphql_cities(self.nation_id)
-        if not df or df.empty:
-            await interaction.response.send_message("No project info found.", ephemeral=True)
-            return
-        cities = df.iloc[0]['cities']
-        groups = group_by_keys(cities, PROJECT_KEYS)
-        text = format_group(groups)
+        if description == "":
+            description = "No data found."
 
-        embed = Embed(title="🚀 Nation Projects", description=text, color=interaction.guild.me.color)
-        await interaction.response.edit_message(embed=embed, view=BackCloseView(self.nation_id, self.original_embed))
+        embed = discord.Embed(title=title, description=description, color=discord.Color.blue())
+        embed.set_footer(text="Data fetched live from Politics & War API")
 
-    @discord.ui.button(label="Close", style=ButtonStyle.danger, custom_id="del_button")
-    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.message.delete()
+        # After pressing one of these buttons, only show Back + Close buttons
+        self.clear_items()
+        self.add_item(BackButton(self.original_embed, self))
+        self.add_item(CloseButton())
 
-class BackCloseView(View):
-    def __init__(self, nation_id, original_embed):
-        super().__init__(timeout=300)
-        self.nation_id = nation_id
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="Show Builds", style=discord.ButtonStyle.primary)
+    async def builds_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.show_grouped(interaction, BUILD_KEYS, "Grouped Builds by Cities")
+
+    @discord.ui.button(label="Show Projects", style=discord.ButtonStyle.secondary)
+    async def projects_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.show_grouped(interaction, PROJECT_KEYS, "Grouped Projects by Cities")
+
+
+class BackButton(discord.ui.Button):
+    def __init__(self, original_embed, parent_view):
+        super().__init__(label="Back", style=discord.ButtonStyle.success)
         self.original_embed = original_embed
+        self.parent_view = parent_view
 
-    @discord.ui.button(label="Back", style=ButtonStyle.secondary, custom_id="back_button")
-    async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.edit_message(embed=self.original_embed, view=NationInfoView(self.nation_id, self.original_embed))
+    async def callback(self, interaction: discord.Interaction):
+        # Reset view buttons
+        self.parent_view.clear_items()
+        self.parent_view.add_item(self.parent_view.builds_button)
+        self.parent_view.add_item(self.parent_view.projects_button)
+        self.parent_view.add_item(CloseButton())
 
-    @discord.ui.button(label="Close", style=ButtonStyle.danger, custom_id="close_button")
-    async def close(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.edit_message(embed=self.original_embed, view=self.parent_view)
+
+class CloseButton(discord.ui.Button):
+    def __init__(self):
+        super().__init__(label="Close", style=discord.ButtonStyle.danger)
+
+    async def callback(self, interaction: discord.Interaction):
         await interaction.message.delete()
+        self.view.stop()
 
 BANK_PERMISSION_TYPE = "Nation Deposit to Bank"
 
@@ -3674,7 +3684,8 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member):
         embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
 
         # Send with buttons view
-        view = NationInfoView(own_id, embed)
+        view = NationInfoView(nation_id, embed)
+        view.add_item(CloseButton())
         await interaction.followup.send(embed=embed, view=view)
 
     except Exception as e:
