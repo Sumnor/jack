@@ -158,12 +158,13 @@ class NationInfoView(discord.ui.View):
         nation_id = self.nation_id
         df = graphql_cities(nation_id)
     
-        if df is None:
-            await interaction.response.send_message("❌ Failed to fetch city data.", ephemeral=True)
+        if df is None or "data" not in df or not df["data"]:
+            await interaction.response.send_message("❌ Failed to fetch or parse city data.", ephemeral=True)
             return
     
         try:
-            cities = df["data"][0]["cities"]
+            cities = df["data"][0].get("cities", [])
+            num_cities = len(cities)
     
             grouped = {}
             for city in cities:
@@ -175,9 +176,10 @@ class NationInfoView(discord.ui.View):
             current_chunk = ""
     
             for build, city_list in grouped.items():
-                header = f"🏙️ **{len(city_list)}/{len(cities)} cities have this build:**\n"
-                build_lines = [f"\t{name} (Infra: {infra})" for name, infra in city_list]  # <- Tab added here
-                build_desc = "\t" + "\t".join([f"{k.replace('_', ' ').title()}: {v}" for k, v in build])  # <- Tab added here
+                count = len(city_list)
+                header = f"🏙️ **{count}/{num_cities} have this build:**\n"
+                build_lines = [f"\t{name} (Infra: {infra})" for name, infra in city_list]
+                build_desc = "\t" + "\t".join([f"{k.replace('_', ' ').title()}: {v}" for k, v in build])
                 block = header + "\n".join(build_lines) + f"\n🔧 **Build**:\n{build_desc}\n\n"
     
                 if len(current_chunk) + len(block) > 1900:
@@ -192,7 +194,12 @@ class NationInfoView(discord.ui.View):
                 await interaction.followup.send(chunk, ephemeral=True)
     
         except Exception as e:
-            await interaction.followup.send(f"❌ Error while formatting builds: {e}", ephemeral=True)
+            # Fallback message in case of exception
+            try:
+                await interaction.followup.send(f"❌ Error while formatting builds: {e}", ephemeral=True)
+            except discord.errors.NotFound:
+                print(f"❌ Could not send error message: {e}")
+
     
 
             
@@ -213,7 +220,8 @@ class NationInfoView(discord.ui.View):
     
             for proj in PROJECT_KEYS:
                 emoji = "✅" if nation.get(proj, False) else "❌"
-                projects_status.append(f"{emoji} {proj.replace('_', ' ').title()}")
+                if emoji != "❌":    
+                    projects_status.append(f"{proj.replace('_', ' ').title()}")
     
             chunks = [projects_status[i:i + 20] for i in range(0, len(projects_status), 20)]
             for chunk in chunks:
