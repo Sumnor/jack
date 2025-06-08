@@ -132,7 +132,7 @@ class NationInfoView(View):
         self.original_embed = original_embed
 
     @discord.ui.button(label="Show Builds", style=ButtonStyle.primary, custom_id="show_builds_button")
-    async def show_builds(self, interaction: discord.Interaction, button: ui.Button):
+    async def show_builds(self, interaction: discord.Interaction, button: discord.ui.Button):
         df = graphql_cities(self.nation_id)
         if not df or df.empty:
             await interaction.response.send_message("No city/build info found.", ephemeral=True)
@@ -145,7 +145,7 @@ class NationInfoView(View):
         await interaction.response.edit_message(embed=embed, view=BackCloseView(self.nation_id, self.original_embed))
 
     @discord.ui.button(label="Show Projects", style=ButtonStyle.secondary, custom_id="show_proj_button")
-    async def show_projects(self, interaction: discord.Interaction, button: ui.Button):
+    async def show_projects(self, interaction: discord.Interaction, button: discord.ui.Button):
         df = graphql_cities(self.nation_id)
         if not df or df.empty:
             await interaction.response.send_message("No project info found.", ephemeral=True)
