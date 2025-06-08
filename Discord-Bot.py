@@ -3684,7 +3684,7 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member):
         embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
 
         # Send with buttons view
-        view = NationInfoView(nation_id, embed)
+        view = NationInfoView(nation_id=own_id, embed)
         view.add_item(CloseButton())
         await interaction.followup.send(embed=embed, view=view)
 
