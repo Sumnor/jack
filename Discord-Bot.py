@@ -252,6 +252,10 @@ class NationInfoView(discord.ui.View):
             for chunk in chunks:
                 embed.add_field(name="Projects", value="\n".join(chunk), inline=False)
     
+            self.clear_items()
+            self.add_item(BackButton(self.original_embed, self))
+            self.add_item(CloseButton())
+    
             await interaction.response.edit_message(embed=embed, view=self)
     
         except Exception as e:
