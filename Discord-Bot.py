@@ -155,11 +155,53 @@ class NationInfoView(discord.ui.View):
 
     @discord.ui.button(label="Show Builds", style=discord.ButtonStyle.primary)
     async def builds_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.show_grouped(interaction, BUILD_KEYS, "Cities Grouped by Buildings")
-
+        nation_id = self.nation_id
+        df = graphql_cities(nation_id)
+    
+        if df is None:
+            await interaction.response.send_message("❌ Failed to fetch city data.", ephemeral=True)
+            return
+    
+        try:
+            cities = df["data"][0]["cities"]
+            message_lines = []
+            for city in cities:
+                name = city["name"]
+                infra = city.get("infrastructure", 0)
+                builds = [f"{key.replace('_', ' ').title()}: {city.get(key, 0)}" for key in BUILD_KEYS]
+                line = f"🏙️ **{name}** | Infra: {infra} | " + " | ".join(builds)
+                message_lines.append(line)
+    
+            chunks = [message_lines[i:i + 10] for i in range(0, len(message_lines), 10)]
+            for chunk in chunks:
+                await interaction.followup.send("\n".join(chunk), ephemeral=True)
+    
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error while formatting builds: {e}", ephemeral=True)
+            
     @discord.ui.button(label="Show Projects", style=discord.ButtonStyle.secondary)
     async def projects_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.show_grouped(interaction, PROJECT_KEYS, "Cities Grouped by Projects")
+        nation_id = self.nation_id
+        df = graphql_cities(nation_id)
+    
+        if df is None:
+            await interaction.response.send_message("❌ Failed to fetch project data.", ephemeral=True)
+            return
+    
+        try:
+            nation = df["data"][0]
+            projects_status = []
+    
+            for proj in PROJECT_KEYS:
+                emoji = "✅" if nation.get(proj, False) else "❌"
+                projects_status.append(f"{emoji} {proj.replace('_', ' ').title()}")
+    
+            chunks = [projects_status[i:i + 20] for i in range(0, len(projects_status), 20)]
+            for chunk in chunks:
+                await interaction.followup.send("\n".join(chunk), ephemeral=True)
+    
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error while formatting projects: {e}", ephemeral=True)
 
 class BackButton(discord.ui.Button):
     def __init__(self, original_embed, parent_view):
