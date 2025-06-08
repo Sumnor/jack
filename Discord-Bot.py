@@ -163,7 +163,7 @@ class NationInfoView(discord.ui.View):
             return
     
         try:
-            cities = df["data"][0]["cities"]
+            cities = df.iloc[0]["cities"]
             message_lines = []
             for city in cities:
                 name = city["name"]
@@ -189,7 +189,7 @@ class NationInfoView(discord.ui.View):
             return
     
         try:
-            nation = df["data"][0]
+            cities = df.iloc[0]
             projects_status = []
     
             for proj in PROJECT_KEYS:
