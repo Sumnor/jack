@@ -253,7 +253,7 @@ class NationInfoView(discord.ui.View):
             for chunk in chunks:
                 embed.add_field(name="Projects", value="\n".join(chunk), inline=False)
     
-            await interaction.followup.edit_message(embed=embed, view=self)
+            await interaction.response.edit_message(embed=embed, view=self)
     
         except Exception as e:
             await interaction.followup.send(f"❌ Error while formatting projects: {e}", ephemeral=True)
