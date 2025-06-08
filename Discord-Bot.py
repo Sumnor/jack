@@ -3665,7 +3665,7 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member):
             f"☢️ *Nuclear Weapons:* {nuclear}"
         )
 
-        embed = Embed(
+        embed = discord.Embed(
             title=f"🏳️🧑‍✈️ {nation_name}, lead by {nation_leader}",
             color=discord.Color.dark_embed(),
             description=msg
