@@ -163,6 +163,7 @@ class NationInfoView(discord.ui.View):
         
         try:
             nation = df.iloc[0]
+            num_cities = nation.get("num_cities", "99999999")
             cities = nation.get("cities", [])
 
     
