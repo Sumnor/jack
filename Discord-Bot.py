@@ -174,12 +174,12 @@ class NationInfoView(discord.ui.View):
                     f"{key.replace('_', ' ').title()}: {city.get(key, 0) or 0}"
                     for key in BUILD_KEYS
                 ]
-                line = f"🏙️ **{name}** | Infra: {infra} | " + " | ".join(builds)
+                line = f"Infra: {infra} | " + " | ".join(builds)
                 message_lines.append(line)
     
             chunks = [message_lines[i:i + 10] for i in range(0, len(message_lines), 10)]
             for chunk in chunks:
-                await interaction.followup.send("\n".join(chunk), ephemeral=True)
+                await interaction.followup.send("\n".join(chunk), ephemeral=True)o
     
         except Exception as e:
             await interaction.followup.send(f"❌ Error while formatting builds: {e}", ephemeral=True)
