@@ -699,6 +699,7 @@ def graphql_cities(nation_id):
         )
         response.raise_for_status()
         json_data = response.json()
+        print(json_data)
 
         if "errors" in json_data:
             print("GraphQL Errors:", json_data["errors"])
