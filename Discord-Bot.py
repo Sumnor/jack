@@ -102,51 +102,51 @@ PROJECT_KEYS = [
 ]
 
 class NationInfoView(discord.ui.View):
-    def __init__(self, nation_id, embed):
+    def __init__(self, nation_id, original_embed):
         super().__init__(timeout=120)
         self.nation_id = nation_id
-        self.original_embed = embed
+        self.original_embed = original_embed
 
     async def fetch_and_group(self, keys):
-        cities = graphql_cities(self.nation_id)
-        if not cities:
-            return None, "Failed to get city data."
-
-        # Group cities by their "buildings/projects" signature (only those with >0 or True)
+        df = graphql_cities(self.nation_id)
+        cities = extract_cities_from_df(df)
+        if cities is None:
+            return None, "Failed to fetch city data."
+        
         groups = defaultdict(list)
         for city in cities:
-            # Build a tuple of (key=value) only for keys that are positive or True
             present = tuple(
                 (key, city.get(key))
                 for key in keys
-                if city.get(key) and (city.get(key) != 0 and city.get(key) is not False)
+                if city.get(key) not in (0, None, False, "")
             )
-            groups[present].append(city["name"] + f"({city['id']})")
+            groups[present].append(f"{city.get('name')} ({city.get('id')})")
 
         return groups, None
 
-    async def show_grouped(self, interaction, keys, title):
+    async def show_grouped(self, interaction: discord.Interaction, keys, title):
         groups, err = await self.fetch_and_group(keys)
         if err:
             await interaction.response.send_message(err, ephemeral=True)
             return
 
         description = ""
-        for build_tuple, city_names in groups.items():
-            # Format build names with their quantities or True status
-            build_desc = ", ".join(
+        for buildings, city_names in groups.items():
+            if not buildings:
+                continue
+            building_str = ", ".join(
                 f"{k.replace('_', ' ').title()}: {v}" if not isinstance(v, bool) else f"{k.replace('_', ' ').title()}"
-                for k, v in build_tuple
+                for k, v in buildings
             )
-            description += f"**{build_desc}**\nCities: {', '.join(city_names)}\n\n"
+            description += f"**{building_str}**\nCities: {', '.join(city_names)}\n\n"
 
         if description == "":
-            description = "No data found."
+            description = "No cities with those buildings/projects found."
 
-        embed = discord.Embed(title=title, description=description, color=discord.Color.blue())
+        embed = discord.Embed(title=title, description=description, color=discord.Color.blurple())
         embed.set_footer(text="Data fetched live from Politics & War API")
 
-        # After pressing one of these buttons, only show Back + Close buttons
+        # Reset buttons: only show Back + Close after grouping
         self.clear_items()
         self.add_item(BackButton(self.original_embed, self))
         self.add_item(CloseButton())
@@ -155,12 +155,11 @@ class NationInfoView(discord.ui.View):
 
     @discord.ui.button(label="Show Builds", style=discord.ButtonStyle.primary)
     async def builds_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.show_grouped(interaction, BUILD_KEYS, "Grouped Builds by Cities")
+        await self.show_grouped(interaction, BUILD_KEYS, "Cities Grouped by Buildings")
 
     @discord.ui.button(label="Show Projects", style=discord.ButtonStyle.secondary)
     async def projects_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.show_grouped(interaction, PROJECT_KEYS, "Grouped Projects by Cities")
-
+        await self.show_grouped(interaction, PROJECT_KEYS, "Cities Grouped by Projects")
 
 class BackButton(discord.ui.Button):
     def __init__(self, original_embed, parent_view):
@@ -169,7 +168,6 @@ class BackButton(discord.ui.Button):
         self.parent_view = parent_view
 
     async def callback(self, interaction: discord.Interaction):
-        # Reset view buttons
         self.parent_view.clear_items()
         self.parent_view.add_item(self.parent_view.builds_button)
         self.parent_view.add_item(self.parent_view.projects_button)
@@ -763,15 +761,15 @@ def graphql_request(nation_id):
         print(f"Parsing Error: {e}")
         return None
 
-def get_city_data(nation_id):
-    df = graphql_cities(nation_id)
-    if df is not None:
-        try:
-            row = df.iloc[0]  # since the query returns one nation only
-            return row.to_dict()
-        except IndexError:
-            return None
-    return None
+def extract_cities_from_df(df):
+    if df is None or df.empty:
+        return None
+    try:
+        cities = df.at[0, "cities"]
+        return cities
+    except Exception as e:
+        print(f"Error extracting cities from df: {e}")
+        return None
 
 def get_resources(nation_id):
     df = graphql_request(nation_id)
@@ -3685,7 +3683,6 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member):
 
         nation_id = own_id
         view = NationInfoView(nation_id, embed)
-        view.add_item(CloseButton())
         await interaction.followup.send(embed=embed, view=view)
 
     except Exception as e:
