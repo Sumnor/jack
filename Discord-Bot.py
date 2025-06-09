@@ -4298,6 +4298,7 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
               nation_name
               num_cities
               food
+              uranium
               money
               gasoline
               munitions
@@ -4329,13 +4330,14 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
         nation_name = nation["nation_name"]
         cities = nation["num_cities"]
         food = nation["food"]
+        uranium = nation["uranium"]
         money = nation["money"]
         gasoline = nation["gasoline"]
         munition = nation["munitions"]
         steel = nation["steel"]
         aluminium = nation["aluminum"]
 
-        if any(x is None for x in [cities, food, money, gasoline, munition, steel, aluminium]):
+        if any(x is None for x in [cities, food, uranium, money, gasoline, munition, steel, aluminium]):
             await interaction.followup.send("❌ Missing resource data. Please try again.")
             return
 
@@ -4347,14 +4349,17 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
             nr_a = 325
             nr_a_f = 1500
             nr_a_m = 500000
+            nr_a_u = 20
         else:
             nr_a = 750
             nr_a_f = 3000
             nr_a_m = 1000000
+            nr_a_u = 40
 
         # Calculate total required
         nr_a_minus = city * nr_a
         nr_a_f_minus = city * nr_a_f
+        nr_a_u_minus = city * nr_a_u
         money_needed = city * nr_a_m
 
         # Calculate deficits
@@ -4364,10 +4369,11 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
         ste_n = 0
         all_n = 0
         foo_n = 0
+        ur_n = 0
 
         for res, resource_value in {
             'money': money, 'gasoline': gasoline, 'munitions': munition,
-            'steel': steel, 'aluminum': aluminium, 'food': food
+            'steel': steel, 'aluminum': aluminium, 'food': food, 'uranium': uranium
         }.items():
             if res == 'money':
                 new_value = resource_value - money_needed
@@ -4387,12 +4393,17 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
             elif res == 'food':
                 new_value = resource_value - nr_a_f_minus
                 foo_n = 0 if new_value >= 0 else -new_value
+            elif res == 'uranium':
+                new_value = resource_value - nr_a_u_minus
+                ur_n = 0 if new_value >= 0 else -new_value
         
         request_lines = []
         if money_n > 0:
             request_lines.append(f"Money: {round(money_n):,.0f}\n")
         if foo_n > 0:
             request_lines.append(f"Food: {round(foo_n):,.0f}\n")
+        if ur_n > 0:
+            request_lines.append(f"Uranium: {round(ur_n):,.0f}")
         if gas_n > 0:
             request_lines.append(f"Gasoline: {round(gas_n):,.0f}\n")
         if mun_n > 0:
@@ -4741,6 +4752,7 @@ async def warchest_audit(interaction: discord.Interaction, who: discord.Member):
               nation_name
               num_cities
               food
+              uranium
               money
               gasoline
               munitions
@@ -4766,6 +4778,7 @@ async def warchest_audit(interaction: discord.Interaction, who: discord.Member):
         nation_name = nation["nation_name"]
         cities = nation["num_cities"]
         food = nation["food"]
+        uranium = nation["uranium"]
         money = nation["money"]
         gasoline = nation["gasoline"]
         munition = nation["munitions"]
@@ -4776,9 +4789,11 @@ async def warchest_audit(interaction: discord.Interaction, who: discord.Member):
         nr_a = 750
         nr_a_f = 3000
         nr_a_m = 1000000
+        nr_a_u = 40
 
         nr_a_minus = city * nr_a
         nr_a_f_minus = city * nr_a_f
+        nr_a_u_minus = city * nr_a_u
         money_needed = city * nr_a_m
 
         money_n = max(0, money_needed - money)
@@ -4787,17 +4802,19 @@ async def warchest_audit(interaction: discord.Interaction, who: discord.Member):
         ste_n = max(0, nr_a_minus - steel)
         all_n = max(0, nr_a_minus - aluminium)
         foo_n = max(0, nr_a_f_minus - food)
+        ur_n = max(0, nr_a_u_minus - uranium)
 
         request_lines = [
             format_missing("Money", money_n, money),
             format_missing("Food", foo_n, food),
+            format_missing("Uranium", ur_n, uranium),
             format_missing("Gasoline", gas_n, gasoline),
             format_missing("Munitions", mun_n, munition),
             format_missing("Steel", ste_n, steel),
             format_missing("Aluminum", all_n, aluminium),
         ]
 
-        if all(missing == 0 for missing in [money_n, foo_n, gas_n, mun_n, ste_n, all_n]):
+        if all(missing == 0 for missing in [money_n, foo_n, ur_n, gas_n, mun_n, ste_n, all_n]):
             description_text = "0 material missing"
         else:
             description_text = "\n".join(request_lines)
