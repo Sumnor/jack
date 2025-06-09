@@ -727,7 +727,6 @@ def graphql_cities(nation_id):
         )
         response.raise_for_status()
         json_data = response.json()
-        print(json_data)
 
         if "errors" in json_data:
             print("GraphQL Errors:", json_data["errors"])
@@ -2084,12 +2083,13 @@ async def check_site(interaction: discord.Interaction):
 
 @bot.tree.command(name="auto_week_summary", description="See the total materials which are requested for this week")
 async def auto_week_summary(interaction: discord.Interaction):
+    await interaction.response.defer()
     try:
         sheet = get_auto_requests_sheet()
         all_rows = await asyncio.to_thread(sheet.get_all_values)
 
         if not all_rows or len(all_rows) < 2:
-            await interaction.response.send_message("No data available.", ephemeral=True)
+            await interaction.followup.send("No data available.", ephemeral=True)
             return
 
         header = all_rows[0]
@@ -2128,11 +2128,11 @@ async def auto_week_summary(interaction: discord.Interaction):
         )
         embed.set_footer(text="Calculated from current auto-request data")
 
-        await interaction.response.send_message(embed=embed)
+        await interaction.followup.send(embed=embed)
 
     except Exception as e:
         print(f"Error in /auto_week_summary: {e}")
-        await interaction.response.send_message("❌ Error generating summary.", ephemeral=True)
+        await interaction.followup.send("❌ Error generating summary.", ephemeral=True)
 
 
 
