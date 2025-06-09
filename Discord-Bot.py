@@ -1247,7 +1247,7 @@ async def process_auto_requests():
                     title="💰 Grant Request",
                     color=discord.Color.gold(),
                     description=(
-                        f"**Nation:** {nation_name} ({nation_id})\n"
+                        f"**Nation:** {nation_name} (`{nation_id}`)\n"
                         f"**Requested by:** <@{discord_id}>\n"
                         f"**Request:**\n{description_text}\n"
                         f"**Reason:** {REASON_FOR_GRANT}\n"
