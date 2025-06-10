@@ -3575,7 +3575,7 @@ async def raws_audits(interaction: discord.Interaction):
 
         batch_count += 1
         if batch_count == 20:
-            await asyncio.sleep(5)
+            await asyncio.sleep(6.5)
             batch_count = 0
 
     # Create and send the file
