@@ -1541,12 +1541,14 @@ async def on_message(message):
             if ("money").lower() in message.content:
                 try:
                     await message.reply(
-                        """By copper’s clink and silver’s ring,
+                        """
+                        By copper’s clink and silver’s ring,
                         By debts unpaid and ledgers’ sting,
                         Barring, keeper of the fiscal flame,
                         I call thee now, in coin’s own name.
                         From vaults unseen and whispers charring,
-                        Rise from the depths—I summon thee, <@1382072914354114561>!"""
+                        Rise from the depths—I summon thee, <@1382072914354114561>
+                        """
                     )
                     await asyncio.sleep(10)
                     await message.delete()
@@ -1558,12 +1560,14 @@ async def on_message(message):
             elif ("tax evasion").lower() in message.content:
                 try:
                     await message.reply(
-                        """By loophole's path and audit's dread,
+                        """
+                        By loophole's path and audit's dread,
                         By offshore books and papers shed,
                         O Barring, ghost of gains concealed,
                         Whose wealth in shadows lies unrevealed,
                         Where ledgers burn and truths are scarring,
-                        Come forth, unseen—I summon thee, <@1382072914354114561>!"""
+                        Come forth, unseen—I summon thee, <@1382072914354114561>
+                        """
                     )
                     await asyncio.sleep(10)
                     await message.delete()
@@ -1600,12 +1604,14 @@ async def on_message(message):
         elif ("money").lower() in message.content:
             try:
                 await message.reply(
-                    """By copper’s clink and silver’s ring,
+                    """
+                    By copper’s clink and silver’s ring,
                     By debts unpaid and ledgers’ sting,
                     Barring, keeper of the fiscal flame,
                     I call thee now, in coin’s own name.
                     From vaults unseen and whispers charring,
-                    Rise from the depths—I summon thee, <@1382072914354114561>!"""
+                    Rise from the depths—I summon thee, <@1382072914354114561>
+                    """
                 )
                 await asyncio.sleep(10)
                 await message.delete()
@@ -1617,12 +1623,14 @@ async def on_message(message):
         elif ("tax evasion").lower() in message.content:
             try:
                 await message.reply(
-                    """By loophole's path and audit's dread,
+                    """
+                    By loophole's path and audit's dread,
                     By offshore books and papers shed,
                     O Barring, ghost of gains concealed,
                     Whose wealth in shadows lies unrevealed,
                     Where ledgers burn and truths are scarring,
-                    Come forth, unseen—I summon thee, <@1382072914354114561>!"""
+                    Come forth, unseen—I summon thee, <@1382072914354114561>
+                    """
                 )
                 await asyncio.sleep(10)
                 await message.delete()
