@@ -1925,7 +1925,7 @@ async def res_details_for_alliance(interaction: discord.Interaction):
         "uranium": 0,
         "num_cities": 0,
     }
-    
+    batch_count = 0
     for row in rows:
         nation_id = str(row.get("NationID", "")).strip()
         row_user_id = str(row.get("DiscordID", "")).strip()
@@ -1973,8 +1973,11 @@ async def res_details_for_alliance(interaction: discord.Interaction):
                 f"Steel={steel:,}, Aluminum={aluminum:,}, Bauxite={bauxite:,}, "
                 f"Lead={lead:,}, Iron={iron:,}, Oil={oil:,}, Coal={coal:,}, Uranium={uranium:,}"
             )
+            batch_count += 1
 
-            await asyncio.sleep(3)  # to respect rate limits
+            if batch_count == 20:
+                await asyncio.sleep(6.5)
+                batch_count = 0# to respect rate limits
 
         except Exception as e:
             print(f"Failed processing nation {own_id}: {e}")
