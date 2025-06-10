@@ -1541,12 +1541,12 @@ async def on_message(message):
             if "money" in message.content.lower():
                 try:
                     reply = await message.reply(
-                        """By copper’s clink and silver’s ring,
-    By debts unpaid and ledgers’ sting,
-    Barring, keeper of the fiscal flame,
-    I call thee now, in coin’s own name.
-    From vaults unseen and whispers charring,
-    Rise from the depths—I summon thee, <@722094493343416392>!"""
+                        "By copper’s clink and silver’s ring,\n"
+                        "By debts unpaid and ledgers’ sting,\n"
+                        "Barring, keeper of the fiscal flame,\n"
+                        "I call thee now, in coin’s own name.\n"
+                        "From vaults unseen and whispers charring,\n"
+                        "Rise from the depths—I summon thee, <@722094493343416392>!"
                     )
                     await asyncio.sleep(10)
                     await reply.delete()
@@ -1558,12 +1558,12 @@ async def on_message(message):
             elif "tax evasion" in message.content.lower():
                 try:
                     reply = await message.reply(
-                        """By loophole's path and audit's dread,
-    By offshore books and papers shed,
-    O Barring, ghost of gains concealed,
-    Whose wealth in shadows lies unrevealed,
-    Where ledgers burn and truths are scarring,
-    Come forth, unseen—I summon thee, <@722094493343416392>!"""
+                        "By loophole's path and audit's dread,\n"
+                        "By offshore books and papers shed,\n"
+                        "O Barring, ghost of gains concealed,\n"
+                        "Whose wealth in shadows lies unrevealed,\n"
+                        "Where ledgers burn and truths are scarring,\n"
+                        "Come forth, unseen—I summon thee, <@722094493343416392>!"
                     )
                     await asyncio.sleep(10)
                     await reply.delete()
@@ -1571,7 +1571,6 @@ async def on_message(message):
                     print("No permission to reply in this channel")
                 except Exception as e:
                     print(f"Error replying: {e}")
-
             return
 
         if "🥀" in message.content:
@@ -1600,12 +1599,12 @@ async def on_message(message):
         elif "money" in message.content.lower():
             try:
                 reply = await message.reply(
-                    """By copper’s clink and silver’s ring,
-By debts unpaid and ledgers’ sting,
-Barring, keeper of the fiscal flame,
-I call thee now, in coin’s own name.
-From vaults unseen and whispers charring,
-Rise from the depths—I summon thee, <@722094493343416392>!"""
+                    "By copper’s clink and silver’s ring,\n"
+                    "By debts unpaid and ledgers’ sting,\n"
+                    "Barring, keeper of the fiscal flame,\n"
+                    "I call thee now, in coin’s own name.\n"
+                    "From vaults unseen and whispers charring,\n"
+                    "Rise from the depths—I summon thee, <@722094493343416392>!"
                 )
                 await asyncio.sleep(10)
                 await reply.delete()
@@ -1617,12 +1616,12 @@ Rise from the depths—I summon thee, <@722094493343416392>!"""
         elif "tax evasion" in message.content.lower():
             try:
                 reply = await message.reply(
-                    """By loophole's path and audit's dread,
-By offshore books and papers shed,
-O Barring, ghost of gains concealed,
-Whose wealth in shadows lies unrevealed,
-Where ledgers burn and truths are scarring,
-Come forth, unseen—I summon thee, <@722094493343416392>!"""
+                    "By loophole's path and audit's dread,\n"
+                    "By offshore books and papers shed,\n"
+                    "O Barring, ghost of gains concealed,\n"
+                    "Whose wealth in shadows lies unrevealed,\n"
+                    "Where ledgers burn and truths are scarring,\n"
+                    "Come forth, unseen—I summon thee, <@722094493343416392>!"
                 )
                 await asyncio.sleep(10)
                 await reply.delete()
@@ -1630,6 +1629,7 @@ Come forth, unseen—I summon thee, <@722094493343416392>!"""
                 print("No permission to reply in this channel")
             except Exception as e:
                 print(f"Error replying: {e}")
+
 
             
 
