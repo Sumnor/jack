@@ -4828,51 +4828,60 @@ async def help(interaction: discord.Interaction):
         await interaction.followup.send(embed=gov_mssg)
 
 @bot.tree.command(name="warchest_audit", description="Request a Warchest grant audit")
-@app_commands.describe(who="Tag the person you want to audit")
-async def warchest_audit(interaction: discord.Interaction, who: discord.Member):
+@app_commands.describe(
+    who="Tag the person you want to audit",
+    external_id="Raw Nation ID to audit instead of a user (optional)"
+)
+async def warchest_audit(interaction: discord.Interaction, who: discord.Member, external_id: str = "None"):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
-    
-    global cached_users  # the dict version
-    
-    user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
-    
+
+    global cached_users
+    user_data = cached_users.get(user_id)
+
     if not user_data:
         await interaction.followup.send("❌ You are not registered. Use `/register` first.")
         return
-    
+
     own_id = str(user_data.get("NationID", "")).strip()
-
     if not own_id:
-            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
-            return
-    
-    target_username = who.name.lower()
-
-    # Find cached discord ID by matching DiscordUsername from cached_users
-    target_discord_id = None
-    for discord_id, info in cached_users.items():
-        if info['DiscordUsername'].lower() == target_username:
-            target_discord_id = discord_id
-            break
-
-    if target_discord_id is None:
-        await interaction.followup.send(
-            f"❌ Could not find Nation ID for {who.mention}. "
-            "They must be registered in the Google Sheet with their Discord username."
-        )
+        await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
         return
 
-    async def is_banker(interaction):
+    async def is_banker(inter):
         return (
-            any(role.name == "Government member" for role in interaction.user.roles)
-            or str(interaction.user.id) == "1148678095176474678"
+            any(role.name == "Government member" for role in inter.user.roles)
+            or str(inter.user.id) == "1148678095176474678"
         )
+
     if not await is_banker(interaction):
         await interaction.followup.send("❌ You don't have the rights to perform this action.")
         return
 
-    target_nation_id = int(cached_users[target_discord_id]["NationID"])
+    # ✅ If external ID is provided, use it directly
+    if external_id != "None":
+        try:
+            target_nation_id = int(external_id.strip())
+        except ValueError:
+            await interaction.followup.send("❌ Invalid Nation ID format. Must be a number.")
+            return
+    else:
+        # 🔹 Match who.name against cached_users
+        target_username = who.name.lower()
+        target_discord_id = None
+        for discord_id, info in cached_users.items():
+            if info['DiscordUsername'].lower() == target_username:
+                target_discord_id = discord_id
+                break
+
+        if target_discord_id is None:
+            await interaction.followup.send(
+                f"❌ Could not find Nation ID for {who.mention}. "
+                "They must be registered in the Google Sheet with their Discord username."
+            )
+            return
+
+        target_nation_id = int(cached_users[target_discord_id]["NationID"])
 
     def get_completion_color(percent_complete: float) -> str:
         if percent_complete >= 76:
