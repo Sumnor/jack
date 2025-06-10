@@ -1867,7 +1867,9 @@ async def mmr_audit(interaction: discord.Interaction, who: discord.Member):
 
     except Exception as e:
         await interaction.followup.send(f"❌ An unexpected error occurred: {e}")
+        
 
+    
     
 
 @bot.tree.command(name="res_details_for_alliance", description="Get each Alliance Member's resources and money individually")
@@ -3500,6 +3502,91 @@ async def register_manual(interaction: discord.Interaction, nation_id: str, disc
 
     await interaction.followup.send("✅ Registered successfully (manually, no validation).")
 '''
+@bot.tree.command(name="raws_audits", description="Audit building and raw material usage for all registered nations.")
+async def raws_audits(interaction: discord.Interaction):
+    await interaction.response.defer(thinking=True)
+    sheet = get_registration_sheet()
+    rows = sheet.get_all_records()
+    user_id = str(interaction.user.id)
+
+    user_data = next(
+        (r for r in rows if str(r.get("DiscordID", "")).strip() == user_id),
+        None
+    )
+
+    if not user_data:
+        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        return
+
+    async def is_banker(inter):
+        return (
+            any(role.name == "Government member" for role in inter.user.roles)
+            or user_id == "1148678095176474678"
+        )
+
+    if not await is_banker(interaction):
+        await interaction.followup.send("❌ You don't have the rights, lil bro.")
+        return
+
+    results = []
+    batch_count = 0
+
+    for idx, row in enumerate(rows):
+        nation_id = str(row.get("NationID", "")).strip()
+        discord_id = str(row.get("DiscordID", "")).strip()
+
+        if not nation_id:
+            continue
+
+        cities_df = graphql_cities(nation_id)
+        if cities_df is None or cities_df.empty:
+            continue
+
+        city_data = cities_df.iloc[0]
+
+        # Sum buildings across all cities
+        buildings = {
+            "steel_mill": 0,
+            "oil_refinery": 0,
+            "aluminum_refinery": 0,
+            "munitions_factory": 0
+        }
+
+        for key in buildings:
+            try:
+                buildings[key] = int(city_data[f"cities.{key}"].sum())
+            except KeyError:
+                buildings[key] = 0
+
+        res = get_resources(nation_id)
+        if not res:
+            continue
+
+        nation_name, _, _, _, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, _ = res
+
+        lines = [f"**{nation_name} ({nation_id})**"]
+        if buildings["steel_mill"]:
+            lines.append(f"Steel Mills: {buildings['steel_mill']} (Coal: {coal}, Iron: {iron})")
+        if buildings["oil_refinery"]:
+            lines.append(f"Oil Refineries: {buildings['oil_refinery']} (Oil: {oil})")
+        if buildings["aluminum_refinery"]:
+            lines.append(f"Aluminum Refineries: {buildings['aluminum_refinery']} (Bauxite: {bauxite})")
+        if buildings["munitions_factory"]:
+            lines.append(f"Munitions Factories: {buildings['munitions_factory']} (Lead: {lead})")
+
+        results.append("\n".join(lines))
+
+        batch_count += 1
+        if batch_count >= 10:
+            await asyncio.sleep(3)
+            batch_count = 0
+
+    if not results:
+        await interaction.followup.send("No data could be retrieved.")
+    else:
+        chunks = [results[i:i + 5] for i in range(0, len(results), 5)]
+        for chunk in chunks:
+            await interaction.followup.send("\n\n".join(chunk))
 
 
 @bot.tree.command(name="battle_sim", description="simulate a battle")
