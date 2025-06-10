@@ -2234,6 +2234,7 @@ async def res_in_m_for_a(
 
     sheet = get_registration_sheet()
     rows = sheet.get_all_records()
+    batch_count = 0
 
     for row in rows:
         nation_id = str(row.get("NationID", "")).strip()
@@ -2275,7 +2276,10 @@ async def res_in_m_for_a(
             totals["uranium"] += uranium
             totals["num_cities"] += num_cities
             processed_nations += 1
-            await asyncio.sleep(3)
+            batch_count += 1
+            if batch_count == 20:
+                await asyncio.sleep(6.5)
+                batch_count = 0
 
         except Exception as e:
             print(f"Failed processing nation {nation_id}: {e}")
