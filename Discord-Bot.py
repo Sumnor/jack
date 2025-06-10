@@ -3502,18 +3502,14 @@ async def register_manual(interaction: discord.Interaction, nation_id: str, disc
 
     await interaction.followup.send("✅ Registered successfully (manually, no validation).")
 '''
-@bot.tree.command(name="raws_audits", description="Audit building and raw material usage for all registered nations.")
+@bot.tree.command(name="raws_audits", description="Audit building and raw usage per nation")
 async def raws_audits(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
     sheet = get_registration_sheet()
     rows = sheet.get_all_records()
     user_id = str(interaction.user.id)
 
-    user_data = next(
-        (r for r in rows if str(r.get("DiscordID", "")).strip() == user_id),
-        None
-    )
-
+    user_data = next((r for r in rows if str(r.get("DiscordID", "")).strip() == user_id), None)
     if not user_data:
         await interaction.followup.send("❌ You are not registered. Use `/register` first.")
         return
@@ -3528,23 +3524,26 @@ async def raws_audits(interaction: discord.Interaction):
         await interaction.followup.send("❌ You don't have the rights, lil bro.")
         return
 
-    results = []
+    output = StringIO()
     batch_count = 0
 
     for idx, row in enumerate(rows):
         nation_id = str(row.get("NationID", "")).strip()
-        discord_id = str(row.get("DiscordID", "")).strip()
-
         if not nation_id:
             continue
 
         cities_df = graphql_cities(nation_id)
         if cities_df is None or cities_df.empty:
+            output.write(f"❌ Nation ID {nation_id} - City data not found.\n\n")
             continue
 
-        city_data = cities_df.iloc[0]
+        # Pull city data (each row is a nation, and cities are nested)
+        try:
+            cities = cities_df.iloc[0]["cities"]
+        except (KeyError, IndexError, TypeError):
+            output.write(f"❌ Nation ID {nation_id} - Malformed city data.\n\n")
+            continue
 
-        # Sum buildings across all cities
         buildings = {
             "steel_mill": 0,
             "oil_refinery": 0,
@@ -3552,42 +3551,37 @@ async def raws_audits(interaction: discord.Interaction):
             "munitions_factory": 0
         }
 
-        for key in buildings:
-            try:
-                buildings[key] = int(city_data[f"cities.{key}"].sum())
-            except KeyError:
-                buildings[key] = 0
+        for city in cities:
+            for b in buildings:
+                buildings[b] += int(city.get(b, 0))
 
         res = get_resources(nation_id)
         if not res:
+            output.write(f"❌ Nation ID {nation_id} - Resource data not found.\n\n")
             continue
 
         nation_name, _, _, _, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, _ = res
 
-        lines = [f"**{nation_name} ({nation_id})**"]
+        output.write(f"{nation_name} ({nation_id})\n")
         if buildings["steel_mill"]:
-            lines.append(f"Steel Mills: {buildings['steel_mill']} (Coal: {coal}, Iron: {iron})")
+            output.write(f"Steel Mills: {buildings['steel_mill']} (Coal: {coal}, Iron: {iron})\n")
         if buildings["oil_refinery"]:
-            lines.append(f"Oil Refineries: {buildings['oil_refinery']} (Oil: {oil})")
+            output.write(f"Oil Refineries: {buildings['oil_refinery']} (Oil: {oil})\n")
         if buildings["aluminum_refinery"]:
-            lines.append(f"Aluminum Refineries: {buildings['aluminum_refinery']} (Bauxite: {bauxite})")
+            output.write(f"Aluminum Refineries: {buildings['aluminum_refinery']} (Bauxite: {bauxite})\n")
         if buildings["munitions_factory"]:
-            lines.append(f"Munitions Factories: {buildings['munitions_factory']} (Lead: {lead})")
-
-        results.append("\n".join(lines))
+            output.write(f"Munitions Factories: {buildings['munitions_factory']} (Lead: {lead})\n")
+        output.write("\n")
 
         batch_count += 1
-        if batch_count >= 10:
+        if batch_count == 10:
             await asyncio.sleep(3)
             batch_count = 0
 
-    if not results:
-        await interaction.followup.send("No data could be retrieved.")
-    else:
-        chunks = [results[i:i + 5] for i in range(0, len(results), 5)]
-        for chunk in chunks:
-            await interaction.followup.send("\n\n".join(chunk))
-
+    # Create and send the file
+    output.seek(0)
+    discord_file = discord.File(fp=output, filename="raws_audit.txt")
+    await interaction.followup.send("✅ Audit complete.", file=discord_file)
 
 @bot.tree.command(name="battle_sim", description="simulate a battle")
 async def simulation(interaction: discord.Interaction, nation_id: str, war_type: str):
