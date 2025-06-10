@@ -1538,7 +1538,7 @@ async def on_message(message):
     
     if message.guild and message.guild.id == TARGET_GUILD_ID:
         if message.author.id in IGNORED_USER_IDS:
-            elif "money" in message.content.lower():
+            if "money" in message.content.lower():
                 try:
                     reply = await message.reply(
                         """By copper’s clink and silver’s ring,
