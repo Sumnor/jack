@@ -3785,7 +3785,11 @@ async def simulation(interaction: discord.Interaction, nation_id: str, war_type:
 
 
 @bot.tree.command(name="nation_info", description="Info on the chosen Nation")
-async def who_nation(interaction: discord.Interaction, who: discord.Member | str):
+@app_commands.describe(
+    who="The Discord member to query",
+    external_id="A raw Nation ID to override the user (optional)"
+)
+async def who_nation(interaction: discord.Interaction, who: discord.Member, external_id: str = "None"):
     await interaction.response.defer()
 
     async def is_banker():
@@ -3794,30 +3798,24 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member | str
             or interaction.user.id == 1148678095176474678
         )
 
-    requester_id = str(interaction.user.id)
-    own_id = None
+    # 🔹 External ID overrides everything
+    if external_id != "None":
+        own_id = external_id.strip()
+        await interaction.followup.send(f"ℹ️ Nation Info for external ID: `{own_id}`")
+        return
 
-    # CASE 1: if 'who' is a Member object (i.e., another Discord user)
-    if isinstance(who, discord.Member):
-        if interaction.user.id != who.id:
-            if not await is_banker():
-                await interaction.followup.send("❌ You don't have the rights, lil bro.")
-                return
-
-        target_username = who.name.lower()
-        for discord_id, info in cached_users.items():
-            if info['DiscordUsername'].lower() == target_username:
-                own_id = info.get('NationID')
-                break
-
-        if not own_id:
-            await interaction.followup.send(f"❌ Could not find Nation ID for {who.mention}. They must be registered.")
+    # 🔹 Permission check if querying someone else
+    if interaction.user.id != who.id:
+        if not await is_banker():
+            await interaction.followup.send("❌ You don't have the rights, lil bro.")
             return
 
-    # CASE 2: if 'who' is a string (possibly a Nation name or ID directly)
-    elif isinstance(who, str):
-        own_id = who.strip()
-
+    # 🔹 Look up Nation ID from cached_users
+    own_id = None
+    for discord_id, info in cached_users.items():
+        if str(who.id) == discord_id:
+            own_id = info.get("NationID")
+            break
 
     # Assuming you have get_military, get_resources, get_general_data functions working
     try:
