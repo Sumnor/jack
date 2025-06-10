@@ -3648,8 +3648,8 @@ async def raws_audits(interaction: discord.Interaction):
         output.write("\n")
 
         batch_count += 1
-        if batch_count == 20:
-            await asyncio.sleep(15)
+        if batch_count == 30:
+            await asyncio.sleep(22)
             batch_count = 0
 
     # Create and send the file
@@ -3787,7 +3787,7 @@ async def simulation(interaction: discord.Interaction, nation_id: str, war_type:
 @bot.tree.command(name="nation_info", description="Info on the chosen Nation")
 @app_commands.describe(
     who="The Discord member to query",
-    external_id="A raw Nation ID to override the user (optional)"
+    external_id="Raw Nation ID to override user lookup (optional)"
 )
 async def who_nation(interaction: discord.Interaction, who: discord.Member, external_id: str = "None"):
     await interaction.response.defer()
@@ -3798,24 +3798,29 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member, exte
             or interaction.user.id == 1148678095176474678
         )
 
-    # 🔹 External ID overrides everything
+    user_id = str(interaction.user.id)
+    own_id = None
+
+    # 🔹 If external_id is given, override own_id and skip lookup
     if external_id != "None":
         own_id = external_id.strip()
-        await interaction.followup.send(f"ℹ️ Nation Info for external ID: `{own_id}`")
-        return
 
-    # 🔹 Permission check if querying someone else
-    if interaction.user.id != who.id:
-        if not await is_banker():
-            await interaction.followup.send("❌ You don't have the rights, lil bro.")
+    else:
+        # 🔹 If querying someone else, enforce role check
+        if interaction.user.id != who.id:
+            if not await is_banker():
+                await interaction.followup.send("❌ You don't have the rights, lil bro.")
+                return
+
+        # 🔹 Look up the NationID from cached_users
+        for discord_id, info in cached_users.items():
+            if str(who.id) == discord_id:
+                own_id = info.get("NationID")
+                break
+
+        if not own_id:
+            await interaction.followup.send(f"❌ Could not find Nation ID for {who.mention}. They must be registered.")
             return
-
-    # 🔹 Look up Nation ID from cached_users
-    own_id = None
-    for discord_id, info in cached_users.items():
-        if str(who.id) == discord_id:
-            own_id = info.get("NationID")
-            break
 
     # Assuming you have get_military, get_resources, get_general_data functions working
     try:
