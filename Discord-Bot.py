@@ -1538,39 +1538,35 @@ async def on_message(message):
     
     if message.guild and message.guild.id == TARGET_GUILD_ID:
         if message.author.id in IGNORED_USER_IDS:
-            if ("money").lower() in message.content:
+            elif "money" in message.content.lower():
                 try:
-                    await message.reply(
-                        """
-                        By copper’s clink and silver’s ring,
-                        By debts unpaid and ledgers’ sting,
-                        Barring, keeper of the fiscal flame,
-                        I call thee now, in coin’s own name.
-                        From vaults unseen and whispers charring,
-                        Rise from the depths—I summon thee, <@1382072914354114561>
-                        """
+                    reply = await message.reply(
+                        """By copper’s clink and silver’s ring,
+    By debts unpaid and ledgers’ sting,
+    Barring, keeper of the fiscal flame,
+    I call thee now, in coin’s own name.
+    From vaults unseen and whispers charring,
+    Rise from the depths—I summon thee, <@722094493343416392>!"""
                     )
                     await asyncio.sleep(10)
-                    await message.delete()
+                    await reply.delete()
                 except discord.Forbidden:
                     print("No permission to reply in this channel")
                 except Exception as e:
                     print(f"Error replying: {e}")
-                    
-            elif ("tax evasion").lower() in message.content:
+    
+            elif "tax evasion" in message.content.lower():
                 try:
-                    await message.reply(
-                        """
-                        By loophole's path and audit's dread,
-                        By offshore books and papers shed,
-                        O Barring, ghost of gains concealed,
-                        Whose wealth in shadows lies unrevealed,
-                        Where ledgers burn and truths are scarring,
-                        Come forth, unseen—I summon thee, <@1382072914354114561>
-                        """
+                    reply = await message.reply(
+                        """By loophole's path and audit's dread,
+    By offshore books and papers shed,
+    O Barring, ghost of gains concealed,
+    Whose wealth in shadows lies unrevealed,
+    Where ledgers burn and truths are scarring,
+    Come forth, unseen—I summon thee, <@722094493343416392>!"""
                     )
                     await asyncio.sleep(10)
-                    await message.delete()
+                    await reply.delete()
                 except discord.Forbidden:
                     print("No permission to reply in this channel")
                 except Exception as e:
@@ -1601,39 +1597,35 @@ async def on_message(message):
                 print("No permission to reply in this channel")
             except Exception as e:
                 print(f"Error replying: {e}")
-        elif ("money").lower() in message.content:
+        elif "money" in message.content.lower():
             try:
-                await message.reply(
-                    """
-                    By copper’s clink and silver’s ring,
-                    By debts unpaid and ledgers’ sting,
-                    Barring, keeper of the fiscal flame,
-                    I call thee now, in coin’s own name.
-                    From vaults unseen and whispers charring,
-                    Rise from the depths—I summon thee, <@1382072914354114561>
-                    """
+                reply = await message.reply(
+                    """By copper’s clink and silver’s ring,
+By debts unpaid and ledgers’ sting,
+Barring, keeper of the fiscal flame,
+I call thee now, in coin’s own name.
+From vaults unseen and whispers charring,
+Rise from the depths—I summon thee, <@722094493343416392>!"""
                 )
                 await asyncio.sleep(10)
-                await message.delete()
+                await reply.delete()
             except discord.Forbidden:
                 print("No permission to reply in this channel")
             except Exception as e:
                 print(f"Error replying: {e}")
-                
-        elif ("tax evasion").lower() in message.content:
+
+        elif "tax evasion" in message.content.lower():
             try:
-                await message.reply(
-                    """
-                    By loophole's path and audit's dread,
-                    By offshore books and papers shed,
-                    O Barring, ghost of gains concealed,
-                    Whose wealth in shadows lies unrevealed,
-                    Where ledgers burn and truths are scarring,
-                    Come forth, unseen—I summon thee, <@1382072914354114561>
-                    """
+                reply = await message.reply(
+                    """By loophole's path and audit's dread,
+By offshore books and papers shed,
+O Barring, ghost of gains concealed,
+Whose wealth in shadows lies unrevealed,
+Where ledgers burn and truths are scarring,
+Come forth, unseen—I summon thee, <@722094493343416392>!"""
                 )
                 await asyncio.sleep(10)
-                await message.delete()
+                await reply.delete()
             except discord.Forbidden:
                 print("No permission to reply in this channel")
             except Exception as e:
