@@ -3785,43 +3785,39 @@ async def simulation(interaction: discord.Interaction, nation_id: str, war_type:
 
 
 @bot.tree.command(name="nation_info", description="Info on the chosen Nation")
-async def who_nation(interaction: discord.Interaction, who: discord.Member):
+async def who_nation(interaction: discord.Interaction, who: discord.Member | str):
     await interaction.response.defer()
-    user_id = str(interaction.user.id)
 
-    async def is_banker(interaction):
+    async def is_banker():
         return (
             any(role.name == "Government member" for role in interaction.user.roles)
             or interaction.user.id == 1148678095176474678
         )
 
-    if interaction.user.id != who.id:
-        if not await is_banker(interaction):
-            await interaction.followup.send("❌ You don't have the rights, lil bro.")
-            return
-        
-    global cached_users
-
-    user_data = cached_users.get(user_id)
-
-    if not user_data:
-        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
-        return
-
+    requester_id = str(interaction.user.id)
     own_id = None
-    if who == interaction.user:
-        # If asking for self info, get own nation ID directly
-        own_id = str(user_data.get("NationID", "")).strip()
-    else:
+
+    # CASE 1: if 'who' is a Member object (i.e., another Discord user)
+    if isinstance(who, discord.Member):
+        if interaction.user.id != who.id:
+            if not await is_banker():
+                await interaction.followup.send("❌ You don't have the rights, lil bro.")
+                return
+
         target_username = who.name.lower()
         for discord_id, info in cached_users.items():
             if info['DiscordUsername'].lower() == target_username:
                 own_id = info.get('NationID')
                 break
 
-    if not own_id:
-        await interaction.followup.send(f"❌ Could not find Nation ID for {who.mention}. They must be registered.")
-        return
+        if not own_id:
+            await interaction.followup.send(f"❌ Could not find Nation ID for {who.mention}. They must be registered.")
+            return
+
+    # CASE 2: if 'who' is a string (possibly a Nation name or ID directly)
+    elif isinstance(who, str):
+        own_id = who.strip()
+
 
     # Assuming you have get_military, get_resources, get_general_data functions working
     try:
