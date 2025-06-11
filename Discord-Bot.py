@@ -260,7 +260,7 @@ class NationInfoView(discord.ui.View):
         except Exception as e:
             await interaction.followup.send(f"❌ Error while formatting projects: {e}", ephemeral=True)
                 
-    @discord.ui.button(label="Run Warchest Audit", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="Warchest", style=discord.ButtonStyle.success)
     async def audit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         nation_id = self.nation_id
@@ -351,7 +351,131 @@ class NationInfoView(discord.ui.View):
     
         except Exception as e:
             await interaction.followup.send(f"❌ Error while running audit: {e}", ephemeral=True)
-
+    @discord.ui.button(label="MMR Audit", style=discord.ButtonStyle.primary)
+    async def mmr_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        nation_id = self.nation_id
+    
+        try:
+            GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
+    
+            query = """
+            query GetNationData($id: [Int]) {
+                nations(id: $id) {
+                    data {
+                        nation_name
+                        num_cities
+                        cities {
+                            name
+                            barracks
+                            factory
+                            hangar
+                            drydock
+                        }
+                    }
+                }
+            }
+            """
+            variables = {"id": [nation_id]}
+            response = requests.post(
+                GRAPHQL_URL,
+                json={"query": query, "variables": variables},
+                headers={"Content-Type": "application/json"}
+            )
+            response.raise_for_status()
+            data = response.json()
+    
+            nation_list = data.get("data", {}).get("nations", {}).get("data", [])
+            if not nation_list:
+                await interaction.followup.send("❌ No nation data found.", ephemeral=True)
+                return
+    
+            nation_data = nation_list[0]
+            nation_name = nation_data.get("nation_name", "Unknown Nation")
+            num_cities = nation_data.get("num_cities", 0)
+            cities = nation_data.get("cities", [])
+    
+            barracks = sum(city.get("barracks", 0) for city in cities)
+            factory = sum(city.get("factory", 0) for city in cities)
+            hangar = sum(city.get("hangar", 0) for city in cities)
+            drydocks = sum(city.get("drydock", 0) for city in cities)
+    
+            military_data = get_military(nation_id)
+            if military_data is None:
+                await interaction.followup.send("❌ Could not retrieve military data for this nation.", ephemeral=True)
+                return
+    
+            (
+                nation_name,
+                leader_name,
+                score,
+                warpolicy,
+                soldiers,
+                tanks,
+                aircraft,
+                ships,
+                spies,
+                missiles,
+                nukes,
+            ) = military_data
+    
+            valid_mmrs = (
+                [[0, 5, 5, 1], [5, 5, 5, 3]] if num_cities < 16 else [[0, 3, 5, 1], [5, 5, 5, 3]]
+            )
+    
+            from collections import Counter
+    
+            def distribute_structures(total, parts):
+                if parts == 0:
+                    return []
+                base = total // parts
+                extras = total % parts
+                return [base + (1 if i < extras else 0) for i in range(parts)]
+    
+            b_list = distribute_structures(barracks, num_cities)
+            f_list = distribute_structures(factory, num_cities)
+            h_list = distribute_structures(hangar, num_cities)
+            d_list = distribute_structures(drydocks, num_cities)
+    
+            city_mmrs = list(zip(b_list, f_list, h_list, d_list))
+            mmr_counts = Counter(city_mmrs)
+    
+            is_valid = all([b, f, h, d] in valid_mmrs for (b, f, h, d) in city_mmrs)
+    
+            grouped_mmr_string = "\n".join(
+                f"{count} Cities: {b}/{f}/{h}/{d}" for (b, f, h, d), count in sorted(mmr_counts.items(), reverse=True)
+            ) or "No cities"
+    
+            valid_options = "\n".join(f"{m[0]}/{m[1]}/{m[2]}/{m[3]}" for m in valid_mmrs)
+    
+            embed = discord.Embed(
+                title=f"MMR Audit for {nation_name}",
+                color=discord.Color.green() if is_valid else discord.Color.red(),
+            )
+            embed.add_field(name="Cities", value=str(num_cities), inline=False)
+            embed.add_field(name="Grouped City MMRs", value=grouped_mmr_string, inline=False)
+            embed.add_field(name="Soldiers", value=f"{soldiers}/{barracks*3000} (Missing {barracks*3000 - soldiers})", inline=False)
+            embed.add_field(name="Tanks", value=f"{tanks}/{factory*250} (Missing {factory*250 - tanks})", inline=False)
+            embed.add_field(name="Aircrafts", value=f"{aircraft}/{hangar*15} (Missing {hangar*15 - aircraft})", inline=False)
+            embed.add_field(name="Ships", value=f"{ships}/{drydocks*5} (Missing {drydocks*5 - ships})", inline=False)
+            embed.add_field(name="Status", value="✅ Valid MMR" if is_valid else "❌ Invalid MMR", inline=False)
+            if not is_valid:
+                embed.add_field(name="Valid Options", value=valid_options, inline=False)
+    
+            embed.set_footer(
+                text="Brought to you by Darkstar",
+                icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+            )
+    
+            # Add Back and Close buttons same as your Warchest button does:
+            self.clear_items()
+            self.add_item(BackButton(self.original_embed, self))  # assumes you have these button classes
+            self.add_item(CloseButton())
+    
+            await interaction.message.edit(embed=embed, view=self)
+    
+        except Exception as e:
+            await interaction.followup.send(f"❌ An error occurred during MMR audit: {e}", ephemeral=True)
 
 class BackButton(discord.ui.Button):
     def __init__(self, original_embed, parent_view):
