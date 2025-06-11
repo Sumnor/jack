@@ -727,84 +727,79 @@ class RawsAuditView(discord.ui.View):
     def __init__(self, output, audits):
         super().__init__(timeout=None)
         self.output = output
-        self.audits = audits
+        self.audits = audits  # Expects each entry to include a "color" key
 
     @discord.ui.button(label="Request Yellow", style=discord.ButtonStyle.primary, custom_id="request_yellow")
     async def request_yellow(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.handle_request(interaction, "🟡")
+        await self.handle_request(interaction, "🟡", discord.Color.yellow())
 
     @discord.ui.button(label="Request Orange", style=discord.ButtonStyle.primary, custom_id="request_orange")
     async def request_orange(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.handle_request(interaction, "🟠")
+        await self.handle_request(interaction, "🟠", discord.Color.orange())
 
     @discord.ui.button(label="Request Red", style=discord.ButtonStyle.danger, custom_id="request_red")
     async def request_red(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.handle_request(interaction, "🔴")
+        await self.handle_request(interaction, "🔴", discord.Color.red())
 
-    async def handle_request(self, interaction: discord.Interaction, color_emoji: str):
-        await interaction.response.defer()
-        users_ids = interaction.user.id
-    # Get
+    async def handle_request(self, interaction: discord.Interaction, color_emoji: str, embed_color: discord.Color):
+        await interaction.response.defer(ephemeral=True)
+
+        user_id = interaction.user.id
         bot = interaction.client
-    
-        # Fetch the target guild and channel by ID
+
         guild = bot.get_guild(1186655069530243183)
-        if guild is None:
-            await interaction.followup.send("❌ Target guild not found.", ephemeral=True)
+        if not guild:
+            await interaction.followup.send("❌ Target guild not found.")
             return
-    
+
         channel = guild.get_channel(1338510585595428895)
-        if channel is None:
-            await interaction.followup.send("❌ Target channel not found.", ephemeral=True)
+        if not channel:
+            await interaction.followup.send("❌ Target channel not found.")
             return
-    
+
         sheet = get_registration_sheet()
         rows = sheet.get_all_records()
-    
-        # The audits data you stored when creating the view
-        audits_data = self.audits
-    
-        for nation_id, entry in audits_data.items():
+
+        for nation_id, entry in self.audits.items():
+            if entry.get("color") != color_emoji:
+                continue  # Skip if not matching requested color
+
             nation_name = entry["nation_name"]
             missing_resources = entry.get("missing", [])
-    
-            # Filter lines for requested color
+
             relevant_lines = [
                 f"{res_name}: {float(amount):.2f}"
                 for res_name, amount in missing_resources
-                # Only include requests that have the color emoji appended (or all for now)
             ]
-    
+
             if not relevant_lines:
                 continue
-    
-            # Find the Discord ID for the nation
+
             row = next((r for r in rows if str(r.get("NationID", "")).strip() == str(nation_id)), None)
             if not row:
                 continue
-    
+
             discord_id = row.get("DiscordID", None)
             if not discord_id:
                 continue
-    
-            # Build embed for the request
+
             embed = discord.Embed(
-                title=f"Resource Request (by {users_ids}",
+                title="Resource Request",
                 description=(
                     f"**Nation:** {nation_name} (`{nation_id}`)\n"
                     f"**Request:**\n" + "\n".join(relevant_lines) + "\n"
                     f"**Reason:** Resources for Production\n"
                     f"**Requested by:** <@{discord_id}>"
                 ),
-                color=discord.Color.yellow()
+                color=embed_color
             )
             image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
             embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
-    
-            # Send embed to the specified channel
+
             await channel.send(embed=embed, view=GrantView())
-    
-        await interaction.response.send_message(f"✅ Processed {color_emoji} requests.", ephemeral=True)
+
+        await interaction.followup.send(f"✅ Processed {color_emoji} requests.")
+
 
 
 def get_military_o(nation_id):
@@ -3823,10 +3818,10 @@ async def raws_audits(interaction: discord.Interaction, day: int):
         nation_name, _, _, _, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, _ = res
 
         required = {
-            "steel_mill": {"coal": 3 * cons["iron_works"] * buildings["steel_mill"], "iron": 3 * cons["iron_works"] * buildings["steel_mill"]},
-            "oil_refinery": {"oil": 3 * cons["emergency_gasoline_reserve"] * buildings["oil_refinery"]},
-            "aluminum_refinery": {"bauxite": 3 * cons["bauxite_works"] * buildings["aluminum_refinery"]},
-            "munitions_factory": {"lead": 3 * cons["arms_stockpile"] * buildings["munitions_factory"]}
+            "steel_mill": {"coal": day * cons["iron_works"] * buildings["steel_mill"], "iron": day * cons["iron_works"] * buildings["steel_mill"]},
+            "oil_refinery": {"oil": day * cons["emergency_gasoline_reserve"] * buildings["oil_refinery"]},
+            "aluminum_refinery": {"bauxite": day * cons["bauxite_works"] * buildings["aluminum_refinery"]},
+            "munitions_factory": {"lead": day * cons["arms_stockpile"] * buildings["munitions_factory"]}
         }
 
         resources = {
