@@ -3885,11 +3885,11 @@ async def raws_audits(interaction: discord.Interaction, day: int):
                 "nation_name": nation_name,
                 "missing": request_lines
             }
-
-        batch_count += 1
+        await asyncio.sleep(2.5)
+        '''batch_count += 1
         if batch_count == 30:
             await asyncio.sleep(60)
-            batch_count = 0
+            batch_count = 0'''
 
     output.seek(0)
     discord_file = discord.File(fp=output, filename="raws_audit.txt")
