@@ -687,6 +687,51 @@ class GrantView(View):
         except Exception as e:
             await interaction.response.send_message(f"❌ Error parsing embed: `{e}`", ephemeral=True)
 
+class RawsAuditView(View):
+    def __init__(self, audits_by_nation):
+        super().__init__(timeout=None)
+        self.audits_by_nation = audits_by_nation  # {nation_id: {'name': name, 'issues': [color, res, missing]}}
+
+    @ui.button(label="Request Yellow", style=discord.ButtonStyle.primary)
+    async def request_yellow(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.handle_request(interaction, cutoff=["🟡", "🟠", "🔴"])
+
+    @ui.button(label="Request Orange", style=discord.ButtonStyle.danger)
+    async def request_orange(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.handle_request(interaction, cutoff=["🟠", "🔴"])
+
+    @ui.button(label="Request Red", style=discord.ButtonStyle.danger)
+    async def request_red(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.handle_request(interaction, cutoff=["🔴"])
+
+    async def handle_request(self, interaction: discord.Interaction, cutoff):
+        sheet = get_registration_sheet()
+        rows = sheet.get_all_records()
+        requests_sent = 0
+
+        for nation_id, audit in self.audits_by_nation.items():
+            issues = [line for line in audit['issues'] if line.startswith(tuple(cutoff))]
+            if not issues:
+                continue
+
+            user_data = next((r for r in rows if str(r.get("NationID", "")).strip() == nation_id), None)
+            if not user_data:
+                continue
+
+            discord_id = user_data.get("DiscordID", "Unknown")
+            embed = discord.Embed(
+                title="Request (by EA)",
+                description="\n".join(issues),
+                color=discord.Color.yellow()
+            )
+            embed.add_field(name="Reason", value="Resources for Production", inline=False)
+            embed.add_field(name="Requested by", value=f"<@{discord_id}>", inline=False)
+            embed.set_footer(text=f"Nation: {audit['name']} ({nation_id})")
+
+            await interaction.channel.send(embed=embed, view=GrantView())
+            requests_sent += 1
+
+        await interaction.response.send_message(f"✅ {requests_sent} request(s) sent.", ephemeral=True)
 
 
 
@@ -3632,7 +3677,7 @@ async def register_manual(interaction: discord.Interaction, nation_id: str, disc
     await interaction.followup.send("✅ Registered successfully (manually, no validation).")
 '''
 @bot.tree.command(name="raws_audits", description="Audit building and raw usage per nation")
-async def raws_audits(interaction: discord.Interaction):
+async def raws_audits(interaction: discord.Interaction, day: int):
     await interaction.response.defer(thinking=True)
     sheet = get_registration_sheet()
     rows = sheet.get_all_records()
@@ -3654,6 +3699,7 @@ async def raws_audits(interaction: discord.Interaction):
         return
 
     output = StringIO()
+    audits_by_nation = {}
     batch_count = 0
 
     for idx, row in enumerate(rows):
@@ -3666,13 +3712,12 @@ async def raws_audits(interaction: discord.Interaction):
             output.write(f"❌ Nation ID {nation_id} - City data not found.\n\n")
             continue
 
-        # Pull city data (each row is a nation, and cities are nested)
         try:
             cities = cities_df.iloc[0]["cities"]
         except (KeyError, IndexError, TypeError):
             output.write(f"❌ Nation ID {nation_id} - Malformed city data.\n\n")
             continue
-        
+
         projects = {
             "iron_works": 0,
             "bauxite_works": 0,
@@ -3685,42 +3730,33 @@ async def raws_audits(interaction: discord.Interaction):
             "arms_stockpile": 4.5,
             "emergency_gasoline_reserve": 6.12
         }
-        pros = {
-            "iron_works":  4.5,
-            "bauxite_works": 4.5,
-            "arms_stockpile": 4.5,
-            "emergency_gasoline_reserve": 4.5
-        }
-        
         buildings = {
             "steel_mill": 0,
             "oil_refinery": 0,
             "aluminum_refinery": 0,
             "munitions_factory": 0
         }
-        
-        # Gather building and project data
+
         for city in cities:
             for p in projects:
                 projects[p] += int(city.get(p, 0))
             for b in buildings:
                 buildings[b] += int(city.get(b, 0))
-        
+
         res = get_resources(nation_id)
         if not res:
             output.write(f"❌ Nation ID {nation_id} - Resource data not found.\n\n")
             continue
-        
+
         nation_name, _, _, _, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, _ = res
-        
-        # Calculate required resources based on multipliers * 3
+
         required = {
             "steel_mill": {"coal": 3 * cons["iron_works"] * buildings["steel_mill"], "iron": 3 * cons["iron_works"] * buildings["steel_mill"]},
             "oil_refinery": {"oil": 3 * cons["emergency_gasoline_reserve"] * buildings["oil_refinery"]},
             "aluminum_refinery": {"bauxite": 3 * cons["bauxite_works"] * buildings["aluminum_refinery"]},
             "munitions_factory": {"lead": 3 * cons["arms_stockpile"] * buildings["munitions_factory"]}
         }
-        
+
         resources = {
             "coal": coal,
             "iron": iron,
@@ -3728,15 +3764,14 @@ async def raws_audits(interaction: discord.Interaction):
             "bauxite": bauxite,
             "lead": lead
         }
-        
-        # Check if nation should be skipped
+
         all_ok = True
         building_lines = []
-        
-               # 7-day stockpile color logic
+        request_lines = []
+
         for bld, reqs in required.items():
             if buildings[bld] == 0:
-                continue  # skip unused buildings
+                continue
 
             lines = []
             fulfillment_ratios = []
@@ -3747,45 +3782,47 @@ async def raws_audits(interaction: discord.Interaction):
                 fulfillment_ratios.append(ratio)
                 missing = max(0, req_val - had)
                 lines.append(f"{res_type.capitalize()}: {had:.0f}/{req_val:.0f} (Missing: {missing:.0f})")
+                if missing > 0:
+                    request_lines.append((res_type.capitalize(), missing))
 
-            # Determine minimum fulfillment ratio and color for 7-day
             min_ratio = min(fulfillment_ratios)
             if min_ratio >= 1:
                 color = "🟢"
-            elif min_ratio >= 4/7:
+            elif min_ratio >= (day / 3 + day / 3) / day:
                 color = "🟡"
                 all_ok = False
-            elif min_ratio >= 2/7:
+            elif min_ratio >= (day / 3) / day:
                 color = "🟠"
                 all_ok = False
             else:
                 color = "🔴"
                 all_ok = False
 
-            # Only report buildings that are not green
             if color != "🟢":
                 building_lines.append(
                     f"{bld.replace('_', ' ').title()}: {buildings[bld]} ({', '.join(lines)}) {color}"
                 )
-            else:
-                continue
 
-        
         if not all_ok:
             output.write(f"{nation_name} ({nation_id})\n")
             for line in building_lines:
                 output.write(line + "\n")
             output.write("\n")
 
+            audits_by_nation[nation_id] = {
+                "nation_name": nation_name,
+                "missing": request_lines
+            }
+
         batch_count += 1
         if batch_count == 30:
             await asyncio.sleep(60)
             batch_count = 0
 
-    # Create and send the file
     output.seek(0)
     discord_file = discord.File(fp=output, filename="raws_audit.txt")
-    await interaction.followup.send("✅ Audit complete.", file=discord_file)
+    await interaction.followup.send("✅ Audit complete.", file=discord_file, view=RawsAuditView(output.getvalue(), audits_by_nation))
+
 
 @bot.tree.command(name="battle_sim", description="simulate a battle")
 async def simulation(interaction: discord.Interaction, nation_id: str, war_type: str):
