@@ -225,68 +225,16 @@ class NationInfoView(discord.ui.View):
             await interaction.followup.send(f"❌ Error while formatting builds: {e}", ephemeral=True)
 
                 
-    @discord.ui.button(label="Show Projects", style=discord.ButtonStyle.secondary)
-    async def projects_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-    
-        nation_id = self.nation_id
-        df = graphql_cities(nation_id)
-    
-        if df is None or df.empty:
-            await interaction.followup.send("❌ Failed to fetch project data.", ephemeral=True)
-            return
-    
-        try:
-            nation = df.iloc[0]
-            projects_status = []
-    
-            for proj in PROJECT_KEYS:
-                emoji = "✅" if nation.get(proj, False) else "❌"
-                if emoji == "✅":
-                    projects_status.append(f"{proj.replace('_', ' ').title()}")
-    
-            chunks = [projects_status[i:i + 20] for i in range(0, len(projects_status), 20)]
-            embed = discord.Embed(
-                title="Projects",
-                colour=discord.Colour.purple()
-            )
-            for chunk in chunks:
-                embed.add_field(name="Projects", value="\n".join(chunk), inline=False)
-    
-            self.clear_items()
-            self.add_item(BackButton(self.original_embed, self))
-            self.add_item(CloseButton())
-    
-            await interaction.response.edit_message(embed=embed, view=self)
-    
-        except Exception as e:
-            await interaction.followup.send(f"❌ Error while formatting projects: {e}", ephemeral=True)
-            
     @discord.ui.button(label="Run Warchest Audit", style=discord.ButtonStyle.success)
     async def audit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
+        nation_id = self.nation_id
+    
         try:
-            def get_completion_color(percent_complete: float) -> str:
-                if percent_complete >= 76:
-                    return "🟢"
-                elif percent_complete >= 51:
-                    return "🟡"
-                elif percent_complete >= 26:
-                    return "🟠"
-                elif percent_complete >= 10:
-                    return "🔴"
-                else:
-                    return "⚫"
-
-            def format_missing(resource_name, missing_amount, current_amount):
-                total = missing_amount + current_amount
-                percent_complete = (current_amount / total) * 100 if total > 0 else 100
-                color_emoji = get_completion_color(percent_complete)
-                return f"{round(missing_amount):,} {resource_name} missing {color_emoji} ({percent_complete:.0f}% complete)"
-
             GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
             query = f"""
             {{
-              nations(id: [{self.nation_id}]) {{
+              nations(id: [{nation_id}]) {{
                 data {{
                   id
                   nation_name
@@ -307,13 +255,15 @@ class NationInfoView(discord.ui.View):
                 json={"query": query},
                 headers={"Content-Type": "application/json"}
             )
+    
             data = response.json()["data"]["nations"]["data"]
             if not data:
                 await interaction.followup.send("❌ Nation not found.", ephemeral=True)
                 return
-
+    
             nation = data[0]
             city_count = int(nation["num_cities"])
+    
             requirements = {
                 "Money": (city_count * 1_000_000, nation["money"]),
                 "Food": (city_count * 3000, nation["food"]),
@@ -323,31 +273,45 @@ class NationInfoView(discord.ui.View):
                 "Steel": (city_count * 750, nation["steel"]),
                 "Aluminum": (city_count * 750, nation["aluminum"]),
             }
-
+    
+            def get_completion_color(pct: float) -> str:
+                if pct >= 76: return "🟢"
+                if pct >= 51: return "🟡"
+                if pct >= 26: return "🟠"
+                if pct >= 10: return "🔴"
+                return "⚫"
+    
+            def format_missing(name, missing, current):
+                total = missing + current
+                pct = (current / total) * 100 if total > 0 else 100
+                return f"{round(missing):,} {name} missing {get_completion_color(pct)} ({pct:.0f}% complete)"
+    
             missing_lines = [
-                format_missing(name, max(0, needed - have), have)
-                for name, (needed, have) in requirements.items()
+                format_missing(name, max(0, need - have), have)
+                for name, (need, have) in requirements.items()
             ]
-
+    
             if all("🟢" in line for line in missing_lines):
                 description = "✅ **All materials present**"
             else:
                 description = "\n".join(missing_lines)
-
+    
             embed = discord.Embed(
                 title="Warchest Audit",
-                description=f"**Nation:** {nation['nation_name']} (`{self.nation_id}`)\n"
+                description=f"**Nation:** {nation['nation_name']} (`{nation_id}`)\n"
                             f"**Missing Materials:**\n{description}",
                 color=discord.Color.gold()
             )
-            image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-            embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
-
+            embed.set_footer(
+                text="Brought to you by Darkstar",
+                icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+            )
+    
             self.clear_items()
-            self.add_item(BackButton(embed, self))
+            self.add_item(BackButton(self.original_embed, self))
             self.add_item(CloseButton())
             await interaction.followup.edit_message(embed=embed, view=self, message_id=interaction.message.id)
-
+    
         except Exception as e:
             await interaction.followup.send(f"❌ Error while running audit: {e}", ephemeral=True)
 
