@@ -3883,7 +3883,8 @@ async def raws_audits(interaction: discord.Interaction, day: int):
 
             audits_by_nation[nation_id] = {
                 "nation_name": nation_name,
-                "missing": request_lines
+                "missing": request_lines,
+                "color": color  # the worst color for the nation
             }
         await asyncio.sleep(2.5)
         '''batch_count += 1
