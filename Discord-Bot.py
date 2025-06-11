@@ -3852,7 +3852,7 @@ async def raws_audits(interaction: discord.Interaction, day: int):
                 lines.append(f"{res_type.capitalize()}: {had:.0f}/{req_val:.0f} (Missing: {missing:.0f})")
                 if missing > 0:
                     request_lines.append((res_type.capitalize(), missing, color))
-
+                    
             min_ratio = min(fulfillment_ratios)
             if min_ratio >= 1:
                 color = "🟢"
@@ -3879,7 +3879,7 @@ async def raws_audits(interaction: discord.Interaction, day: int):
 
             audits_by_nation[nation_id] = {
                 "nation_name": nation_name,
-                "missing": request_lines,
+                "missing": building_lines,
                 "color": color  # the worst color for the nation
             }
         await asyncio.sleep(2.5)
