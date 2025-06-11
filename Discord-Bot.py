@@ -549,7 +549,7 @@ class BlueGuy(discord.ui.View):
             from_cities = self.data.get("from", "?")
             to_cities = self.data.get("city_num", "?")
             ct_num = to_cities - from_cities
-            reason = f"Buy {ct_num} new cities"
+            reason = f"City {from_cities} - {to_cities}"
             materials = {"Money": self.data.get("total_cost", 0)}
 
         elif self.category == "project":
