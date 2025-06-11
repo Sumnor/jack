@@ -2333,8 +2333,8 @@ async def res_details_for_alliance(interaction: discord.Interaction):
             )
             batch_count += 1
 
-            if batch_count == 25:
-                await asyncio.sleep(20)
+            if batch_count == 30:
+                await asyncio.sleep(32)
                 batch_count = 0# to respect rate limits
 
         except Exception as e:
@@ -2635,8 +2635,8 @@ async def res_in_m_for_a(
             totals["num_cities"] += num_cities
             processed_nations += 1
             batch_count += 1
-            if batch_count == 25:
-                await asyncio.sleep(20)
+            if batch_count == 30:
+                await asyncio.sleep(32)
                 batch_count = 0
 
         except Exception as e:
