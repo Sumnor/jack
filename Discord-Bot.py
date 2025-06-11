@@ -224,6 +224,41 @@ class NationInfoView(discord.ui.View):
         except Exception as e:
             await interaction.followup.send(f"❌ Error while formatting builds: {e}", ephemeral=True)
 
+    @discord.ui.button(label="Show Projects", style=discord.ButtonStyle.secondary)
+    async def projects_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+    
+        nation_id = self.nation_id
+        df = graphql_cities(nation_id)
+    
+        if df is None or df.empty:
+            await interaction.followup.send("❌ Failed to fetch project data.", ephemeral=True)
+            return
+    
+        try:
+            nation = df.iloc[0]
+            projects_status = []
+    
+            for proj in PROJECT_KEYS:
+                emoji = "✅" if nation.get(proj, False) else "❌"
+                if emoji == "✅":
+                    projects_status.append(f"{proj.replace('_', ' ').title()}")
+    
+            chunks = [projects_status[i:i + 20] for i in range(0, len(projects_status), 20)]
+            embed = discord.Embed(
+                title="Projects",
+                colour=discord.Colour.purple()
+            )
+            for chunk in chunks:
+                embed.add_field(name="Projects", value="\n".join(chunk), inline=False)
+    
+            self.clear_items()
+            self.add_item(BackButton(self.original_embed, self))
+            self.add_item(CloseButton())
+    
+            await interaction.response.edit_message(embed=embed, view=self)
+    
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error while formatting projects: {e}", ephemeral=True)
                 
     @discord.ui.button(label="Run Warchest Audit", style=discord.ButtonStyle.success)
     async def audit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
