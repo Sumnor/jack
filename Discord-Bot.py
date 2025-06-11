@@ -3682,30 +3682,32 @@ async def raws_audits(interaction: discord.Interaction):
             if buildings[bld] == 0:
                 continue  # skip unused buildings
         
-            sufficient = 0
             lines = []
+            fulfillment_ratios = []
+        
             for res_type, req_val in reqs.items():
                 had = resources[res_type]
-                if had >= req_val:
-                    sufficient += 1
+                ratio = had / req_val if req_val > 0 else 1
+                fulfillment_ratios.append(ratio)
                 lines.append(f"{res_type.capitalize()}: {had:.0f}/{req_val:.0f}")
         
-            if sufficient == len(reqs):
+            # Use the **lowest ratio** to decide the color
+            min_ratio = min(fulfillment_ratios)
+        
+            if min_ratio >= 1:
                 color = "🟢"
-            elif sufficient == 0:
+            elif min_ratio >= 2/3:
+                color = "🟡"
+                all_ok = False
+            elif min_ratio >= 1/3:
+                color = "🟠"
+                all_ok = False
+            else:
                 color = "🔴"
                 all_ok = False
-            elif sufficient == 1 and len(reqs) == 1:
-                color = "🟢"  # For 1-resource buildings, 1/1 is sufficient
-            else:
-                # For multi-resource buildings:
-                if sufficient == len(reqs) - 1:
-                    color = "🟡"
-                else:
-                    color = "🟠"
-                all_ok = False
-
+        
             building_lines.append(f"{bld.replace('_', ' ').title()}: {buildings[bld]} ({', '.join(lines)}) ({color})")
+
         
         if not all_ok:
             output.write(f"{nation_name} ({nation_id})\n")
