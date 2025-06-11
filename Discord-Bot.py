@@ -3692,16 +3692,19 @@ async def raws_audits(interaction: discord.Interaction):
         
             if sufficient == len(reqs):
                 color = "🟢"
-            elif sufficient == len(reqs) - 1:
-                color = "🟡"
-                all_ok = False
-            elif sufficient >= 1:
-                color = "🟠"
-                all_ok = False
-            else:
+            elif sufficient == 0:
                 color = "🔴"
                 all_ok = False
-        
+            elif sufficient == 1 and len(reqs) == 1:
+                color = "🟢"  # For 1-resource buildings, 1/1 is sufficient
+            else:
+                # For multi-resource buildings:
+                if sufficient == len(reqs) - 1:
+                    color = "🟡"
+                else:
+                    color = "🟠"
+                all_ok = False
+
             building_lines.append(f"{bld.replace('_', ' ').title()}: {buildings[bld]} ({', '.join(lines)}) ({color})")
         
         if not all_ok:
