@@ -3647,8 +3647,8 @@ async def raws_audits(interaction: discord.Interaction):
             output.write(f"Munitions Factories: {buildings['munitions_factory']} (Lead: {lead})\n")
         output.write("\n")
         batch_count += 1
-        if batch_count == 30:
-            await asyncio.sleep(32)
+        if batch_count == 25:
+            await asyncio.sleep(15)
             batch_count = 0
 
     # Create and send the file
