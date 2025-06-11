@@ -687,51 +687,76 @@ class GrantView(View):
         except Exception as e:
             await interaction.response.send_message(f"❌ Error parsing embed: `{e}`", ephemeral=True)
 
-class RawsAuditView(View):
-    def __init__(self, audits_by_nation):
+class RawsAuditView(discord.ui.View):
+    def __init__(self, data_by_nation):
         super().__init__(timeout=None)
-        self.audits_by_nation = audits_by_nation  # {nation_id: {'name': name, 'issues': [color, res, missing]}}
+        self.data_by_nation = data_by_nation
 
-    @ui.button(label="Request Yellow", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Request Yellow", style=discord.ButtonStyle.primary, custom_id="request_yellow")
     async def request_yellow(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.handle_request(interaction, cutoff=["🟡", "🟠", "🔴"])
+        await self.handle_request(interaction, "🟡")
 
-    @ui.button(label="Request Orange", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Request Orange", style=discord.ButtonStyle.primary, custom_id="request_orange")
     async def request_orange(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.handle_request(interaction, cutoff=["🟠", "🔴"])
+        await self.handle_request(interaction, "🟠")
 
-    @ui.button(label="Request Red", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Request Red", style=discord.ButtonStyle.danger, custom_id="request_red")
     async def request_red(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.handle_request(interaction, cutoff=["🔴"])
+        await self.handle_request(interaction, "🔴")
 
-    async def handle_request(self, interaction: discord.Interaction, cutoff):
+    async def handle_request(self, interaction: discord.Interaction, color_emoji: str):
         sheet = get_registration_sheet()
         rows = sheet.get_all_records()
-        requests_sent = 0
 
-        for nation_id, audit in self.audits_by_nation.items():
-            issues = [line for line in audit['issues'] if line.startswith(tuple(cutoff))]
-            if not issues:
+        for nation_id, entry in self.data_by_nation.items():
+            nation_name = entry["nation_name"]
+            lines = entry["lines"]
+
+            # Check if any of the lines match the emoji
+            relevant_lines = [l for l in lines if l.strip().endswith(color_emoji)]
+            if not relevant_lines:
                 continue
 
-            user_data = next((r for r in rows if str(r.get("NationID", "")).strip() == nation_id), None)
-            if not user_data:
+            row = next((r for r in rows if str(r.get("NationID", "")).strip() == str(nation_id)), None)
+            if not row:
                 continue
 
-            discord_id = user_data.get("DiscordID", "Unknown")
+            discord_id = row.get("DiscordID", None)
+            if not discord_id:
+                continue
+
+            missing_lines = []
+            for line in relevant_lines:
+                parts = line.split("(")
+                if len(parts) > 1:
+                    inside = parts[1].split(")")[0]
+                    for piece in inside.split(","):
+                        if "Missing:" in piece:
+                            res_name, amount = piece.split("Missing:")
+                            res_name = res_name.strip().split(":")[0].capitalize()
+                            amount = amount.strip().replace(".", "")
+                            if amount != "0":
+                                missing_lines.append(f"{res_name}: {amount}")
+
+            if not missing_lines:
+                continue
+
             embed = discord.Embed(
                 title="Request (by EA)",
-                description="\n".join(issues),
+                description=(
+                    f"**Nation:** {nation_name} (`{nation_id}`)\n"
+                    f"**Request:**\n" + "\n".join(missing_lines) + "\n"
+                    f"**Reason:** Resources for Production\n"
+                    f"**Requested by:** <@{discord_id}>"
+                ),
                 color=discord.Color.yellow()
             )
-            embed.add_field(name="Reason", value="Resources for Production", inline=False)
-            embed.add_field(name="Requested by", value=f"<@{discord_id}>", inline=False)
-            embed.set_footer(text=f"Nation: {audit['name']} ({nation_id})")
+            image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+            embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
 
             await interaction.channel.send(embed=embed, view=GrantView())
-            requests_sent += 1
 
-        await interaction.response.send_message(f"✅ {requests_sent} request(s) sent.", ephemeral=True)
+        await interaction.response.send_message(f"✅ Processed {color_emoji} requests.", ephemeral=True)
 
 
 
