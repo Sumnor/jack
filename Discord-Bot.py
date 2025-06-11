@@ -352,7 +352,7 @@ class NationInfoView(discord.ui.View):
         except Exception as e:
             await interaction.followup.send(f"❌ Error while running audit: {e}", ephemeral=True)
             
-    @discord.ui.button(label="MMR Audit", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="MMR", style=discord.ButtonStyle.primary)
     async def mmr_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         nation_id = self.nation_id
@@ -377,7 +377,7 @@ class NationInfoView(discord.ui.View):
                 }
             }
             """
-            variables = {"id": [nation_id]}
+            variables = {"id": [int(nation_id)]}
             response = requests.post(
                 GRAPHQL_URL,
                 json={"query": query, "variables": variables},
