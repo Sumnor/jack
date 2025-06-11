@@ -1637,7 +1637,11 @@ async def hourly_war_check():
         for alliance in alliances_data:
             for war in alliance.get("wars", []):
                 war_id = str(war.get("id"))
-                if war_id in existing_war_ids or war.get("end_date"):
+                if war_id in existing_war_ids:
+                    continue
+                
+                # Only include wars that have ended
+                if not war.get("end_date"):
                     continue
 
                 war_date = war.get("date", "")[:10]
@@ -1656,9 +1660,6 @@ async def hourly_war_check():
                     "Defender" if war.get("winner_id") == defender_data.get("id") else
                     "Draw"
                 )
-
-                if result_str == "Draw" and (datetime.utcnow() - war_datetime).days < 5:
-                    continue
 
                 att_money = sum((a.get("money_stolen") or 0) for w in attacker_data.get("wars", []) for a in w.get("attacks", []))
                 def_money = sum((a.get("money_stolen") or 0) for w in defender_data.get("wars", []) for a in w.get("attacks", []))
