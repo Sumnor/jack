@@ -769,7 +769,8 @@ class RawsAuditView(discord.ui.View):
 
             relevant_lines = [
                 f"{res_name}: {float(amount):.2f}"
-                for res_name, amount in missing_resources
+                for res_name, amount, res_color in missing_resources
+                if res_color == color_emoji
             ]
 
             if not relevant_lines:
@@ -3850,7 +3851,7 @@ async def raws_audits(interaction: discord.Interaction, day: int):
                 missing = max(0, req_val - had)
                 lines.append(f"{res_type.capitalize()}: {had:.0f}/{req_val:.0f} (Missing: {missing:.0f})")
                 if missing > 0:
-                    request_lines.append((res_type.capitalize(), missing))
+                    request_lines.append((res_type.capitalize(), missing, color))
 
             min_ratio = min(fulfillment_ratios)
             if min_ratio >= 1:
