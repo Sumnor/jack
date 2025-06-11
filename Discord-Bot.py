@@ -3691,15 +3691,15 @@ async def raws_audits(interaction: discord.Interaction):
                 lines.append(f"{res_type.capitalize()}: {had:.0f}/{req_val:.0f}")
         
             if sufficient == len(reqs):
-                color = "green"
+                color = "🟢"
             elif sufficient == len(reqs) - 1:
-                color = "yellow"
+                color = "🟡"
                 all_ok = False
             elif sufficient >= 1:
-                color = "orange"
+                color = "🟠"
                 all_ok = False
             else:
-                color = "red"
+                color = "🔴"
                 all_ok = False
         
             building_lines.append(f"{bld.replace('_', ' ').title()}: {buildings[bld]} ({', '.join(lines)}) ({color})")
