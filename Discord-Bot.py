@@ -3916,7 +3916,7 @@ async def raws_audits(interaction: discord.Interaction, day: int):
             "emergency_gasoline_reserve": 0
         }
         cons = {
-            "iron_works":  6.12,
+            "iron_works": 6.12,
             "bauxite_works": 6.12,
             "arms_stockpile": 4.5,
             "emergency_gasoline_reserve": 6.12
@@ -3927,27 +3927,43 @@ async def raws_audits(interaction: discord.Interaction, day: int):
             "aluminum_refinery": 0,
             "munitions_factory": 0
         }
-
+        suffitient = {
+            "coal_mine": 0,
+            "oil_well": 0,
+            "lead_mine": 0,
+            "iron_mine": 0,
+            "bauxite_mine": 0
+        }
+        nu_uh = {
+            "coal_mine": 3,
+            "oil_well": 3,
+            "lead_mine": 3,
+            "iron_mine": 3,
+            "bauxite_mine": 3
+        }
+        
         for city in cities:
             for p in projects:
                 projects[p] += int(city.get(p, 0))
             for b in buildings:
                 buildings[b] += int(city.get(b, 0))
-
+            for s in suffitient:
+                suffitient[s] += int(city.get(s, 0))
+        
         res = get_resources(nation_id)
         if not res:
             output.write(f"❌ Nation ID {nation_id} - Resource data not found.\n\n")
             continue
-
+        
         nation_name, _, _, _, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, _ = res
-
+        
         required = {
             "steel_mill": {"coal": day * cons["iron_works"] * buildings["steel_mill"], "iron": day * cons["iron_works"] * buildings["steel_mill"]},
             "oil_refinery": {"oil": day * cons["emergency_gasoline_reserve"] * buildings["oil_refinery"]},
             "aluminum_refinery": {"bauxite": day * cons["bauxite_works"] * buildings["aluminum_refinery"]},
             "munitions_factory": {"lead": day * cons["arms_stockpile"] * buildings["munitions_factory"]}
         }
-
+        
         resources = {
             "coal": coal,
             "iron": iron,
@@ -3955,11 +3971,19 @@ async def raws_audits(interaction: discord.Interaction, day: int):
             "bauxite": bauxite,
             "lead": lead
         }
-
+        
+        mine_map = {
+            "coal": "coal_mine",
+            "oil": "oil_well",
+            "lead": "lead_mine",
+            "iron": "iron_mine",
+            "bauxite": "bauxite_mine"
+        }
+        
         all_ok = True
         building_lines = []
         request_lines = []
-
+        
         for bld, reqs in required.items():
             if buildings[bld] == 0:
                 continue
@@ -3969,7 +3993,10 @@ async def raws_audits(interaction: discord.Interaction, day: int):
         
             for res_type, req_val in reqs.items():
                 had = resources[res_type]
-                ratio = had / req_val if req_val > 0 else 1
+                mine_type = mine_map[res_type]
+                mine_output = suffitient[mine_type] * nu_uh[mine_type] * day
+                adjusted_req = max(0, req_val - mine_output)
+                ratio = had / adjusted_req if adjusted_req > 0 else 1
                 fulfillment_ratios.append(ratio)
         
             min_ratio = min(fulfillment_ratios)
@@ -3988,8 +4015,11 @@ async def raws_audits(interaction: discord.Interaction, day: int):
         
             for res_type, req_val in reqs.items():
                 had = resources[res_type]
-                missing = max(0, req_val - had)
-                lines.append(f"{res_type.capitalize()}: {had:.0f}/{req_val:.0f} (Missing: {missing:.0f})")
+                mine_type = mine_map[res_type]
+                mine_output = suffitient[mine_type] * nu_uh[mine_type] * day
+                adjusted_req = max(0, req_val - mine_output)
+                missing = max(0, adjusted_req - had)
+                lines.append(f"{res_type.capitalize()}: (Missing: {missing:.0f})")
                 if missing > 0 and color != "🟢":
                     request_lines.append((res_type.capitalize(), missing, color))
         
@@ -3997,20 +4027,21 @@ async def raws_audits(interaction: discord.Interaction, day: int):
                 building_lines.append(
                     f"{bld.replace('_', ' ').title()}: {buildings[bld]} ({', '.join(lines)}) {color}"
                 )
-
-
+        
         if not all_ok:
             output.write(f"{nation_name} ({nation_id})\n")
             for line in building_lines:
                 output.write(line + "\n")
             output.write("\n")
-
+        
             audits_by_nation[nation_id] = {
                 "nation_name": nation_name,
                 "missing": request_lines,
-                "color": color  # the worst color for the nation
+                "color": color
             }
+        
         await asyncio.sleep(2.5)
+
         '''batch_count += 1
         if batch_count == 30:
             await asyncio.sleep(60)
