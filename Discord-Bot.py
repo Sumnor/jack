@@ -743,18 +743,19 @@ class RawsAuditView(discord.ui.View):
 
     async def handle_request(self, interaction: discord.Interaction, color_emoji: str):
         await interaction.response.defer()
+        users_ids = interaction.user.id
     # Get
         bot = interaction.client
     
         # Fetch the target guild and channel by ID
         guild = bot.get_guild(1186655069530243183)
         if guild is None:
-            await interaction.response.send_message("❌ Target guild not found.", ephemeral=True)
+            await interaction.followup.send("❌ Target guild not found.", ephemeral=True)
             return
     
         channel = guild.get_channel(1338510585595428895)
         if channel is None:
-            await interaction.response.send_message("❌ Target channel not found.", ephemeral=True)
+            await interaction.followup.send("❌ Target channel not found.", ephemeral=True)
             return
     
         sheet = get_registration_sheet()
@@ -769,7 +770,7 @@ class RawsAuditView(discord.ui.View):
     
             # Filter lines for requested color
             relevant_lines = [
-                f"{res_name}: {amount}"
+                f"{res_name}: {float(amount):.2f}"
                 for res_name, amount in missing_resources
                 # Only include requests that have the color emoji appended (or all for now)
             ]
@@ -788,7 +789,7 @@ class RawsAuditView(discord.ui.View):
     
             # Build embed for the request
             embed = discord.Embed(
-                title="Resource Request",
+                title=f"Resource Request (by {users_ids}",
                 description=(
                     f"**Nation:** {nation_name} (`{nation_id}`)\n"
                     f"**Request:**\n" + "\n".join(relevant_lines) + "\n"
