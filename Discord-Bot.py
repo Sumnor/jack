@@ -3617,35 +3617,99 @@ async def raws_audits(interaction: discord.Interaction):
         except (KeyError, IndexError, TypeError):
             output.write(f"❌ Nation ID {nation_id} - Malformed city data.\n\n")
             continue
-
+        
+        projects = {
+            "iron_works": 0,
+            "bauxite_works": 0,
+            "arms_stockpile": 0,
+            "emergency_gasoline_reserve": 0
+        }
+        cons = {
+            "iron_works":  6.12,
+            "bauxite_works": 6.12,
+            "arms_stockpile": 4.5,
+            "emergency_gasoline_reserve": 6.12
+        }
+        pros = {
+            "iron_works":  4.5,
+            "bauxite_works": 4.5,
+            "arms_stockpile": 4.5,
+            "emergency_gasoline_reserve": 4.5
+        }
+        
         buildings = {
             "steel_mill": 0,
             "oil_refinery": 0,
             "aluminum_refinery": 0,
             "munitions_factory": 0
         }
-
+        
+        # Gather building and project data
         for city in cities:
+            for p in projects:
+                projects[p] += int(city.get(p, 0))
             for b in buildings:
                 buildings[b] += int(city.get(b, 0))
-
+        
         res = get_resources(nation_id)
         if not res:
             output.write(f"❌ Nation ID {nation_id} - Resource data not found.\n\n")
             continue
-
+        
         nation_name, _, _, _, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, _ = res
+        
+        # Calculate required resources based on multipliers * 3
+        required = {
+            "steel_mill": {"coal": 3 * cons["iron_works"] * buildings["steel_mill"], "iron": 3 * cons["iron_works"] * buildings["steel_mill"]},
+            "oil_refinery": {"oil": 3 * cons["emergency_gasoline_reserve"] * buildings["oil_refinery"]},
+            "aluminum_refinery": {"bauxite": 3 * cons["bauxite_works"] * buildings["aluminum_refinery"]},
+            "munitions_factory": {"lead": 3 * cons["arms_stockpile"] * buildings["munitions_factory"]}
+        }
+        
+        resources = {
+            "coal": coal,
+            "iron": iron,
+            "oil": oil,
+            "bauxite": bauxite,
+            "lead": lead
+        }
+        
+        # Check if nation should be skipped
+        all_ok = True
+        building_lines = []
+        
+        for bld, reqs in required.items():
+            if buildings[bld] == 0:
+                continue  # skip unused buildings
+        
+            sufficient = 0
+            lines = []
+            for res_type, req_val in reqs.items():
+                had = resources[res_type]
+                if had >= req_val:
+                    sufficient += 1
+                lines.append(f"{res_type.capitalize()}: {had:.0f}/{req_val:.0f}")
+        
+            if sufficient == len(reqs):
+                color = "green"
+            elif sufficient == len(reqs) - 1:
+                color = "yellow"
+                all_ok = False
+            elif sufficient >= 1:
+                color = "orange"
+                all_ok = False
+            else:
+                color = "red"
+                all_ok = False
+        
+            building_lines.append(f"{bld.replace('_', ' ').title()}: {buildings[bld]} ({', '.join(lines)}) ({color})")
+        
+        if not all_ok:
+            output.write(f"{nation_name} ({nation_id})\n")
+            for line in building_lines:
+                output.write(line + "\n")
+            output.write("\n")
 
-        output.write(f"{nation_name} ({nation_id})\n")
-        if buildings["steel_mill"]:
-            output.write(f"Steel Mills: {buildings['steel_mill']} (Coal: {coal}, Iron: {iron})\n")
-        if buildings["oil_refinery"]:
-            output.write(f"Oil Refineries: {buildings['oil_refinery']} (Oil: {oil})\n")
-        if buildings["aluminum_refinery"]:
-            output.write(f"Aluminum Refineries: {buildings['aluminum_refinery']} (Bauxite: {bauxite})\n")
-        if buildings["munitions_factory"]:
-            output.write(f"Munitions Factories: {buildings['munitions_factory']} (Lead: {lead})\n")
-        output.write("\n")
         batch_count += 1
         if batch_count == 30:
             await asyncio.sleep(60)
