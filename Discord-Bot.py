@@ -742,7 +742,8 @@ class RawsAuditView(discord.ui.View):
         await self.handle_request(interaction, "🔴")
 
     async def handle_request(self, interaction: discord.Interaction, color_emoji: str):
-    # Get the bot instance
+        await interaction.response.defer()
+    # Get
         bot = interaction.client
     
         # Fetch the target guild and channel by ID
