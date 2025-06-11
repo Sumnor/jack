@@ -1562,111 +1562,126 @@ async def process_auto_requests():
 async def hourly_war_check():
     print("⏰ Running hourly war check...")
     try:
-        sheet = get_conflict_data_sheet()
-        existing_war_ids = set(str(row[3]) for row in sheet.get_all_values()[1:] if row[3])
-
-        load_conflict_data()
+        load_conflicts_data()
         active_conflicts = [c for c in cached_conflicts if c.get("Closed", "").lower() != "true"]
 
-        for conflict in active_conflicts:
-            enemy_ids = [int(id.strip()) for id in str(conflict.get("EnemyIDs", "")).split(",") if id.strip().isdigit()]
-            if not enemy_ids:
-                continue
+        if not active_conflicts:
+            print("⏳ No active conflicts. Skipping check.")
+            return
 
-            GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
-            headers = {"Content-Type": "application/json"}
-            query = """
-            query AllianceWars($id: [Int], $limit: Int) {
-              alliances(id: $id) {
-                data {
+        conflict = active_conflicts[0]
+        conflict_name = conflict.get("Name")
+        enemy_ids = [int(id.strip()) for id in str(conflict.get("EnemyIDs", "")).split(",") if id.strip().isdigit()]
+        if not enemy_ids:
+            print(f"⚠️ No enemy alliance IDs set for conflict '{conflict_name}'")
+            return
+
+        GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
+        headers = {"Content-Type": "application/json"}
+        query = """
+        query AllianceWars($id: [Int], $limit: Int) {
+          alliances(id: $id) {
+            data {
+              id
+              name
+              wars(limit: $limit) {
+                id
+                date
+                end_date
+                winner_id
+                att_money_looted
+                def_money_looted
+                attacker {
                   id
-                  name
-                  wars(limit: $limit) {
+                  nation_name
+                  alliance_id
+                  wars {
                     id
-                    date
-                    end_date
-                    winner_id
-                    att_money_looted
-                    def_money_looted
-                    attacker {
-                      id
-                      nation_name
-                      alliance_id
-                      wars {
-                        id
-                        attacks { money_stolen }
-                      }
-                    }
-                    defender {
-                      id
-                      nation_name
-                      alliance_id
-                      wars {
-                        id
-                        attacks { money_stolen }
-                      }
-                    }
+                    attacks { money_stolen }
+                  }
+                }
+                defender {
+                  id
+                  nation_name
+                  alliance_id
+                  wars {
+                    id
+                    attacks { money_stolen }
                   }
                 }
               }
             }
-            """
+          }
+        }
+        """
 
-            variables = {"id": enemy_ids, "limit": 500}
+        variables = {"id": enemy_ids, "limit": 500}
+        try:
+            response = requests.post(GRAPHQL_URL, json={"query": query, "variables": variables}, headers=headers)
+            response.raise_for_status()
+            result = response.json()
+        except Exception as e:
+            print(f"❌ API request failed: {e}")
+            return
 
+        alliances_data = result.get("data", {}).get("alliances", {}).get("data", [])
+        if not alliances_data:
+            print("❌ No data returned from API")
+            return
+
+        sheet = get_conflict_data_sheet()
+        existing_war_ids = set(str(row[3]) for row in sheet.get_all_values()[1:] if row[3])
+
+        new_wars = []
+
+        for alliance in alliances_data:
+            for war in alliance.get("wars", []):
+                war_id = str(war.get("id"))
+                if war_id in existing_war_ids or war.get("end_date"):
+                    continue
+
+                war_date = war.get("date", "")[:10]
+                if not war_date:
+                    continue
+
+                war_datetime = datetime.strptime(war_date, "%Y-%m-%d")
+                attacker_data = war.get("attacker", {})
+                defender_data = war.get("defender", {})
+
+                attacker = attacker_data.get("nation_name", "")
+                defender = defender_data.get("nation_name", "")
+
+                result_str = (
+                    "Attacker" if war.get("winner_id") == attacker_data.get("id") else
+                    "Defender" if war.get("winner_id") == defender_data.get("id") else
+                    "Draw"
+                )
+
+                if result_str == "Draw" and (datetime.utcnow() - war_datetime).days < 5:
+                    continue
+
+                att_money = sum((a.get("money_stolen") or 0) for w in attacker_data.get("wars", []) for a in w.get("attacks", []))
+                def_money = sum((a.get("money_stolen") or 0) for w in defender_data.get("wars", []) for a in w.get("attacks", []))
+
+                if attacker_data.get("alliance_id") == 10259:
+                    money_gained = att_money
+                    money_lost = def_money
+                else:
+                    money_gained = def_money
+                    money_lost = att_money
+
+                new_wars.append([
+                    conflict_name, war_date, "", war_id,
+                    attacker, defender, result_str,
+                    str(money_gained), str(money_lost)
+                ])
+
+        if new_wars:
             try:
-                response = requests.post(GRAPHQL_URL, json={"query": query, "variables": variables}, headers=headers)
-                response.raise_for_status()
-                result = response.json()
-            except Exception as e:
-                print(f"❌ API request failed: {e}")
-                continue
-
-            alliances_wrapper = result.get("data", {}).get("alliances", {})
-            alliances_data = alliances_wrapper.get("data", [])
-            if not alliances_data:
-                continue
-
-            new_wars = []
-
-            for alliance in alliances_data:
-                for war in alliance.get("wars", []):
-                    war_id = str(war.get("id"))
-                    if war_id in existing_war_ids or war.get("end_date"):
-                        continue
-
-                    war_date = war.get("date", "")[:10]
-                    attacker_data = war.get("attacker", {})
-                    defender_data = war.get("defender", {})
-
-                    attacker = attacker_data.get("nation_name", "")
-                    defender = defender_data.get("nation_name", "")
-
-                    result_str = (
-                        "Attacker" if war.get("winner_id") == attacker_data.get("id") else
-                        "Defender" if war.get("winner_id") == defender_data.get("id") else
-                        "Draw"
-                    )
-
-                    att_money = sum((a.get("money_stolen") or 0) for w in attacker_data.get("wars", []) for a in w.get("attacks", []))
-                    def_money = sum((a.get("money_stolen") or 0) for w in defender_data.get("wars", []) for a in w.get("attacks", []))
-
-                    if attacker_data.get("alliance_id") == 10259:
-                        money_gained = att_money
-                        money_lost = def_money
-                    else:
-                        money_gained = def_money
-                        money_lost = att_money
-
-                    new_wars.append([
-                        conflict["Name"], war_date, "", war_id,
-                        attacker, defender, result_str,
-                        str(money_gained), str(money_lost)
-                    ])
-
-            if new_wars:
                 sheet.append_rows(new_wars)
-                print(f"📥 Logged {len(new_wars)} new wars for conflict '{conflict['Name']}'.")
+                print(f"📥 Logged {len(new_wars)} new wars for conflict '{conflict_name}'.")
+            except Exception as e:
+                print(f"❌ Failed to append rows: {e}")
 
     except Exception as e:
         print(f"❌ Error in hourly war check: {e}")
