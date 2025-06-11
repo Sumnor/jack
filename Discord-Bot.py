@@ -351,6 +351,7 @@ class NationInfoView(discord.ui.View):
     
         except Exception as e:
             await interaction.followup.send(f"❌ Error while running audit: {e}", ephemeral=True)
+            
     @discord.ui.button(label="MMR Audit", style=discord.ButtonStyle.primary)
     async def mmr_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
@@ -384,6 +385,7 @@ class NationInfoView(discord.ui.View):
             )
             response.raise_for_status()
             data = response.json()
+            print("GraphQL Raw Response:", data)
     
             nation_list = data.get("data", {}).get("nations", {}).get("data", [])
             if not nation_list:
