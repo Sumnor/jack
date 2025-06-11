@@ -724,9 +724,10 @@ class GrantView(View):
             await interaction.response.send_message(f"❌ Error parsing embed: `{e}`", ephemeral=True)
 
 class RawsAuditView(discord.ui.View):
-    def __init__(self, data_by_nation):
+    def __init__(self, output, audits):
         super().__init__(timeout=None)
-        self.data_by_nation = data_by_nation
+        self.output = output
+        self.audits = audits
 
     @discord.ui.button(label="Request Yellow", style=discord.ButtonStyle.primary, custom_id="request_yellow")
     async def request_yellow(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -741,59 +742,67 @@ class RawsAuditView(discord.ui.View):
         await self.handle_request(interaction, "🔴")
 
     async def handle_request(self, interaction: discord.Interaction, color_emoji: str):
-        sheet = get_registration_sheet()
-        rows = sheet.get_all_records()
+    # Get the bot instance
+    bot = interaction.client
 
-        for nation_id, entry in self.data_by_nation.items():
-            nation_name = entry["nation_name"]
-            lines = entry["lines"]
+    # Fetch the target guild and channel by ID
+    guild = bot.get_guild(1186655069530243183)
+    if guild is None:
+        await interaction.response.send_message("❌ Target guild not found.", ephemeral=True)
+        return
 
-            # Check if any of the lines match the emoji
-            relevant_lines = [l for l in lines if l.strip().endswith(color_emoji)]
-            if not relevant_lines:
-                continue
+    channel = guild.get_channel(1338510585595428895)
+    if channel is None:
+        await interaction.response.send_message("❌ Target channel not found.", ephemeral=True)
+        return
 
-            row = next((r for r in rows if str(r.get("NationID", "")).strip() == str(nation_id)), None)
-            if not row:
-                continue
+    sheet = get_registration_sheet()
+    rows = sheet.get_all_records()
 
-            discord_id = row.get("DiscordID", None)
-            if not discord_id:
-                continue
+    # The audits data you stored when creating the view
+    audits_data = self.audits
 
-            missing_lines = []
-            for line in relevant_lines:
-                parts = line.split("(")
-                if len(parts) > 1:
-                    inside = parts[1].split(")")[0]
-                    for piece in inside.split(","):
-                        if "Missing:" in piece:
-                            res_name, amount = piece.split("Missing:")
-                            res_name = res_name.strip().split(":")[0].capitalize()
-                            amount = amount.strip().replace(".", "")
-                            if amount != "0":
-                                missing_lines.append(f"{res_name}: {amount}")
+    for nation_id, entry in audits_data.items():
+        nation_name = entry["nation_name"]
+        missing_resources = entry.get("missing", [])
 
-            if not missing_lines:
-                continue
+        # Filter lines for requested color
+        relevant_lines = [
+            f"{res_name}: {amount}"
+            for res_name, amount in missing_resources
+            # Only include requests that have the color emoji appended (or all for now)
+        ]
 
-            embed = discord.Embed(
-                title="Request (by EA)",
-                description=(
-                    f"**Nation:** {nation_name} (`{nation_id}`)\n"
-                    f"**Request:**\n" + "\n".join(missing_lines) + "\n"
-                    f"**Reason:** Resources for Production\n"
-                    f"**Requested by:** <@{discord_id}>"
-                ),
-                color=discord.Color.yellow()
-            )
-            image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-            embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
+        if not relevant_lines:
+            continue
 
-            await interaction.channel.send(embed=embed, view=GrantView())
+        # Find the Discord ID for the nation
+        row = next((r for r in rows if str(r.get("NationID", "")).strip() == str(nation_id)), None)
+        if not row:
+            continue
 
-        await interaction.response.send_message(f"✅ Processed {color_emoji} requests.", ephemeral=True)
+        discord_id = row.get("DiscordID", None)
+        if not discord_id:
+            continue
 
+        # Build embed for the request
+        embed = discord.Embed(
+            title="Resource Request",
+            description=(
+                f"**Nation:** {nation_name} (`{nation_id}`)\n"
+                f"**Request:**\n" + "\n".join(relevant_lines) + "\n"
+                f"**Reason:** Resources for Production\n"
+                f"**Requested by:** <@{discord_id}>"
+            ),
+            color=discord.Color.yellow()
+        )
+        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+        embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
+
+        # Send embed to the specified channel
+        await channel.send(embed=embed, view=GrantView())
+
+    await interaction.response.send_message(f"✅ Processed {color_emoji} requests.", ephemeral=True)
 
 
 def get_military_o(nation_id):
@@ -3882,7 +3891,7 @@ async def raws_audits(interaction: discord.Interaction, day: int):
 
     output.seek(0)
     discord_file = discord.File(fp=output, filename="raws_audit.txt")
-    await interaction.followup.send("✅ Audit complete.", file=discord_file, view=RawsAuditView(output.getvalue(), audits_by_nation))
+    await interaction.followup.send("✅ Audit complete.", file=discord_file, view=RawsAuditView(output=output.getvalue(), audits=audits_by_nation))
 
 
 @bot.tree.command(name="battle_sim", description="simulate a battle")
