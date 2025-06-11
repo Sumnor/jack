@@ -347,10 +347,11 @@ class NationInfoView(discord.ui.View):
             self.add_item(BackButton(self.original_embed, self))  # ← ensures back returns to original view
             self.add_item(CloseButton())
     
-            await interaction.response.edit_message(embed=embed, view=self)
+            await interaction.message.edit(embed=embed, view=self)
     
         except Exception as e:
             await interaction.followup.send(f"❌ Error while running audit: {e}", ephemeral=True)
+    self.add_item(CloseButton())
 
 
 class BackButton(discord.ui.Button):
@@ -363,6 +364,7 @@ class BackButton(discord.ui.Button):
         self.parent_view.clear_items()
         self.parent_view.add_item(self.parent_view.builds_button)
         self.parent_view.add_item(self.parent_view.projects_button)
+        self.parent_view.add_item(self.parent_view.audit_button)
         self.parent_view.add_item(CloseButton())
 
         await interaction.response.edit_message(embed=self.original_embed, view=self.parent_view)
