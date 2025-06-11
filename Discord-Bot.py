@@ -4986,7 +4986,7 @@ async def help(interaction: discord.Interaction):
     if not await is_high_power(interaction):
         await interaction.followup.send(embed=norm_mssg)
     else:
-        await interaction.followup.send(embed=gov_mssg
+        await interaction.followup.send(embed=gov_mssg)
 
 
 @bot.tree.command(name="request_city", description="Calculate cost for upgrading from current city to target city")
