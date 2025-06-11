@@ -3705,8 +3705,10 @@ async def raws_audits(interaction: discord.Interaction):
             else:
                 color = "🔴"
                 all_ok = False
-        
-            building_lines.append(f"{bld.replace('_', ' ').title()}: {buildings[bld]} ({', '.join(lines)}) ({color})")
+            if color != "🟢":
+                building_lines.append(f"{bld.replace('_', ' ').title()}: {buildings[bld]} ({', '.join(lines)}) ({color})")
+            else:
+                continue
 
         
         if not all_ok:
