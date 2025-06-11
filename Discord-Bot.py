@@ -225,7 +225,7 @@ class NationInfoView(discord.ui.View):
             await interaction.followup.send(f"❌ Error while formatting builds: {e}", ephemeral=True)
 
                 
-   @discord.ui.button(label="Run Warchest Audit", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="Run Warchest Audit", style=discord.ButtonStyle.success)
     async def audit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         nation_id = self.nation_id
