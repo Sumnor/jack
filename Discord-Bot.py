@@ -116,6 +116,87 @@ PROJECT_KEYS = [
     "military_doctrine"
 ]
 
+async def send_warchest_audit(interaction: discord.Interaction, nation_id: int):
+    def get_completion_color(percent_complete: float) -> str:
+        if percent_complete >= 76:
+            return "🟢"
+        elif percent_complete >= 51:
+            return "🟡"
+        elif percent_complete >= 26:
+            return "🟠"
+        elif percent_complete >= 10:
+            return "🔴"
+        else:
+            return "⚫"
+
+    def format_missing(resource_name, missing_amount, current_amount):
+        total = missing_amount + current_amount
+        percent_complete = (current_amount / total) * 100 if total > 0 else 100
+        color_emoji = get_completion_color(percent_complete)
+        return f"{round(missing_amount):,} {resource_name} missing {color_emoji} ({percent_complete:.0f}% complete)"
+
+    GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
+    query = f"""
+    {{
+      nations(id: [{nation_id}]) {{
+        data {{
+          id
+          nation_name
+          num_cities
+          food
+          uranium
+          money
+          gasoline
+          munitions
+          steel
+          aluminum
+        }}
+      }}
+    }}
+    """
+    response = requests.post(
+        GRAPHQL_URL,
+        json={"query": query},
+        headers={"Content-Type": "application/json"}
+    )
+    data = response.json()["data"]["nations"]["data"]
+    if not data:
+        await interaction.followup.send("❌ Nation not found.", ephemeral=True)
+        return
+
+    nation = data[0]
+    city_count = int(nation["num_cities"])
+    requirements = {
+        "Money": (city_count * 1_000_000, nation["money"]),
+        "Food": (city_count * 3000, nation["food"]),
+        "Uranium": (city_count * 40, nation["uranium"]),
+        "Gasoline": (city_count * 750, nation["gasoline"]),
+        "Munitions": (city_count * 750, nation["munitions"]),
+        "Steel": (city_count * 750, nation["steel"]),
+        "Aluminum": (city_count * 750, nation["aluminum"]),
+    }
+
+    missing_lines = [
+        format_missing(name, max(0, needed - have), have)
+        for name, (needed, have) in requirements.items()
+    ]
+
+    if all("🟢" in line for line in missing_lines):
+        description = "✅ **All materials present**"
+    else:
+        description = "\n".join(missing_lines)
+
+    embed = discord.Embed(
+        title="Warchest Audit",
+        description=f"**Nation:** {nation['nation_name']} (`{nation_id}`)\n"
+                    f"**Missing Materials:**\n{description}",
+        color=discord.Color.gold()
+    )
+    image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+    embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
+
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
 class NationInfoView(discord.ui.View):
     def __init__(self, nation_id, original_embed):
         super().__init__(timeout=120)
@@ -260,8 +341,13 @@ class NationInfoView(discord.ui.View):
     
         except Exception as e:
             await interaction.followup.send(f"❌ Error while formatting projects: {e}", ephemeral=True)
-
-
+    @discord.ui.button(label="Run Warchest Audit", style=discord.ButtonStyle.success)
+    async def audit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        try:
+            await send_warchest_audit(interaction, nation_id=self.nation_id)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error while running audit: {e}", ephemeral=True)
 
 class BackButton(discord.ui.Button):
     def __init__(self, original_embed, parent_view):
@@ -4895,178 +4981,7 @@ async def help(interaction: discord.Interaction):
     if not await is_high_power(interaction):
         await interaction.followup.send(embed=norm_mssg)
     else:
-        await interaction.followup.send(embed=gov_mssg)
-
-@bot.tree.command(name="warchest_audit", description="Request a Warchest grant audit")
-@app_commands.describe(
-    who="Tag the person you want to audit",
-    external_id="Raw Nation ID to audit instead of a user (optional)"
-)
-async def warchest_audit(interaction: discord.Interaction, who: discord.Member, external_id: str = "None"):
-    await interaction.response.defer()
-    user_id = str(interaction.user.id)
-
-    global cached_users
-    user_data = cached_users.get(user_id)
-
-    if not user_data:
-        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
-        return
-
-    own_id = str(user_data.get("NationID", "")).strip()
-    if not own_id:
-        await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
-        return
-
-    async def is_banker(inter):
-        return (
-            any(role.name == "Government member" for role in inter.user.roles)
-            or str(inter.user.id) == "1148678095176474678"
-        )
-
-    if not await is_banker(interaction):
-        await interaction.followup.send("❌ You don't have the rights to perform this action.")
-        return
-
-    # ✅ If external ID is provided, use it directly
-    if external_id != "None":
-        try:
-            target_nation_id = int(external_id.strip())
-        except ValueError:
-            await interaction.followup.send("❌ Invalid Nation ID format. Must be a number.")
-            return
-    else:
-        # 🔹 Match who.name against cached_users
-        target_username = who.name.lower()
-        target_discord_id = None
-        for discord_id, info in cached_users.items():
-            if info['DiscordUsername'].lower() == target_username:
-                target_discord_id = discord_id
-                break
-
-        if target_discord_id is None:
-            await interaction.followup.send(
-                f"❌ Could not find Nation ID for {who.mention}. "
-                "They must be registered in the Google Sheet with their Discord username."
-            )
-            return
-
-        target_nation_id = int(cached_users[target_discord_id]["NationID"])
-
-    def get_completion_color(percent_complete: float) -> str:
-        if percent_complete >= 76:
-            return "🟢"
-        elif percent_complete >= 51:
-            return "🟡"
-        elif percent_complete >= 26:
-            return "🟠"
-        elif percent_complete >= 10:
-            return "🔴"
-        else:
-            return "⚫"
-
-    def format_missing(resource_name, missing_amount, current_amount):
-        total = missing_amount + current_amount
-        if total == 0:
-            percent_complete = 100
-        else:
-            percent_complete = (current_amount / total) * 100
-
-        color_emoji = get_completion_color(percent_complete)
-        return f"{round(missing_amount):,} {resource_name} missing {color_emoji} ({percent_complete:.0f}% complete)"
-
-    try:
-        GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
-        query = f"""
-        {{
-          nations(id: [{target_nation_id}]) {{
-            data {{
-              id
-              nation_name
-              num_cities
-              food
-              uranium
-              money
-              gasoline
-              munitions
-              steel
-              aluminum
-            }}
-          }}
-        }}
-        """
-        response = requests.post(
-            GRAPHQL_URL,
-            json={"query": query},
-            headers={"Content-Type": "application/json"}
-        )
-        response_json = response.json()
-
-        nation_data = response_json.get("data", {}).get("nations", {}).get("data", [])
-        if not nation_data:
-            await interaction.followup.send("❌ Nation not found. Please try again.")
-            return
-
-        nation = nation_data[0]
-        nation_name = nation["nation_name"]
-        cities = nation["num_cities"]
-        food = nation["food"]
-        uranium = nation["uranium"]
-        money = nation["money"]
-        gasoline = nation["gasoline"]
-        munition = nation["munitions"]
-        steel = nation["steel"]
-        aluminium = nation["aluminum"]
-
-        city = int(cities)
-        nr_a = 750
-        nr_a_f = 3000
-        nr_a_m = 1000000
-        nr_a_u = 40
-
-        nr_a_minus = city * nr_a
-        nr_a_f_minus = city * nr_a_f
-        nr_a_u_minus = city * nr_a_u
-        money_needed = city * nr_a_m
-
-        money_n = max(0, money_needed - money)
-        gas_n = max(0, nr_a_minus - gasoline)
-        mun_n = max(0, nr_a_minus - munition)
-        ste_n = max(0, nr_a_minus - steel)
-        all_n = max(0, nr_a_minus - aluminium)
-        foo_n = max(0, nr_a_f_minus - food)
-        ur_n = max(0, nr_a_u_minus - uranium)
-
-        request_lines = [
-            format_missing("Money", money_n, money),
-            format_missing("Food", foo_n, food),
-            format_missing("Uranium", ur_n, uranium),
-            format_missing("Gasoline", gas_n, gasoline),
-            format_missing("Munitions", mun_n, munition),
-            format_missing("Steel", ste_n, steel),
-            format_missing("Aluminum", all_n, aluminium),
-        ]
-
-        if all(missing == 0 for missing in [money_n, foo_n, ur_n, gas_n, mun_n, ste_n, all_n]):
-            description_text = "0 material missing"
-        else:
-            description_text = "\n".join(request_lines)
-
-        embed = discord.Embed(
-            title="Warchest Audit",
-            color=discord.Color.gold(),
-            description=(
-                f"**Nation:** {nation_name} (`{target_nation_id}`)\n"
-                f"**Leader:** {who.mention}\n"
-                f"**Missing Materials:**\n{description_text}\n"
-            )
-        )
-        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-        embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
-
-        await interaction.followup.send(embed=embed, view=MessageView(description_text))
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error: {e}")
+        await interaction.followup.send(embed=gov_mssg
 
 
 @bot.tree.command(name="request_city", description="Calculate cost for upgrading from current city to target city")
