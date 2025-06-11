@@ -116,87 +116,6 @@ PROJECT_KEYS = [
     "military_doctrine"
 ]
 
-async def send_warchest_audit(interaction: discord.Interaction, nation_id: int):
-    def get_completion_color(percent_complete: float) -> str:
-        if percent_complete >= 76:
-            return "🟢"
-        elif percent_complete >= 51:
-            return "🟡"
-        elif percent_complete >= 26:
-            return "🟠"
-        elif percent_complete >= 10:
-            return "🔴"
-        else:
-            return "⚫"
-
-    def format_missing(resource_name, missing_amount, current_amount):
-        total = missing_amount + current_amount
-        percent_complete = (current_amount / total) * 100 if total > 0 else 100
-        color_emoji = get_completion_color(percent_complete)
-        return f"{round(missing_amount):,} {resource_name} missing {color_emoji} ({percent_complete:.0f}% complete)"
-
-    GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
-    query = f"""
-    {{
-      nations(id: [{nation_id}]) {{
-        data {{
-          id
-          nation_name
-          num_cities
-          food
-          uranium
-          money
-          gasoline
-          munitions
-          steel
-          aluminum
-        }}
-      }}
-    }}
-    """
-    response = requests.post(
-        GRAPHQL_URL,
-        json={"query": query},
-        headers={"Content-Type": "application/json"}
-    )
-    data = response.json()["data"]["nations"]["data"]
-    if not data:
-        await interaction.followup.send("❌ Nation not found.", ephemeral=True)
-        return
-
-    nation = data[0]
-    city_count = int(nation["num_cities"])
-    requirements = {
-        "Money": (city_count * 1_000_000, nation["money"]),
-        "Food": (city_count * 3000, nation["food"]),
-        "Uranium": (city_count * 40, nation["uranium"]),
-        "Gasoline": (city_count * 750, nation["gasoline"]),
-        "Munitions": (city_count * 750, nation["munitions"]),
-        "Steel": (city_count * 750, nation["steel"]),
-        "Aluminum": (city_count * 750, nation["aluminum"]),
-    }
-
-    missing_lines = [
-        format_missing(name, max(0, needed - have), have)
-        for name, (needed, have) in requirements.items()
-    ]
-
-    if all("🟢" in line for line in missing_lines):
-        description = "✅ **All materials present**"
-    else:
-        description = "\n".join(missing_lines)
-
-    embed = discord.Embed(
-        title="Warchest Audit",
-        description=f"**Nation:** {nation['nation_name']} (`{nation_id}`)\n"
-                    f"**Missing Materials:**\n{description}",
-        color=discord.Color.gold()
-    )
-    image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-    embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
-
-    await interaction.response.edit_message(embed=embed, view=self)
-
 class NationInfoView(discord.ui.View):
     def __init__(self, nation_id, original_embed):
         super().__init__(timeout=120)
@@ -341,16 +260,97 @@ class NationInfoView(discord.ui.View):
     
         except Exception as e:
             await interaction.followup.send(f"❌ Error while formatting projects: {e}", ephemeral=True)
+            
     @discord.ui.button(label="Run Warchest Audit", style=discord.ButtonStyle.success)
     async def audit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         try:
-            await send_warchest_audit(interaction, nation_id=self.nation_id)
+            def get_completion_color(percent_complete: float) -> str:
+                if percent_complete >= 76:
+                    return "🟢"
+                elif percent_complete >= 51:
+                    return "🟡"
+                elif percent_complete >= 26:
+                    return "🟠"
+                elif percent_complete >= 10:
+                    return "🔴"
+                else:
+                    return "⚫"
+
+            def format_missing(resource_name, missing_amount, current_amount):
+                total = missing_amount + current_amount
+                percent_complete = (current_amount / total) * 100 if total > 0 else 100
+                color_emoji = get_completion_color(percent_complete)
+                return f"{round(missing_amount):,} {resource_name} missing {color_emoji} ({percent_complete:.0f}% complete)"
+
+            GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
+            query = f"""
+            {{
+              nations(id: [{self.nation_id}]) {{
+                data {{
+                  id
+                  nation_name
+                  num_cities
+                  food
+                  uranium
+                  money
+                  gasoline
+                  munitions
+                  steel
+                  aluminum
+                }}
+              }}
+            }}
+            """
+            response = requests.post(
+                GRAPHQL_URL,
+                json={"query": query},
+                headers={"Content-Type": "application/json"}
+            )
+            data = response.json()["data"]["nations"]["data"]
+            if not data:
+                await interaction.followup.send("❌ Nation not found.", ephemeral=True)
+                return
+
+            nation = data[0]
+            city_count = int(nation["num_cities"])
+            requirements = {
+                "Money": (city_count * 1_000_000, nation["money"]),
+                "Food": (city_count * 3000, nation["food"]),
+                "Uranium": (city_count * 40, nation["uranium"]),
+                "Gasoline": (city_count * 750, nation["gasoline"]),
+                "Munitions": (city_count * 750, nation["munitions"]),
+                "Steel": (city_count * 750, nation["steel"]),
+                "Aluminum": (city_count * 750, nation["aluminum"]),
+            }
+
+            missing_lines = [
+                format_missing(name, max(0, needed - have), have)
+                for name, (needed, have) in requirements.items()
+            ]
+
+            if all("🟢" in line for line in missing_lines):
+                description = "✅ **All materials present**"
+            else:
+                description = "\n".join(missing_lines)
+
+            embed = discord.Embed(
+                title="Warchest Audit",
+                description=f"**Nation:** {nation['nation_name']} (`{self.nation_id}`)\n"
+                            f"**Missing Materials:**\n{description}",
+                color=discord.Color.gold()
+            )
+            image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+            embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
+
             self.clear_items()
-            self.add_item(BackButton(self.original_embed, self))
+            self.add_item(BackButton(embed, self))
             self.add_item(CloseButton())
+            await interaction.followup.edit_message(embed=embed, view=self, message_id=interaction.message.id)
+
         except Exception as e:
             await interaction.followup.send(f"❌ Error while running audit: {e}", ephemeral=True)
+
 
 class BackButton(discord.ui.Button):
     def __init__(self, original_embed, parent_view):
