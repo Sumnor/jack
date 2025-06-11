@@ -3764,35 +3764,40 @@ async def raws_audits(interaction: discord.Interaction):
         all_ok = True
         building_lines = []
         
+               # 7-day stockpile color logic
         for bld, reqs in required.items():
             if buildings[bld] == 0:
                 continue  # skip unused buildings
-        
+
             lines = []
             fulfillment_ratios = []
-        
+
             for res_type, req_val in reqs.items():
                 had = resources[res_type]
                 ratio = had / req_val if req_val > 0 else 1
                 fulfillment_ratios.append(ratio)
-                lines.append(f"{res_type.capitalize()}: {had:.0f}/{req_val:.0f}")
-        
-            # Use the **lowest ratio** to decide the color
+                missing = max(0, req_val - had)
+                lines.append(f"{res_type.capitalize()}: {had:.0f}/{req_val:.0f} (Missing: {missing:.0f})")
+
+            # Determine minimum fulfillment ratio and color for 7-day
             min_ratio = min(fulfillment_ratios)
-        
             if min_ratio >= 1:
                 color = "🟢"
-            elif min_ratio >= 2/3:
+            elif min_ratio >= 4/7:
                 color = "🟡"
                 all_ok = False
-            elif min_ratio >= 1/3:
+            elif min_ratio >= 2/7:
                 color = "🟠"
                 all_ok = False
             else:
                 color = "🔴"
                 all_ok = False
+
+            # Only report buildings that are not green
             if color != "🟢":
-                building_lines.append(f"{bld.replace('_', ' ').title()}: {buildings[bld]} ({', '.join(lines)}) ({color})")
+                building_lines.append(
+                    f"{bld.replace('_', ' ').title()}: {buildings[bld]} ({', '.join(lines)}) {color}"
+                )
             else:
                 continue
 
