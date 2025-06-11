@@ -351,7 +351,6 @@ class NationInfoView(discord.ui.View):
     
         except Exception as e:
             await interaction.followup.send(f"❌ Error while running audit: {e}", ephemeral=True)
-    self.add_item(CloseButton())
 
 
 class BackButton(discord.ui.Button):
