@@ -4812,7 +4812,7 @@ reasons_for_grant = [
     app_commands.Choice(name="Project", value="project"),
 ]
 
-@bot.tree.command(name="request_warchest", description="Request a Warchest grant")
+@bot.tree.command(name="request_warchest", description="Request a  grant")
 @app_commands.describe(percent="How much percent of the warchest do you want")
 @app_commands.choices(percent=percent_list)
 async def warchest(interaction: discord.Interaction, percent: app_commands.Choice[str]):
@@ -4952,7 +4952,7 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
         if foo_n > 0:
             request_lines.append(f"Food: {round(foo_n):,.0f}\n")
         if ur_n > 0:
-            request_lines.append(f"Uranium: {round(ur_n):,.0f}")
+            request_lines.append(f"Uranium: {round(ur_n):,.0f}\n")
         if gas_n > 0:
             request_lines.append(f"Gasoline: {round(gas_n):,.0f}\n")
         if mun_n > 0:
