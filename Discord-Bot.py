@@ -195,7 +195,7 @@ async def send_warchest_audit(interaction: discord.Interaction, nation_id: int):
     image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
     embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
 
-    await interaction.followup.send(embed=embed, ephemeral=True)
+    await interaction.response.edit_message(embed=embed, view=self)
 
 class NationInfoView(discord.ui.View):
     def __init__(self, nation_id, original_embed):
@@ -346,6 +346,9 @@ class NationInfoView(discord.ui.View):
         await interaction.response.defer()
         try:
             await send_warchest_audit(interaction, nation_id=self.nation_id)
+            self.clear_items()
+            self.add_item(BackButton(self.original_embed, self))
+            self.add_item(CloseButton())
         except Exception as e:
             await interaction.followup.send(f"❌ Error while running audit: {e}", ephemeral=True)
 
