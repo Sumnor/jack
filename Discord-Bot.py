@@ -225,7 +225,7 @@ class NationInfoView(discord.ui.View):
             await interaction.followup.send(f"❌ Error while formatting builds: {e}", ephemeral=True)
 
                 
-    @discord.ui.button(label="Run Warchest Audit", style=discord.ButtonStyle.success)
+   @discord.ui.button(label="Run Warchest Audit", style=discord.ButtonStyle.success)
     async def audit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         nation_id = self.nation_id
@@ -291,10 +291,11 @@ class NationInfoView(discord.ui.View):
                 for name, (need, have) in requirements.items()
             ]
     
-            if all("🟢" in line for line in missing_lines):
-                description = "✅ **All materials present**"
-            else:
-                description = "\n".join(missing_lines)
+            description = (
+                "✅ **All materials present**"
+                if all("🟢" in line for line in missing_lines)
+                else "\n".join(missing_lines)
+            )
     
             embed = discord.Embed(
                 title="Warchest Audit",
@@ -308,9 +309,10 @@ class NationInfoView(discord.ui.View):
             )
     
             self.clear_items()
-            self.add_item(BackButton(self.original_embed, self))
+            self.add_item(BackButton(self.original_embed, self))  # ← ensures back returns to original view
             self.add_item(CloseButton())
-            await interaction.followup.edit_message(embed=embed, view=self, message_id=interaction.message.id)
+    
+            await interaction.response.edit_message(embed=embed, view=self)
     
         except Exception as e:
             await interaction.followup.send(f"❌ Error while running audit: {e}", ephemeral=True)
