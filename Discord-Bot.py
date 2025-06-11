@@ -761,20 +761,17 @@ class RawsAuditView(discord.ui.View):
         rows = sheet.get_all_records()
 
         for nation_id, entry in self.audits.items():
-            if entry.get("color") != color_emoji:
-                continue  # Skip if not matching requested color
-
             nation_name = entry["nation_name"]
             missing_resources = entry.get("missing", [])
-
+        
             relevant_lines = [
                 f"{res_name}: {float(amount):.2f}"
                 for res_name, amount, res_color in missing_resources
                 if res_color == color_emoji
             ]
-
+        
             if not relevant_lines:
-                continue
+                continue  # No missing resources of the requested color in this nation, skip
 
             row = next((r for r in rows if str(r.get("NationID", "")).strip() == str(nation_id)), None)
             if not row:
@@ -3840,20 +3837,17 @@ async def raws_audits(interaction: discord.Interaction, day: int):
         for bld, reqs in required.items():
             if buildings[bld] == 0:
                 continue
-
+        
             lines = []
             fulfillment_ratios = []
-
+        
             for res_type, req_val in reqs.items():
                 had = resources[res_type]
                 ratio = had / req_val if req_val > 0 else 1
                 fulfillment_ratios.append(ratio)
-                missing = max(0, req_val - had)
-                lines.append(f"{res_type.capitalize()}: {had:.0f}/{req_val:.0f} (Missing: {missing:.0f})")
-                if missing > 0:
-                    request_lines.append((res_type.capitalize(), missing, color))
-                    
+        
             min_ratio = min(fulfillment_ratios)
+        
             if min_ratio >= 1:
                 color = "🟢"
             elif min_ratio >= (day / 3 + day / 3) / day:
@@ -3865,11 +3859,19 @@ async def raws_audits(interaction: discord.Interaction, day: int):
             else:
                 color = "🔴"
                 all_ok = False
-
+        
+            for res_type, req_val in reqs.items():
+                had = resources[res_type]
+                missing = max(0, req_val - had)
+                lines.append(f"{res_type.capitalize()}: {had:.0f}/{req_val:.0f} (Missing: {missing:.0f})")
+                if missing > 0 and color != "🟢":
+                    request_lines.append((res_type.capitalize(), missing, color))
+        
             if color != "🟢":
                 building_lines.append(
                     f"{bld.replace('_', ' ').title()}: {buildings[bld]} ({', '.join(lines)}) {color}"
                 )
+
 
         if not all_ok:
             output.write(f"{nation_name} ({nation_id})\n")
