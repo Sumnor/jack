@@ -1399,29 +1399,40 @@ def load_conflict_data():
     try:
         sheet = get_conflict_data_sheet()
         rows = sheet.get_all_values()
+        
+        if not rows:
+            print("❌ Sheet is empty.")
+            return None
 
-        header = [
+        expected_header = [
             "Conflict Name", "War Start Date", "War End Date", "War ID",
             "Attacker Nation Name", "Defender Nation Name", "Result",
             "Money Gained", "Money Lost"
         ]
-        
-        # Confirm header matches
-        if rows[0][:len(header)] != header:
-            print("❌ Header mismatch. Please check your sheet's first row.")
+
+        actual_header = rows[0][:len(expected_header)]
+        if actual_header != expected_header:
+            print(f"❌ Header mismatch.\nExpected: {expected_header}\nActual:   {actual_header}")
             return None
 
-        # Keep only rows with exactly 9 columns
-        valid_rows = [dict(zip(header, row[:9])) for row in rows[1:] if len(row) >= 9 and row[3].isdigit()]
-        
+        valid_rows = []
+        for i, row in enumerate(rows[1:], start=2):
+            if len(row) < 9:
+                print(f"⚠️ Skipping row {i}: too short ({len(row)} columns)")
+                continue
+            if not row[3].isdigit():
+                print(f"⚠️ Skipping row {i}: war ID is not numeric ({row[3]})")
+                continue
+            valid_rows.append(dict(zip(expected_header, row[:9])))
+
         cached_conflict_data = valid_rows
         print(f"✅ Loaded {len(valid_rows)} valid conflict data records.")
         return sheet
+
     except Exception as e:
-        print(f"❌ Failed to load conflict data sheet: {e}")
+        print(f"❌ Exception while loading conflict data: {e}")
         print(traceback.format_exc())
         return None
-
 
 def load_conflicts_data():
     global cached_conflicts
