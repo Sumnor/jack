@@ -3389,7 +3389,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
     embed = discord.Embed(
         title="##War Results:##",
         colour=discord.Colour.dark_orange(),
-        description=(file)
+        description=file
     )
     image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
     embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
@@ -3754,7 +3754,7 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
         embed = discord.Embed(
             title="##War Results:##",
             colour=discord.Colour.dark_orange(),
-            description=(file)
+            description=file
         )
         image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
         embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
