@@ -1901,7 +1901,7 @@ async def on_message(message):
     
     if message.guild and message.guild.id == TARGET_GUILD_ID:
         if message.author.id in IGNORED_USER_IDS:
-            if "money" in message.content.lower():
+            if "Money" in message.content:
                 try:
                     reply = await message.reply(
                         "By copper’s clink and silver’s ring,\n"
@@ -1918,7 +1918,7 @@ async def on_message(message):
                 except Exception as e:
                     print(f"Error replying: {e}")
     
-            elif "tax evasion" in message.content.lower():
+            elif "Tax Evasion" in message.content:
                 try:
                     reply = await message.reply(
                         "By loophole's path and audit's dread,\n"
@@ -1959,7 +1959,7 @@ async def on_message(message):
                 print("No permission to reply in this channel")
             except Exception as e:
                 print(f"Error replying: {e}")
-        elif "money" in message.content.lower():
+        elif "Money" in message.content:
             try:
                 reply = await message.reply(
                     "By copper’s clink and silver’s ring,\n"
@@ -1976,7 +1976,7 @@ async def on_message(message):
             except Exception as e:
                 print(f"Error replying: {e}")
 
-        elif "tax evasion" in message.content.lower():
+        elif "Tax Evasion" in message.content:
             try:
                 reply = await message.reply(
                     "By loophole's path and audit's dread,\n"
