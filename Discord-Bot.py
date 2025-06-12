@@ -1334,7 +1334,7 @@ def save_dm_to_sheet(sender_name, recipient_name, message):
 
 def save_conflict_row(data_row):
     try:
-        sheet = get_conflict_data_sheet()  # <-- Use the correct sheet
+        sheet = get_conflict_data_sheet()
         sheet.append_row(data_row)
         print("✅ Conflict data saved")
     except Exception as e:
@@ -1562,8 +1562,8 @@ async def process_auto_requests():
 async def hourly_war_check():
     print("⏰ Running hourly war check...")
     try:
-        load_conflicts_data()
-        active_conflicts = [c for c in cached_conflicts if c.get("Closed", "").lower() != "true"]
+        load_conflict_data()
+        active_conflicts = [c for c in cached_conflict_data if c.get("Closed", "").lower() != "true"]
 
         if not active_conflicts:
             print("⏳ No active conflicts. Skipping check.")
@@ -1630,7 +1630,7 @@ async def hourly_war_check():
             return
 
         sheet = get_conflict_data_sheet()
-        existing_war_ids = set(str(row[3]) for row in sheet.get_all_values()[1:] if row[3])
+        existing_war_ids = set(str(row[3]) for row in sheet.get_all_values()[1:] if len(row) > 3 and row[3])
 
         new_wars = []
 
@@ -1639,8 +1639,7 @@ async def hourly_war_check():
                 war_id = str(war.get("id"))
                 if war_id in existing_war_ids:
                     continue
-                
-                # Only include wars that have ended
+
                 if not war.get("end_date"):
                     continue
 
@@ -1648,7 +1647,6 @@ async def hourly_war_check():
                 if not war_date:
                     continue
 
-                war_datetime = datetime.strptime(war_date, "%Y-%m-%d")
                 attacker_data = war.get("attacker", {})
                 defender_data = war.get("defender", {})
 
@@ -1672,9 +1670,15 @@ async def hourly_war_check():
                     money_lost = att_money
 
                 new_wars.append([
-                    conflict_name, war_date, "", war_id,
-                    attacker, defender, result_str,
-                    str(money_gained), str(money_lost)
+                    conflict_name,
+                    war_date,
+                    war.get("end_date", "")[:10],
+                    war_id,
+                    attacker,
+                    defender,
+                    result_str,
+                    f"{money_gained:.2f}",
+                    f"{money_lost:.2f}",
                 ])
 
         if new_wars:
@@ -1686,7 +1690,6 @@ async def hourly_war_check():
 
     except Exception as e:
         print(f"❌ Error in hourly war check: {e}")
-
 
 @tasks.loop(hours=1)
 async def hourly_snapshot():
