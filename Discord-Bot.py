@@ -1682,42 +1682,49 @@ async def hourly_war_check():
         for alliance in alliances_data:
             for war in alliance.get("wars", []):
                 war_id = str(war.get("id"))
+        
+                # Skip if already saved
                 if war_id in existing_war_ids:
                     continue
-
+        
+                # Skip if war is still active (no end_date)
                 if not war.get("end_date"):
                     continue
-
+        
                 war_date = war.get("date", "")[:10]
-                if not war_date:
-                    continue
-
+                war_end_date = war.get("end_date", "")[:10]
+        
                 attacker_data = war.get("attacker", {})
                 defender_data = war.get("defender", {})
-
+        
+                # Skip malformed entries
+                if not attacker_data or not defender_data:
+                    continue
+        
                 attacker = attacker_data.get("nation_name", "")
                 defender = defender_data.get("nation_name", "")
-
+                winner_id = war.get("winner_id")
+        
                 result_str = (
-                    "Attacker" if war.get("winner_id") == attacker_data.get("id") else
-                    "Defender" if war.get("winner_id") == defender_data.get("id") else
+                    "Attacker" if winner_id == attacker_data.get("id") else
+                    "Defender" if winner_id == defender_data.get("id") else
                     "Draw"
                 )
-
+        
                 att_money = sum((a.get("money_stolen") or 0) for w in attacker_data.get("wars", []) for a in w.get("attacks", []))
                 def_money = sum((a.get("money_stolen") or 0) for w in defender_data.get("wars", []) for a in w.get("attacks", []))
-
+        
                 if attacker_data.get("alliance_id") == 10259:
                     money_gained = att_money
                     money_lost = def_money
                 else:
                     money_gained = def_money
                     money_lost = att_money
-
+        
                 new_wars.append([
                     conflict_name,
                     war_date,
-                    war.get("end_date", "")[:10],
+                    war_end_date,
                     war_id,
                     attacker,
                     defender,
@@ -1725,6 +1732,7 @@ async def hourly_war_check():
                     f"{money_gained:.2f}",
                     f"{money_lost:.2f}",
                 ])
+
 
         if new_wars:
             try:
