@@ -1399,7 +1399,7 @@ def load_conflict_data():
     try:
         sheet = get_conflict_data_sheet()
         rows = sheet.get_all_values()
-        
+
         if not rows:
             print("❌ Sheet is empty.")
             return None
@@ -1411,19 +1411,28 @@ def load_conflict_data():
         ]
 
         actual_header = rows[0][:len(expected_header)]
+
+        # Check for empty or duplicate headers
+        if "" in actual_header:
+            print(f"❌ Empty column name(s) in header: {actual_header}")
+            return None
+        if len(set(actual_header)) != len(actual_header):
+            print(f"❌ Duplicate column names in header: {actual_header}")
+            return None
+
         if actual_header != expected_header:
             print(f"❌ Header mismatch.\nExpected: {expected_header}\nActual:   {actual_header}")
             return None
 
         valid_rows = []
         for i, row in enumerate(rows[1:], start=2):
-            if len(row) < 9:
+            if len(row) < len(expected_header):
                 print(f"⚠️ Skipping row {i}: too short ({len(row)} columns)")
                 continue
             if not row[3].isdigit():
                 print(f"⚠️ Skipping row {i}: war ID is not numeric ({row[3]})")
                 continue
-            valid_rows.append(dict(zip(expected_header, row[:9])))
+            valid_rows.append(dict(zip(expected_header, row[:len(expected_header)])))
 
         cached_conflict_data = valid_rows
         print(f"✅ Loaded {len(valid_rows)} valid conflict data records.")
