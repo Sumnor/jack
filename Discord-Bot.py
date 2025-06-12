@@ -3749,8 +3749,6 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
     # ✅ Move graph prep after the loop
 # After all wars processed
     if money_more_detail:
-        from matplotlib.dates import DateFormatter
-        import matplotlib.dates as mdates
     
         # Use all unique war dates from the wars list to ensure correct x-axis
         war_dates_all = sorted(set(
