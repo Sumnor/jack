@@ -1399,6 +1399,10 @@ def load_conflict_data():
     try:
         sheet = get_conflict_data_sheet()
         rows = sheet.get_all_values()
+        print(f"Raw header row: {rows[0]}")
+        print(f"Number of rows: {len(rows)}")
+        print(f"First 3 rows:\n{rows[:3]}")
+
 
         if not rows:
             print("❌ Sheet is empty.")
