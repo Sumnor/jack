@@ -1394,19 +1394,34 @@ def load_registration_data():
         print(f"❌ Failed to load registration sheet data: {e}")
         print(traceback.format_exc())
 
-def load_conflicts_data():
-    global cached_conflicts
+def load_conflict_data():
+    global cached_conflict_data
     try:
-        sheet = get_conflict_sheet()
-        cached_conflicts = sheet.get_all_records()
-        if cached_conflicts:
-            print(f"Sample conflict row: {cached_conflicts[0]}")
-        print(f"✅ Loaded {len(cached_conflicts)} conflicts from sheet.")
+        sheet = get_conflict_data_sheet()
+        rows = sheet.get_all_values()
+
+        header = [
+            "Conflict Name", "War Start Date", "War End Date", "War ID",
+            "Attacker Nation Name", "Defender Nation Name", "Result",
+            "Money Gained", "Money Lost"
+        ]
+        
+        # Confirm header matches
+        if rows[0][:len(header)] != header:
+            print("❌ Header mismatch. Please check your sheet's first row.")
+            return None
+
+        # Keep only rows with exactly 9 columns
+        valid_rows = [dict(zip(header, row[:9])) for row in rows[1:] if len(row) >= 9 and row[3].isdigit()]
+        
+        cached_conflict_data = valid_rows
+        print(f"✅ Loaded {len(valid_rows)} valid conflict data records.")
         return sheet
     except Exception as e:
-        print(f"❌ Failed to load conflicts sheet data: {e}")
+        print(f"❌ Failed to load conflict data sheet: {e}")
         print(traceback.format_exc())
         return None
+
 
 def load_conflict_data():
     global cached_conflict_data
