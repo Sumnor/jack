@@ -3387,12 +3387,13 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
     )
     file=discord.File(txt_buffer, filename=f"nation_{nation_id}_wars_summary.txt")
     embed = discord.Embed(
-        title="##War Results:##",
+        title="War Results:",
         colour=discord.Colour.dark_orange(),
-        description=file
+        description="Visualised Results:"
     )
     image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
     embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
+    embed.add_image(file)
     # Send text summary
     await interaction.followup.send(embed=embed, file=discord.File(txt_buffer, filename=f"nation_{nation_id}_wars_summary.txt"))
 
@@ -3831,12 +3832,13 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
             plt.close(fig)
             file=discord.File(buf, filename=f"war_graph_batch{batch_index}.png")
             embed = discord.Embed(
-                title="##War Results Alliance:##",
+                title="War Results Alliance:",
                 colour=discord.Colour.dark_orange(),
-                description=(file)
+                description="Visualised Results:"
             )
             image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
             embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
+            embed.add_image(file)
             await interaction.followup.send(embed=embed)
 
     # Always send full war summary txt file at end
