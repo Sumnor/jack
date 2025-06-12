@@ -1423,17 +1423,20 @@ def load_conflict_data():
         return None
 
 
-def load_conflict_data():
-    global cached_conflict_data
+def load_conflicts_data():
+    global cached_conflicts
     try:
-        sheet = get_conflict_data_sheet()
-        cached_conflict_data = sheet.get_all_records()
-        print(f"✅ Loaded {len(cached_conflict_data)} conflict data records from sheet.")
+        sheet = get_conflict_sheet()
+        cached_conflicts = sheet.get_all_records()
+        if cached_conflicts:
+            print(f"Sample conflict row: {cached_conflicts[0]}")
+        print(f"✅ Loaded {len(cached_conflicts)} conflicts from sheet.")
         return sheet
     except Exception as e:
-        print(f"❌ Failed to load conflict data sheet: {e}")
+        print(f"❌ Failed to load conflicts sheet data: {e}")
         print(traceback.format_exc())
         return None
+
 
 # --- Daily Refresh Task ---
 from datetime import datetime, timezone
