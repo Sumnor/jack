@@ -3378,6 +3378,8 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
     plt.savefig(buf, format="png")
     plt.close()
     buf.seek(0)
+    txt_buffer = BytesIO(all_log.encode("utf-8"))
+    txt_buffer.seek(0)
 
     await interaction.followup.send(
         file=discord.File(buf, filename="combined_war_graph.png"),
@@ -3392,8 +3394,6 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
     image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
     embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
     # Send text summary
-    txt_buffer = BytesIO(all_log.encode("utf-8"))
-    txt_buffer.seek(0)
     await interaction.followup.send(embed=embed, file=discord.File(txt_buffer, filename=f"nation_{nation_id}_wars_summary.txt"))
 
 
@@ -3411,6 +3411,7 @@ import discord
 import requests
 from discord import app_commands
 from dateutil import parser
+import matplotlib.dates as mdates
 
 @bot.tree.command(name="war_losses_alliance", description="Show recent wars for an alliance with optional detailed stats and conflict mode.")
 @app_commands.describe(
