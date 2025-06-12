@@ -1615,7 +1615,7 @@ async def hourly_war_check():
             return
 
         conflict = active_conflicts[0]
-        conflict_name = conflict.get("Conflict Name")
+        conflict_name = conflict.get("Name")
         enemy_ids = [int(id.strip()) for id in str(conflict.get("EnemyIDs", "")).split(",") if id.strip().isdigit()]
         if not enemy_ids:
             print(f"⚠️ No enemy alliance IDs set for conflict '{conflict_name}'")
