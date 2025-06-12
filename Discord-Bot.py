@@ -1451,8 +1451,11 @@ def load_conflicts_data():
     global cached_conflicts
     try:
         sheet = get_conflict_sheet()
-        cached_conflicts = sheet.get_all_records()
+        raw_data = sheet.get_all_records()
+        # Strip whitespace from keys
+        cached_conflicts = [{k.strip(): v for k, v in row.items()} for row in raw_data]
         if cached_conflicts:
+            print(f"Headers: {list(cached_conflicts[0].keys())}")
             print(f"Sample conflict row: {cached_conflicts[0]}")
         print(f"✅ Loaded {len(cached_conflicts)} conflicts from sheet.")
         return sheet
@@ -1612,7 +1615,7 @@ async def hourly_war_check():
             return
 
         conflict = active_conflicts[0]
-        conflict_name = conflict.get("Name")
+        conflict_name = conflict.get("Conflict Name")
         enemy_ids = [int(id.strip()) for id in str(conflict.get("EnemyIDs", "")).split(",") if id.strip().isdigit()]
         if not enemy_ids:
             print(f"⚠️ No enemy alliance IDs set for conflict '{conflict_name}'")
