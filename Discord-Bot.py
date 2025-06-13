@@ -1761,7 +1761,6 @@ async def hourly_war_check():
 
 
 
-
 @tasks.loop(hours=1)
 async def hourly_snapshot():
     now = datetime.now(timezone.utc)
