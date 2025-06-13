@@ -1614,6 +1614,12 @@ async def hourly_war_check():
             and c.get("Name")  # ensure Name exists
             and c.get("EnemyIDs")  # ensure EnemyIDs exists
         ]
+        for c in cached_conflict_data:
+            print(f"▶️ Checking conflict: {c}")
+            print(f" - Closed: {c.get('Closed')} -> {str(c.get('Closed', '')).lower() != 'true'}")
+            print(f" - Name: {c.get('Name')}")
+            print(f" - EnemyIDs: {c.get('EnemyIDs')}")
+
 
 
         if not active_conflicts:
