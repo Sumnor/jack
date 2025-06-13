@@ -1744,6 +1744,9 @@ async def hourly_war_check():
                 print(f"📥 Logged {len(new_wars)} new wars for conflict '{conflict_name}'.")
             except Exception as e:
                 print(f"❌ Failed to append rows: {e}")
+    except Exception as e:
+        print(f"❌ Error in hourly war check: {e}")
+
 
 
 @tasks.loop(hours=1)
