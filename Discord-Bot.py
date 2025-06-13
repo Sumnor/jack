@@ -3527,7 +3527,7 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
 
         # Filter relevant rows
         # Filter relevant rows
-        relevant_rows = [row for row in all_rows if row.get("Conflict Name", "").lower() == conflict_name.lower()]
+        relevant_rows = [row for row in all_rows if row.get(str("Conflict Name", "")).lower() == conflict_name.lower()]
         relevant_rows = relevant_rows[:war_count]  # Limit to requested count
         if not relevant_rows:
             await interaction.followup.send(f"❌ No saved wars found for conflict '{conflict_name}'.")
