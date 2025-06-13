@@ -1608,7 +1608,13 @@ async def hourly_war_check():
     print("⏰ Running hourly war check...")
     try:
         load_conflict_data()
-        active_conflicts = [c for c in cached_conflict_data if c.get("Closed", "").lower() != "true"]
+        active_conflicts = [
+            c for c in cached_conflict_data
+            if c.get("Closed", "").lower() != "true"
+            and c.get("Name")  # ensure Name exists
+            and c.get("EnemyIDs")  # ensure EnemyIDs exists
+        ]
+
 
         if not active_conflicts:
             print("⏳ No active conflicts. Skipping check.")
