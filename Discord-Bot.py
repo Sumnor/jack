@@ -1694,15 +1694,15 @@ async def hourly_war_check():
             for war in alliance.get("wars", []):
                 war_id = str(war.get("id"))
                 end_date = war.get("end_date")
-        
+            
                 if not end_date or war_id in existing_war_ids:
                     continue  # 🛑 Skip if war is active or already logged
-        
-                war_date = war.get("date", "")[:10]
-                war_end_date = end_date[:10]
+            
+                war_start = war.get("date", "")[:10]
+                if war_start != conflict_start_date:
+                    continue
         
                 # Continue with processing...
-
 
                 war_start = war.get("date", "")[:10]
                 war_end = war.get("end_date", "")[:10]
