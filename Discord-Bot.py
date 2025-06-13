@@ -2907,7 +2907,7 @@ async def start_conflict(interaction: discord.Interaction, conflict_name: str, m
     await interaction.response.defer()
     load_conflict_data()
 
-    if any(c.get("Name", "").lower() == conflict_name.lower() for c in cached_conflicts):
+    if any(str(c.get("Name", "")).lower() == conflict_name.lower() for c in cached_conflicts):
         await interaction.followup.send(f"❌ Conflict '{conflict_name}' already exists.")
         return
 
@@ -3077,7 +3077,7 @@ async def add_to_conflict(interaction: discord.Interaction, conflict_name: str, 
 async def end_conflict(interaction: discord.Interaction, conflict_name: str):
     await interaction.response.defer()
     import datetime
-    end_date = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+    end_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     try:
         sheet = get_conflict_sheet()
