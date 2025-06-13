@@ -1603,12 +1603,13 @@ async def process_auto_requests():
     except Exception as ex:
         print(f"Error in process_auto_requests task: {ex}")
 
+import asyncio
+
 @tasks.loop(hours=1)
 async def hourly_war_check():
     print("⏰ Running hourly war check...")
     try:
-        load_conflicts_data()  # This sets global `cached_conflicts`
-
+        load_conflicts_data()
         active_conflicts = [
             c for c in cached_conflicts
             if str(c.get("Closed", "")).strip().lower() != "true"
@@ -1620,7 +1621,6 @@ async def hourly_war_check():
             print("⏳ No active conflicts. Skipping check.")
             return
 
-        # Just pick the first active conflict
         conflict = active_conflicts[0]
         conflict_name = conflict.get("Name")
         try:
@@ -1633,43 +1633,9 @@ async def hourly_war_check():
             print(f"⚠️ No valid enemy alliance IDs set for conflict '{conflict_name}'")
             return
 
-        # GraphQL Query
         GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
         headers = {"Content-Type": "application/json"}
-        query = """
-        query AllianceWars($id: [Int], $limit: Int) {
-          alliances(id: $id) {
-            data {
-              id
-              name
-              wars(limit: $limit) {
-                id
-                date
-                end_date
-                winner_id
-                attacker {
-                  id
-                  nation_name
-                  alliance_id
-                  wars {
-                    id
-                    attacks { money_stolen }
-                  }
-                }
-                defender {
-                  id
-                  nation_name
-                  alliance_id
-                  wars {
-                    id
-                    attacks { money_stolen }
-                  }
-                }
-              }
-            }
-          }
-        }
-        """
+        query = """..."""  # Keep your existing GraphQL query here
 
         variables = {"id": enemy_ids, "limit": 500}
         try:
@@ -1689,7 +1655,7 @@ async def hourly_war_check():
         existing_rows = sheet.get_all_values()
         existing_war_ids = set(str(row[3]) for row in existing_rows[1:] if len(row) > 3 and row[3])
 
-        new_wars = []
+        all_new_wars = []
 
         for alliance in alliances_data:
             for war in alliance.get("wars", []):
@@ -1699,17 +1665,15 @@ async def hourly_war_check():
 
                 war_start = war.get("date", "")[:10]
                 war_end = war.get("end_date", "")[:10]
-
                 attacker_data = war.get("attacker", {})
                 defender_data = war.get("defender", {})
 
                 if not attacker_data or not defender_data:
                     continue
 
-                attacker_name = attacker_data.get("nation_name")
-                defender_name = defender_data.get("nation_name")
-
-                if not attacker_name or not defender_name:
+                attacker = attacker_data.get("nation_name")
+                defender = defender_data.get("nation_name")
+                if not attacker or not defender:
                     continue
 
                 winner_id = war.get("winner_id")
@@ -1722,39 +1686,37 @@ async def hourly_war_check():
                 att_money = sum((a.get("money_stolen") or 0) for w in attacker_data.get("wars", []) for a in w.get("attacks", []))
                 def_money = sum((a.get("money_stolen") or 0) for w in defender_data.get("wars", []) for a in w.get("attacks", []))
 
-                # Determine our side by alliance ID (10259 = our alliance)
-                if attacker_data.get("alliance_id") == 10259:
-                    money_gained = att_money
-                    money_lost = def_money
-                else:
-                    money_gained = def_money
-                    money_lost = att_money
+                money_gained = att_money if attacker_data.get("alliance_id") == 10259 else def_money
+                money_lost = def_money if attacker_data.get("alliance_id") == 10259 else att_money
 
                 row = [
                     conflict_name,
                     war_start,
                     war_end,
                     war_id,
-                    attacker_name,
-                    defender_name,
+                    attacker,
+                    defender,
                     result_str,
                     f"{money_gained:.2f}",
                     f"{money_lost:.2f}"
                 ]
 
                 if len(row) == 9 and all(row):
-                    new_wars.append(row)
-                else:
-                    print(f"⚠️ Skipping malformed row: {row}")
+                    all_new_wars.append(row)
 
-        if new_wars:
+        # Batching logic — 30 per minute
+        batch_size = 30
+        total = len(all_new_wars)
+        for i in range(0, total, batch_size):
+            batch = all_new_wars[i:i+batch_size]
             try:
-                sheet.append_rows(new_wars)
-                print(f"📥 Logged {len(new_wars)} new wars for conflict '{conflict_name}'.")
+                sheet.append_rows(batch)
+                print(f"📥 Logged {len(batch)} wars [{i + 1}-{i + len(batch)} of {total}] for conflict '{conflict_name}'.")
             except Exception as e:
-                print(f"❌ Failed to append wars to sheet: {e}")
-        else:
-            print("📭 No new wars to log.")
+                print(f"❌ Failed to append batch: {e}")
+            if i + batch_size < total:
+                print("⏳ Waiting 60 seconds before next batch...")
+                await asyncio.sleep(70)
 
     except Exception as e:
         print(f"❌ Error in hourly war check: {e}")
