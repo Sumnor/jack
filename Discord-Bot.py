@@ -1607,32 +1607,33 @@ async def process_auto_requests():
 async def hourly_war_check():
     print("⏰ Running hourly war check...")
     try:
-        load_conflicts_data()
+        load_conflicts_data()  # This sets global `cached_conflicts`
+
         active_conflicts = [
-            c for c in cached_conflict_data
-            if str(c.get("Closed", "")).lower() != "true"
-            and c.get("Name")  # ensure Name exists
-            and c.get("EnemyIDs")  # ensure EnemyIDs exists
+            c for c in cached_conflicts
+            if str(c.get("Closed", "")).strip().lower() != "true"
+            and c.get("Name")
+            and c.get("EnemyIDs")
         ]
-        for c in cached_conflict_data:
-            print(f"▶️ Checking conflict: {c}")
-            print(f" - Closed: {c.get('Closed')} -> {str(c.get('Closed', '')).lower() != 'true'}")
-            print(f" - Name: {c.get('Name')}")
-            print(f" - EnemyIDs: {c.get('EnemyIDs')}")
-
-
 
         if not active_conflicts:
             print("⏳ No active conflicts. Skipping check.")
             return
 
+        # Just pick the first active conflict
         conflict = active_conflicts[0]
         conflict_name = conflict.get("Name")
-        enemy_ids = [int(id.strip()) for id in str(conflict.get("EnemyIDs", "")).split(",") if id.strip().isdigit()]
-        if not enemy_ids:
-            print(f"⚠️ No enemy alliance IDs set for conflict '{conflict_name}'")
+        try:
+            enemy_ids = [int(id.strip()) for id in str(conflict.get("EnemyIDs")).split(",") if id.strip().isdigit()]
+        except Exception as e:
+            print(f"❌ Failed to parse enemy IDs: {e}")
             return
 
+        if not enemy_ids:
+            print(f"⚠️ No valid enemy alliance IDs set for conflict '{conflict_name}'")
+            return
+
+        # GraphQL Query
         GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
         headers = {"Content-Type": "application/json"}
         query = """
@@ -1646,8 +1647,6 @@ async def hourly_war_check():
                 date
                 end_date
                 winner_id
-                att_money_looted
-                def_money_looted
                 attacker {
                   id
                   nation_name
@@ -1683,37 +1682,36 @@ async def hourly_war_check():
 
         alliances_data = result.get("data", {}).get("alliances", {}).get("data", [])
         if not alliances_data:
-            print("❌ No data returned from API")
+            print("❌ No data returned from API.")
             return
 
         sheet = get_conflict_data_sheet()
-        existing_war_ids = set(str(row[3]) for row in sheet.get_all_values()[1:] if len(row) > 3 and row[3])
+        existing_rows = sheet.get_all_values()
+        existing_war_ids = set(str(row[3]) for row in existing_rows[1:] if len(row) > 3 and row[3])
 
         new_wars = []
 
         for alliance in alliances_data:
             for war in alliance.get("wars", []):
                 war_id = str(war.get("id"))
-
-                # Skip if already saved or still active
                 if war_id in existing_war_ids or not war.get("end_date"):
                     continue
 
-                war_date = war.get("date", "")[:10]
-                war_end_date = war.get("end_date", "")[:10]
+                war_start = war.get("date", "")[:10]
+                war_end = war.get("end_date", "")[:10]
 
                 attacker_data = war.get("attacker", {})
                 defender_data = war.get("defender", {})
 
-                # Ensure essential fields exist
                 if not attacker_data or not defender_data:
                     continue
-                attacker = attacker_data.get("nation_name")
-                defender = defender_data.get("nation_name")
-                if not attacker or not defender:
+
+                attacker_name = attacker_data.get("nation_name")
+                defender_name = defender_data.get("nation_name")
+
+                if not attacker_name or not defender_name:
                     continue
 
-                # Determine result
                 winner_id = war.get("winner_id")
                 result_str = (
                     "Attacker" if winner_id == attacker_data.get("id") else
@@ -1721,10 +1719,10 @@ async def hourly_war_check():
                     "Draw"
                 )
 
-                # Safely sum money stolen from nested attacks
                 att_money = sum((a.get("money_stolen") or 0) for w in attacker_data.get("wars", []) for a in w.get("attacks", []))
                 def_money = sum((a.get("money_stolen") or 0) for w in defender_data.get("wars", []) for a in w.get("attacks", []))
 
+                # Determine our side by alliance ID (10259 = our alliance)
                 if attacker_data.get("alliance_id") == 10259:
                     money_gained = att_money
                     money_lost = def_money
@@ -1732,32 +1730,35 @@ async def hourly_war_check():
                     money_gained = def_money
                     money_lost = att_money
 
-                # Prepare final row and validate it
                 row = [
                     conflict_name,
-                    war_date,
-                    war_end_date,
+                    war_start,
+                    war_end,
                     war_id,
-                    attacker,
-                    defender,
+                    attacker_name,
+                    defender_name,
                     result_str,
                     f"{money_gained:.2f}",
-                    f"{money_lost:.2f}",
+                    f"{money_lost:.2f}"
                 ]
 
                 if len(row) == 9 and all(row):
                     new_wars.append(row)
                 else:
-                    print(f"⚠️ Skipping malformed war data: {row}")
+                    print(f"⚠️ Skipping malformed row: {row}")
 
         if new_wars:
             try:
                 sheet.append_rows(new_wars)
                 print(f"📥 Logged {len(new_wars)} new wars for conflict '{conflict_name}'.")
             except Exception as e:
-                print(f"❌ Failed to append rows: {e}")
+                print(f"❌ Failed to append wars to sheet: {e}")
+        else:
+            print("📭 No new wars to log.")
+
     except Exception as e:
         print(f"❌ Error in hourly war check: {e}")
+
 
 
 
