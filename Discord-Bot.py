@@ -1607,7 +1607,7 @@ async def process_auto_requests():
 async def hourly_war_check():
     print("⏰ Running hourly war check...")
     try:
-        load_conflict_data()
+        load_conflicts_data()
         active_conflicts = [
             c for c in cached_conflict_data
             if str(c.get("Closed", "")).lower() != "true"
