@@ -1693,12 +1693,13 @@ async def hourly_war_check():
         for alliance in alliances_data:
             for war in alliance.get("wars", []):
                 war_id = str(war.get("id"))
+                end_date = war.get("end_date")
         
-                # Skip active wars or already recorded ones
-                if war_id in existing_war_ids:
-                    continue
-                if not war.get("end_date"):
-                    continue  # ⏳ Skip wars that are still ongoing
+                if not end_date or war_id in existing_war_ids:
+                    continue  # 🛑 Skip if war is active or already logged
+        
+                war_date = war.get("date", "")[:10]
+                war_end_date = end_date[:10]
         
                 # Continue with processing...
 
@@ -3076,7 +3077,7 @@ async def add_to_conflict(interaction: discord.Interaction, conflict_name: str, 
 )
 async def end_conflict(interaction: discord.Interaction, conflict_name: str):
     await interaction.response.defer()
-    import datetime
+    from datetime import datetime, timezone
     end_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     try:
