@@ -1623,6 +1623,10 @@ async def hourly_war_check():
 
         conflict = active_conflicts[0]
         conflict_name = conflict.get("Name")
+        conflict_start_date = conflict.get("Start") or conflict.get("StartDate")
+        if not conflict_start_date:
+            print(f"⚠️ Conflict '{conflict_name}' has no start date. Skipping.")
+            return
         try:
             enemy_ids = [int(id.strip()) for id in str(conflict.get("EnemyIDs")).split(",") if id.strip().isdigit()]
         except Exception as e:
