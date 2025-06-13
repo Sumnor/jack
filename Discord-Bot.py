@@ -1670,7 +1670,7 @@ async def hourly_war_check():
         }
         """  # Keep your existing GraphQL query here
 
-        variables = {"id": enemy_ids, "limit": 500}
+        variables = {"id": 10259, "limit": 500}
         try:
             response = requests.post(GRAPHQL_URL, json={"query": query, "variables": variables}, headers=headers)
             response.raise_for_status()
