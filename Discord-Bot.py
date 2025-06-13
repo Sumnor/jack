@@ -1635,7 +1635,40 @@ async def hourly_war_check():
 
         GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
         headers = {"Content-Type": "application/json"}
-        query = """..."""  # Keep your existing GraphQL query here
+        query = """
+        query AllianceWars($id: [Int], $limit: Int) {
+          alliances(id: $id) {
+            data {
+              id
+              name
+              wars(limit: $limit) {
+                id
+                date
+                end_date
+                winner_id
+                attacker {
+                  id
+                  nation_name
+                  alliance_id
+                  wars {
+                    id
+                    attacks { money_stolen }
+                  }
+                }
+                defender {
+                  id
+                  nation_name
+                  alliance_id
+                  wars {
+                    id
+                    attacks { money_stolen }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """  # Keep your existing GraphQL query here
 
         variables = {"id": enemy_ids, "limit": 500}
         try:
