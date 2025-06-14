@@ -3164,6 +3164,7 @@ async def member_activity(interaction: discord.Interaction):
             military_data = get_military(own_id)
             nation_name = military_data[0]
             nation_leader = military_data[1]
+            score _ military_data.get("score", "Unknown")
             result = get_general_data(own_id)
             if result is None or len(result) < 7:
                 print(f"Missing data for nation {own_id}")
@@ -3183,21 +3184,21 @@ async def member_activity(interaction: discord.Interaction):
 
             if days_inactive >= 2:
                 inactive += 1
-                inactive_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}\n")
+                inactive_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}")
             elif days_inactive >= 1:
                 if colour.lower() == "black":
                     activish += 1
-                    activish_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}\n")
+                    activish_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}")
                 else:
                     activish_wo_bloc += 1
-                    activish_wo_bloc_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}\n")
+                    activish_wo_bloc_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}")
             else:
                 if colour.lower() == "black":
                     active_w_bloc += 1
-                    active_w_bloc_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}\n")
+                    active_w_bloc_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}")
                 else:
                     active_wo_bloc += 1
-                    active_wo_bloc_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}\n")
+                    active_wo_bloc_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}")
             await asyncio.sleep(3)
         except Exception as e:
             print(f"Error processing nation ID {own_id}: {e}")
