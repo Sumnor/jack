@@ -3184,21 +3184,21 @@ async def member_activity(interaction: discord.Interaction):
 
             if days_inactive >= 2:
                 inactive += 1
-                inactive_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}")
+                inactive_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
             elif days_inactive >= 1:
                 if colour.lower() == "black":
                     activish += 1
-                    activish_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}")
+                    activish_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
                 else:
                     activish_wo_bloc += 1
-                    activish_wo_bloc_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}")
+                    activish_wo_bloc_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
             else:
                 if colour.lower() == "black":
                     active_w_bloc += 1
-                    active_w_bloc_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}")
+                    active_w_bloc_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
                 else:
                     active_wo_bloc += 1
-                    active_wo_bloc_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}")
+                    active_wo_bloc_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
             await asyncio.sleep(3)
         except Exception as e:
             print(f"Error processing nation ID {own_id}: {e}")
