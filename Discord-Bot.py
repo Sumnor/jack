@@ -3164,7 +3164,7 @@ async def member_activity(interaction: discord.Interaction):
             military_data = get_military(own_id)
             nation_name = military_data[0]
             nation_leader = military_data[1]
-            score _ military_data.get("score", "Unknown")
+            score = military_data.get("score", "Unknown")
             result = get_general_data(own_id)
             if result is None or len(result) < 7:
                 print(f"Missing data for nation {own_id}")
