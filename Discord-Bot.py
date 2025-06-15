@@ -1685,7 +1685,7 @@ async def perform_war_check_logic():
           }
         }
         """
-        variables = {"id": enemy_ids, "limit": 500}
+        variables = {"id": [10259], "limit": 500}
         try:
             response = requests.post(GRAPHQL_URL, json={"query": query, "variables": variables}, headers=headers)
             response.raise_for_status()
