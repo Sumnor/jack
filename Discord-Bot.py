@@ -1607,7 +1607,18 @@ import asyncio
 
 @tasks.loop(hours=1)
 async def hourly_war_check():
-    print("⏰ Running hourly war check...")
+    print(f"⏰ Running hourly war check at {datetime.utcnow().strftime('%H:%M:%S')} UTC...")
+    await perform_war_check_logic()
+
+@hourly_war_check.before_loop
+async def before_hourly_check():
+    now = datetime.utcnow()
+    next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+    wait_seconds = (next_hour - now).total_seconds()
+    print(f"⏳ Waiting {int(wait_seconds)}s until next full hour...")
+    await asyncio.sleep(wait_seconds)
+
+async def perform_war_check_logic():
     try:
         load_conflicts_data()
         active_conflicts = [
@@ -1627,6 +1638,7 @@ async def hourly_war_check():
         if not conflict_start_date:
             print(f"⚠️ Conflict '{conflict_name}' has no start date. Skipping.")
             return
+
         try:
             enemy_ids = [int(id.strip()) for id in str(conflict.get("EnemyIDs")).split(",") if id.strip().isdigit()]
         except Exception as e:
@@ -1672,9 +1684,8 @@ async def hourly_war_check():
             }
           }
         }
-        """  # Keep your existing GraphQL query here
-
-        variables = {"id": 10259, "limit": 500}
+        """
+        variables = {"id": enemy_ids, "limit": 500}
         try:
             response = requests.post(GRAPHQL_URL, json={"query": query, "variables": variables}, headers=headers)
             response.raise_for_status()
@@ -1698,18 +1709,16 @@ async def hourly_war_check():
             for war in alliance.get("wars", []):
                 war_id = str(war.get("id"))
                 end_date = war.get("end_date")
-            
-                if not end_date or war_id in existing_war_ids:
-                    continue  # 🛑 Skip if war is active or already logged
-            
-                war_start = war.get("date", "")[:10]
-                if war_start != conflict_start_date:
-                    continue
-        
-                # Continue with processing...
+                start_date = war.get("date", "")[:10]
 
-                war_start = war.get("date", "")[:10]
-                war_end = war.get("end_date", "")[:10]
+                # Skip if active or already logged
+                if not end_date or war_id in existing_war_ids:
+                    continue
+
+                if start_date != conflict_start_date:
+                    continue
+
+                war_end = end_date[:10]
                 attacker_data = war.get("attacker", {})
                 defender_data = war.get("defender", {})
 
@@ -1736,7 +1745,7 @@ async def hourly_war_check():
 
                 row = [
                     conflict_name,
-                    war_start,
+                    start_date,
                     war_end,
                     war_id,
                     attacker,
@@ -1749,7 +1758,7 @@ async def hourly_war_check():
                 if len(row) == 9 and all(row):
                     all_new_wars.append(row)
 
-        # Batching logic — 30 per minute
+        # Append in batches
         batch_size = 30
         total = len(all_new_wars)
         for i in range(0, total, batch_size):
@@ -2920,9 +2929,6 @@ async def start_conflict(interaction: discord.Interaction, conflict_name: str, m
     declaring_alliance_id = 10259
     today = date.today().isoformat()
 
-    # Save to ConflictData sheet (start row)
-
-    # Fetch initial wars (only by 10259)
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
     headers = {"Content-Type": "application/json"}
 
@@ -2937,8 +2943,6 @@ async def start_conflict(interaction: discord.Interaction, conflict_name: str, m
                     date
                     end_date
                     winner_id
-                    att_money_looted
-                    def_money_looted
                     attacker {
                         id
                         nation_name
@@ -2989,12 +2993,16 @@ async def start_conflict(interaction: discord.Interaction, conflict_name: str, m
     for alliance in alliances:
         for war in alliance.get("wars", []):
             war_id = str(war.get("id"))
-            if war_id in existing_war_ids or war.get("end_date"):
+            war_date = war.get("date", "")[:10]
+            war_end = war.get("end_date", "")
+            if war_id in existing_war_ids:
                 continue
 
-            war_date = war.get("date", "")[:10]
+            if not war_end:
+                continue  # skip active wars
+
             if war_date != today:
-                continue
+                continue  # skip wars not started today
 
             attacker = war["attacker"]
             defender = war["defender"]
@@ -3007,12 +3015,11 @@ async def start_conflict(interaction: discord.Interaction, conflict_name: str, m
             att_money = sum((a.get("money_stolen") or 0) for w in attacker.get("wars", []) for a in w.get("attacks", []))
             def_money = sum((a.get("money_stolen") or 0) for w in defender.get("wars", []) for a in w.get("attacks", []))
 
-            # 10259 is attacker alliance; it gains money
             money_gained = att_money
             money_lost = def_money
 
             new_wars.append([
-                conflict_name, war_date, "", war_id,
+                conflict_name, war_date, war_end[:10], war_id,
                 attacker.get("nation_name", ""), defender.get("nation_name", ""),
                 result_str, str(money_gained), str(money_lost)
             ])
@@ -3020,10 +3027,9 @@ async def start_conflict(interaction: discord.Interaction, conflict_name: str, m
     if new_wars:
         sheet.append_rows(new_wars)
 
-    # Log to AllianceConflict
     log_to_alliance_conflict(conflict_name, today, enemy_ids=",".join(map(str, enemy_ids)), message=message_to_members or "")
 
-    await interaction.followup.send(f"✅ Conflict '{conflict_name}' started. Wars today: {len(new_wars)}")
+    await interaction.followup.send(f"✅ Conflict '{conflict_name}' started. Wars logged from today: {len(new_wars)}")
 
 
 @bot.tree.command(name="add_to_conflict", description="Add enemy alliances to an existing conflict.")
