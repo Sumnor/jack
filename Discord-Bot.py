@@ -1949,6 +1949,7 @@ async def on_ready():
     bot.add_view(BlueGuy()) 
     load_sheet_data()
     load_registration_data()
+    check_reminders.start()
     print("Starting hourly snapshot task...")
     if not hourly_snapshot.is_running():
         hourly_snapshot.start()
@@ -2004,9 +2005,6 @@ async def check_reminders():
         if msg:
             await asyncio.sleep(random.uniform(1, 3))  # prevent ratelimiting
             await channel.send(msg)
-
-# Start the loop
-check_reminders.start()
 
 
 @bot.event
