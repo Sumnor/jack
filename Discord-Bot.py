@@ -2249,9 +2249,9 @@ from datetime import datetime
 
 
 @bot.tree.command(name="open_account", description="Request to open an INTRA account")
-async def open_account(interaction: discord.Interaction):
+async def open_account(interaction: discord.Interaction, requester_id: str):
     await interaction.response.defer()
-    user_id = str(interaction.user.id)
+    user_id = str(requester_id)
 
     # Already has an account
     sheet, _, row = get_user_row(user_id)
