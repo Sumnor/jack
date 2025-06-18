@@ -2227,38 +2227,38 @@ async def open_account(interaction: discord.Interaction, requester_id: str):
         view=view
     )
 
-from datetime import datetime
-
 @bot.tree.command(name="balance", description="Check your balance")
 async def balance(interaction: discord.Interaction):
+    await interaction.response.defer()
     sheet, row_index, row = get_user_row(interaction.user.id)
     if not row:
-        await interaction.response.send_message("❌ You don't have an account.")
+        await interaction.followup.send("❌ You don't have an account.")
         return
     money = row.get("money", "0")
     loans = row.get("loans", "0")
     trust = row.get("trust", "0")
-    await interaction.response.send_message(
+    await interaction.followup.send(
         f"💰 Balance: ${money}\n💸 Loans: ${loans}\n🤝 Trust Level: ${trust}"
     )
 
 @bot.tree.command(name="take_loan", description="Take out a loan")
 @app_commands.describe(amount="How much to borrow")
 async def take_loan(interaction: discord.Interaction, amount: int):
+    await interaction.response.defer()
     if amount <= 0:
-        await interaction.response.send_message("❌ Amount must be positive.")
+        await interaction.followup.send("❌ Amount must be positive.")
         return
 
     sheet, row_index, row = get_user_row(interaction.user.id)
     if not row:
-        await interaction.response.send_message("❌ You don't have an account.")
+        await interaction.followup.send("❌ You don't have an account.")
         return
 
     current_loans = int(row["loans"])
     trust = int(row.get("trust", 0))
 
     if (current_loans + amount) > trust:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             f"🚫 Loan exceeds your trust limit of ${trust}. You currently owe ${current_loans}."
         )
         return
@@ -2266,18 +2266,19 @@ async def take_loan(interaction: discord.Interaction, amount: int):
     new_loan = current_loans + amount
     sheet.update_cell(row_index, 3, new_loan)  # loans = col 3
     sheet.update_cell(row_index, 5, datetime.utcnow().strftime("%Y-%m-%d"))  # loan_date = col 5
-    await interaction.response.send_message(f"✅ Loan of ${amount} taken. Total debt: ${new_loan}")
+    await interaction.followup.send(f"✅ Loan of ${amount} taken. Total debt: ${new_loan}")
 
 @bot.tree.command(name="deposit", description="Deposit into safekeep")
 @app_commands.describe(amount="How much to deposit")
 async def deposit(interaction: discord.Interaction, amount: int):
+    await interaction.response.defer()
     if amount <= 0:
-        await interaction.response.send_message("❌ Amount must be positive.")
+        await interaction.followup.send("❌ Amount must be positive.")
         return
 
     sheet, row_index, row = get_user_row(interaction.user.id)
     if not row:
-        await interaction.response.send_message("❌ You don't have an account.")
+        await interaction.followup.send("❌ You don't have an account.")
         return
 
     current_loans = int(row["loans"])
@@ -2289,7 +2290,7 @@ async def deposit(interaction: discord.Interaction, amount: int):
     new_balance = current_balance + to_balance
 
     if new_balance > 1_000_000_000:
-        await interaction.response.send_message("❌ Cannot exceed safekeep limit of $1,000,000,000.")
+        await interaction.followup.send("❌ Cannot exceed safekeep limit of $1,000,000,000.")
         return
 
     sheet.update_cell(row_index, 3, new_loans)  # update loans
@@ -2301,22 +2302,24 @@ async def deposit(interaction: discord.Interaction, amount: int):
         msg += f"🧾 ${to_loan} went to repay loans (remaining debt: ${new_loans}).\n"
     if to_balance > 0:
         msg += f"💰 ${to_balance} added to balance (new balance: ${new_balance})."
-    await interaction.response.send_message(msg)
+    await interaction.followup.send(msg)
 
 @bot.tree.command(name="trust", description="Set a user's trust level")
 @app_commands.describe(member="User to set trust for", amount="Maximum advisory loan limit")
 async def trust(interaction: discord.Interaction, member: discord.Member, amount: int):
+    await interaction.response.defer(ephemeral=True)
     if not any(role.name == "Staff" for role in interaction.user.roles):
-        await interaction.response.send_message("🚫 Only Staff can use this command.", ephemeral=True)
+        await interaction.followup.send("🚫 Only Staff can use this command.")
         return
 
     sheet, row_index, row = get_user_row(member.id)
     if not row:
-        await interaction.response.send_message("❌ User does not have an account.")
+        await interaction.followup.send("❌ User does not have an account.")
         return
 
     sheet.update_cell(row_index, 4, amount)  # trust = col 4
-    await interaction.response.send_message(f"✅ Set trust level for <@{member.id}> to ${amount}")
+    await interaction.followup.send(f"✅ Set trust level for <@{member.id}> to ${amount}")
+
 
 
 
