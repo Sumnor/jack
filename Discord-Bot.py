@@ -932,15 +932,15 @@ class AccountApprovalView(discord.ui.View):
     @discord.ui.button(label="Approve Account", style=discord.ButtonStyle.success)
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-
+    
         if not any(role.name == "Staff" for role in interaction.user.roles):
             await interaction.followup.send("🚫 Only Staff can approve.", ephemeral=True)
             return
-
-        # Create the account
+    
+        # Create account
         create_account(self.requester_id)
-
-        # Remove from pending request sheet
+    
+        # Remove from request sheet
         client = get_client()
         req_sheet = client.open("BankAccounts").worksheet("RequestedAccounts")
         requests = req_sheet.get_all_values()
@@ -948,15 +948,23 @@ class AccountApprovalView(discord.ui.View):
             if row and row[0] == str(self.requester_id):
                 req_sheet.delete_rows(i)
                 break
-
-        # Disable buttons
+    
+        # Assign Account Owner role
+        guild = interaction.guild
+        member = guild.get_member(int(self.requester_id))
+        role = discord.utils.get(guild.roles, name="Account Owner")
+        if member and role:
+            await member.add_roles(role, reason="INTRA account approved")
+    
+        # Disable the button
         for child in self.children:
             child.disabled = True
-
+    
         await interaction.message.edit(
             content=f"✅ Account approved for <@{self.requester_id}> by <@{interaction.user.id}>.",
             view=self
         )
+
 
 
 
