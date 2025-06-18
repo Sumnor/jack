@@ -2249,14 +2249,15 @@ from datetime import datetime
 
 
 @bot.tree.command(name="open_account", description="Request to open an INTRA account")
+@app_commands.describe(requester_id="User ID requesting the account")
 async def open_account(interaction: discord.Interaction, requester_id: str):
     await interaction.response.defer()
-    user_id = str(requester_id)
+    user_id = requester_id.strip()
 
     # Already has an account
     sheet, _, row = get_user_row(user_id)
     if row:
-        await interaction.followup.send("❌ You already have an account.")
+        await interaction.followup.send("❌ This user already has an account.")
         return
 
     # Already requested?
@@ -2264,11 +2265,11 @@ async def open_account(interaction: discord.Interaction, requester_id: str):
     req_sheet = client.open("BankAccounts").sheet1
     existing = req_sheet.col_values(1)
     if user_id in existing:
-        await interaction.followup.send("🕐 Your request is already pending.")
+        await interaction.followup.send("🕐 A request is already pending or the ID exists in the sheet.")
         return
 
-    # Log request
-    req_sheet.append_row([user_id, datetime.utcnow().isoformat()])
+    # Log request with ID and timestamp
+    req_sheet.append_row([user_id, "", 0, "", 0, datetime.utcnow().isoformat()])
 
     view = AccountApprovalView(user_id)
     await interaction.followup.send(
@@ -2313,8 +2314,8 @@ async def take_loan(interaction: discord.Interaction, amount: int):
         return
 
     new_loan = current_loans + amount
-    sheet.update_cell(row_index, 3, new_loan)
-    sheet.update_cell(row_index, 5, datetime.utcnow().strftime("%Y-%m-%d"))
+    sheet.update_cell(row_index, 3, new_loan)  # Column C = Loans
+    sheet.update_cell(row_index, 5, datetime.utcnow().strftime("%Y-%m-%d"))  # Column E = Loan Date
     await interaction.followup.send(f"✅ Loan of ${amount} taken. Total debt: ${new_loan}")
 
 @bot.tree.command(name="deposit", description="Deposit into safekeep")
@@ -2342,9 +2343,9 @@ async def deposit(interaction: discord.Interaction, amount: int):
         await interaction.followup.send("❌ Cannot exceed safekeep limit of $1,000,000,000.")
         return
 
-    sheet.update_cell(row_index, 3, new_loans)
-    sheet.update_cell(row_index, 2, new_balance)
-    sheet.update_cell(row_index, 6, datetime.utcnow().strftime("%Y-%m-%d"))
+    sheet.update_cell(row_index, 3, new_loans)   # Loans
+    sheet.update_cell(row_index, 2, new_balance) # Balance
+    sheet.update_cell(row_index, 6, datetime.utcnow().strftime("%Y-%m-%d"))  # Deposit Date
 
     msg = f"💵 Deposit of ${amount} processed.\n"
     if to_loan > 0:
@@ -2366,9 +2367,8 @@ async def trust(interaction: discord.Interaction, member: discord.Member, amount
         await interaction.followup.send("❌ User does not have an account.")
         return
 
-    sheet.update_cell(row_index, 4, amount)
+    sheet.update_cell(row_index, 4, amount)  # Column D = Trust
     await interaction.followup.send(f"✅ Set trust level for <@{member.id}> to ${amount}")
-
 
 @bot.tree.command(name="mmr_audit", description="Audits the MMR of the Member and gives suggestions")
 @app_commands.describe(who="The Discord Member you wish to audit")
