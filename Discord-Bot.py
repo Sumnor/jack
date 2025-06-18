@@ -924,6 +924,23 @@ class RawsAuditView(discord.ui.View):
 
         await interaction.followup.send(f"✅ Processed {color_emoji} requests.")
 
+class AccountApprovalView(discord.ui.View):
+    def __init__(self, requester_id):
+        super().__init__(timeout=None)
+        self.requester_id = requester_id
+
+    @discord.ui.button(label="Approve Account", style=discord.ButtonStyle.success)
+    async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not any(role.name == "Staff" for role in interaction.user.roles):
+            await interaction.response.send_message("🚫 You must have the 'Staff' role to approve.", ephemeral=True)
+            return
+
+        create_account(str(self.requester_id))
+        await interaction.response.edit_message(
+            content=f"✅ Account approved for <@{self.requester_id}> by <@{interaction.user.id}>.",
+            view=None
+        )
+
 
 
 def get_military_o(nation_id):
@@ -1286,6 +1303,20 @@ def get_auto_requests_sheet():
     client = get_client()
     return client.open("AutoRequests").sheet1  # or .worksheet("SheetName") if needed
 # --- Data Saving Functions ---
+
+def get_bank_sheet():
+    client = get_client()
+    sheet = client.open("BankAccounts").sheet1
+    headers = sheet.row_values(1)
+    if headers != ["owner", "money", "loans"]:
+        sheet.clear()
+        sheet.insert_row(["owner", "money", "loans"], index=1)
+    return sheet
+
+def create_account(user_id: str):
+    sheet = get_bank_sheet()
+    sheet.append_row([user_id, "0", "0"])
+
 
 def save_to_alliance_net(data_row):
     try:
@@ -2129,6 +2160,14 @@ async def register(interaction: discord.Interaction, nation_id: str):
 
     load_sheet_data()
     await interaction.followup.send("✅ You're registered successfully!")
+
+@bot.tree.command(name="open_account", description="Request to open an INTRA account")
+async def open_account(interaction: discord.Interaction):
+    view = AccountApprovalView(interaction.user.id)
+    await interaction.response.send_message(
+        f"📝 <@{interaction.user.id}> requests to open an INTRA account.\nA staff member must approve below:",
+        view=view
+    )
 
 @bot.tree.command(name="mmr_audit", description="Audits the MMR of the Member and gives suggestions")
 @app_commands.describe(who="The Discord Member you wish to audit")
