@@ -2261,7 +2261,7 @@ async def open_account(interaction: discord.Interaction, requester_id: str):
 
     # Already requested?
     client = get_client()
-    req_sheet = client.open("BankAccounts").worksheet("RequestedAccounts")
+    req_sheet = client.open("BankAccounts").sheet1
     existing = req_sheet.col_values(1)
     if user_id in existing:
         await interaction.followup.send("🕐 Your request is already pending.")
