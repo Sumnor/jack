@@ -932,14 +932,32 @@ class AccountApprovalView(discord.ui.View):
     @discord.ui.button(label="Approve Account", style=discord.ButtonStyle.success)
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
+
         if not any(role.name == "Staff" for role in interaction.user.roles):
-            await interaction.followup.send("🚫 You must have the 'Staff' role to approve.", ephemeral=True)
+            await interaction.followup.send("🚫 Only Staff can approve.", ephemeral=True)
             return
 
-        create_account(str(self.requester_id))
-        await interaction.followup.edit(
-            content=f"✅ Account approved for <@{self.requester_id}> by <@{interaction.user.id}>."
+        # Create the account
+        create_account(self.requester_id)
+
+        # Remove from pending request sheet
+        client = get_client()
+        req_sheet = client.open("BankAccounts").worksheet("RequestedAccounts")
+        requests = req_sheet.get_all_values()
+        for i, row in enumerate(requests, start=2):
+            if row and row[0] == str(self.requester_id):
+                req_sheet.delete_rows(i)
+                break
+
+        # Disable buttons
+        for child in self.children:
+            child.disabled = True
+
+        await interaction.message.edit(
+            content=f"✅ Account approved for <@{self.requester_id}> by <@{interaction.user.id}>.",
+            view=self
         )
+
 
 
 
@@ -2225,14 +2243,28 @@ from datetime import datetime
 @bot.tree.command(name="open_account", description="Request to open an INTRA account")
 async def open_account(interaction: discord.Interaction):
     await interaction.response.defer()
-    sheet, _, row = get_user_row(interaction.user.id)
+    user_id = str(interaction.user.id)
+
+    # Already has an account
+    sheet, _, row = get_user_row(user_id)
     if row:
         await interaction.followup.send("❌ You already have an account.")
         return
 
-    view = AccountApprovalView(interaction.user.id)
+    # Already requested?
+    client = get_client()
+    req_sheet = client.open("BankAccounts").worksheet("RequestedAccounts")
+    existing = req_sheet.col_values(1)
+    if user_id in existing:
+        await interaction.followup.send("🕐 Your request is already pending.")
+        return
+
+    # Log request
+    req_sheet.append_row([user_id, datetime.utcnow().isoformat()])
+
+    view = AccountApprovalView(user_id)
     await interaction.followup.send(
-        f"📝 <@{interaction.user.id}> requests to open an INTRA account.\nA staff member must approve below:",
+        f"📝 <@{user_id}> has requested to open an INTRA account.\nA staff member must approve below:",
         view=view
     )
 
