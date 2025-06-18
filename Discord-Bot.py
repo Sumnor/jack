@@ -2163,7 +2163,7 @@ async def register(interaction: discord.Interaction, nation_id: str):
 
 @bot.tree.command(name="open_account", description="Request to open an INTRA account")
 async def open_account(interaction: discord.Interaction, requester_id: str):
-    view = AccountApprovalView(interaction.user.id, requester_id)
+    view = AccountApprovalView(requester_id)
     await interaction.response.send_message(
         f"📝 <@{interaction.user.id}> requests to open an INTRA account.\nA staff member must approve below:",
         view=view
