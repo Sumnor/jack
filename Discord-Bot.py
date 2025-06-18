@@ -1327,7 +1327,7 @@ def get_user_row(user_id):
 
 def create_account(user_id: str):
     sheet = get_bank_sheet()
-    sheet.append_row([user_id, "0", "0"])
+    sheet.append_row([user_id, "0", "0", "50000000"])
 
 
 def save_to_alliance_net(data_row):
@@ -2219,10 +2219,19 @@ async def register(interaction: discord.Interaction, nation_id: str):
     load_sheet_data()
     await interaction.followup.send("✅ You're registered successfully!")
 
+from datetime import datetime
+
+
 @bot.tree.command(name="open_account", description="Request to open an INTRA account")
-async def open_account(interaction: discord.Interaction, requester_id: str):
+async def open_account(interaction: discord.Interaction):
+    await interaction.response.defer()
+    sheet, _, row = get_user_row(interaction.user.id)
+    if row:
+        await interaction.followup.send("❌ You already have an account.")
+        return
+
     view = AccountApprovalView(interaction.user.id)
-    await interaction.response.send_message(
+    await interaction.followup.send(
         f"📝 <@{interaction.user.id}> requests to open an INTRA account.\nA staff member must approve below:",
         view=view
     )
@@ -2264,8 +2273,8 @@ async def take_loan(interaction: discord.Interaction, amount: int):
         return
 
     new_loan = current_loans + amount
-    sheet.update_cell(row_index, 3, new_loan)  # loans = col 3
-    sheet.update_cell(row_index, 5, datetime.utcnow().strftime("%Y-%m-%d"))  # loan_date = col 5
+    sheet.update_cell(row_index, 3, new_loan)
+    sheet.update_cell(row_index, 5, datetime.utcnow().strftime("%Y-%m-%d"))
     await interaction.followup.send(f"✅ Loan of ${amount} taken. Total debt: ${new_loan}")
 
 @bot.tree.command(name="deposit", description="Deposit into safekeep")
@@ -2293,9 +2302,9 @@ async def deposit(interaction: discord.Interaction, amount: int):
         await interaction.followup.send("❌ Cannot exceed safekeep limit of $1,000,000,000.")
         return
 
-    sheet.update_cell(row_index, 3, new_loans)  # update loans
-    sheet.update_cell(row_index, 2, new_balance)  # update balance
-    sheet.update_cell(row_index, 6, datetime.utcnow().strftime("%Y-%m-%d"))  # deposit_date
+    sheet.update_cell(row_index, 3, new_loans)
+    sheet.update_cell(row_index, 2, new_balance)
+    sheet.update_cell(row_index, 6, datetime.utcnow().strftime("%Y-%m-%d"))
 
     msg = f"💵 Deposit of ${amount} processed.\n"
     if to_loan > 0:
@@ -2317,10 +2326,8 @@ async def trust(interaction: discord.Interaction, member: discord.Member, amount
         await interaction.followup.send("❌ User does not have an account.")
         return
 
-    sheet.update_cell(row_index, 4, amount)  # trust = col 4
+    sheet.update_cell(row_index, 4, amount)
     await interaction.followup.send(f"✅ Set trust level for <@{member.id}> to ${amount}")
-
-
 
 
 @bot.tree.command(name="mmr_audit", description="Audits the MMR of the Member and gives suggestions")
