@@ -1966,7 +1966,7 @@ from discord.ext import tasks
 from datetime import datetime, timedelta
 import random
 
-REMINDER_CHANNEL_ID = 1234567890  # your target channel
+REMINDER_CHANNEL_ID = 1384922560902463519  # your target channel
 
 @tasks.loop(hours=24)
 async def check_reminders():
