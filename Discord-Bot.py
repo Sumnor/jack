@@ -937,8 +937,7 @@ class AccountApprovalView(discord.ui.View):
 
         create_account(str(self.requester_id))
         await interaction.response.edit_message(
-            content=f"✅ Account approved for <@{self.requester_id}> by <@{interaction.user.id}>.",
-            view=None
+            content=f"✅ Account approved for <@{self.requester_id}> by <@{interaction.user.id}>."
         )
 
 
@@ -1304,14 +1303,26 @@ def get_auto_requests_sheet():
     return client.open("AutoRequests").sheet1  # or .worksheet("SheetName") if needed
 # --- Data Saving Functions ---
 
+from datetime import datetime
+
 def get_bank_sheet():
     client = get_client()
     sheet = client.open("BankAccounts").sheet1
     headers = sheet.row_values(1)
-    if headers != ["owner", "money", "loans"]:
+    expected = ["owner", "money", "loans", "trust", "loan_date", "deposit_date"]
+    if headers != expected:
         sheet.clear()
-        sheet.insert_row(["owner", "money", "loans"], index=1)
+        sheet.insert_row(expected, index=1)
     return sheet
+
+def get_user_row(user_id):
+    sheet = get_bank_sheet()
+    records = sheet.get_all_records()
+    for i, row in enumerate(records, start=2):
+        if str(row["owner"]) == str(user_id):
+            return sheet, i, row
+    return None, None, None
+
 
 def create_account(user_id: str):
     sheet = get_bank_sheet()
@@ -1950,6 +1961,54 @@ async def on_ready():
     await bot.tree.sync()
     print(f"✅ Logged in as {bot.user}")
 
+import asyncio
+from discord.ext import tasks
+from datetime import datetime, timedelta
+import random
+
+REMINDER_CHANNEL_ID = 1234567890  # your target channel
+
+@tasks.loop(hours=24)
+async def check_reminders():
+    await bot.wait_until_ready()
+    now = datetime.utcnow()
+    if not (4 <= now.hour < 6):
+        return  # only run between 4–6 AM UTC
+
+    sheet = get_bank_sheet()
+    records = sheet.get_all_records()
+    channel = bot.get_channel(REMINDER_CHANNEL_ID)
+    if not channel:
+        return
+
+    for row in records:
+        user_id = row["owner"]
+        loan_date = row.get("loan_date")
+        deposit_date = row.get("deposit_date")
+
+        msg = None
+        if loan_date:
+            date = datetime.strptime(loan_date, "%Y-%m-%d")
+            if now - date >= timedelta(days=7):
+                msg = f"🔔 <@{user_id}> has an outstanding loan over 7 days old."
+
+        if deposit_date:
+            date = datetime.strptime(deposit_date, "%Y-%m-%d")
+            if now - date >= timedelta(days=7):
+                if msg:
+                    msg += "\n"
+                else:
+                    msg = ""
+                msg += f"🔔 <@{user_id}>'s safekeep balance has been held over 7 days."
+
+        if msg:
+            await asyncio.sleep(random.uniform(1, 3))  # prevent ratelimiting
+            await channel.send(msg)
+
+# Start the loop
+check_reminders.start()
+
+
 @bot.event
 async def on_message(message):
     # Ignore all bots including yourself
@@ -2163,11 +2222,78 @@ async def register(interaction: discord.Interaction, nation_id: str):
 
 @bot.tree.command(name="open_account", description="Request to open an INTRA account")
 async def open_account(interaction: discord.Interaction, requester_id: str):
-    view = AccountApprovalView(requester_id)
+    view = AccountApprovalView(interaction.user.id)
     await interaction.response.send_message(
         f"📝 <@{interaction.user.id}> requests to open an INTRA account.\nA staff member must approve below:",
         view=view
     )
+
+@bot.tree.command(name="balance", description="Check your balance")
+async def balance(interaction: discord.Interaction):
+    sheet, row_index, row = get_user_row(interaction.user.id)
+    if not row:
+        await interaction.response.send_message("❌ You don't have an account.")
+        return
+    money = row.get("money", "0")
+    loans = row.get("loans", "0")
+    trust = row.get("trust", "0")
+    await interaction.response.send_message(
+        f"💰 Balance: ${money}\n💸 Loans: ${loans}\n🤝 Trust Level: ${trust}"
+    )
+
+@bot.tree.command(name="take_loan", description="Take out a loan")
+@app_commands.describe(amount="How much to borrow")
+async def take_loan(interaction: discord.Interaction, amount: int):
+    if amount <= 0:
+        await interaction.response.send_message("❌ Amount must be positive.")
+        return
+
+    sheet, row_index, row = get_user_row(interaction.user.id)
+    if not row:
+        await interaction.response.send_message("❌ You don't have an account.")
+        return
+
+    new_loan = int(row["loans"]) + amount
+    sheet.update_cell(row_index, 3, new_loan)  # loans = col 3
+    sheet.update_cell(row_index, 5, datetime.utcnow().strftime("%Y-%m-%d"))  # loan_date = col 5
+    await interaction.response.send_message(f"✅ Loan of ${amount} taken. Total debt: ${new_loan}")
+
+@bot.tree.command(name="deposit", description="Deposit into safekeep")
+@app_commands.describe(amount="How much to deposit")
+async def deposit(interaction: discord.Interaction, amount: int):
+    if amount <= 0:
+        await interaction.response.send_message("❌ Amount must be positive.")
+        return
+
+    sheet, row_index, row = get_user_row(interaction.user.id)
+    if not row:
+        await interaction.response.send_message("❌ You don't have an account.")
+        return
+
+    new_balance = int(row["money"]) + amount
+    if new_balance > 1_000_000_000:
+        await interaction.response.send_message("❌ Cannot exceed safekeep limit of $1,000,000,000.")
+        return
+
+    sheet.update_cell(row_index, 2, new_balance)  # money = col 2
+    sheet.update_cell(row_index, 6, datetime.utcnow().strftime("%Y-%m-%d"))  # deposit_date = col 6
+    await interaction.response.send_message(f"✅ Deposited ${amount}. New balance: ${new_balance}")
+
+@bot.tree.command(name="trust", description="Set a user's trust level")
+@app_commands.describe(member="User to set trust for", amount="Maximum advisory loan limit")
+async def trust(interaction: discord.Interaction, member: discord.Member, amount: int):
+    if not any(role.name == "Staff" for role in interaction.user.roles):
+        await interaction.response.send_message("🚫 Only Staff can use this command.", ephemeral=True)
+        return
+
+    sheet, row_index, row = get_user_row(member.id)
+    if not row:
+        await interaction.response.send_message("❌ User does not have an account.")
+        return
+
+    sheet.update_cell(row_index, 4, amount)  # trust = col 4
+    await interaction.response.send_message(f"✅ Set trust level for <@{member.id}> to ${amount}")
+
 
 @bot.tree.command(name="mmr_audit", description="Audits the MMR of the Member and gives suggestions")
 @app_commands.describe(who="The Discord Member you wish to audit")
