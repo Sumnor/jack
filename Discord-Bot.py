@@ -2228,14 +2228,15 @@ async def open_account(interaction: discord.Interaction, requester_id: str):
 
 @bot.tree.command(name="balance", description="Check your balance")
 async def balance(interaction: discord.Interaction):
+    await interaction.response.defer()
     sheet, row_index, row = get_user_row(interaction.user.id)
     if not row:
         await interaction.response.send_message("❌ You don't have an account.")
         return
     money = row.get("money", "0")
     loans = row.get("loans", "0")
-    trust = row.get("trust", "0")
-    await interaction.response.send_message(
+    trust = row.get("trust", "50000000")
+    await interaction.followup.send(
         f"💰 Balance: ${money}\n💸 Loans: ${loans}\n🤝 Trust Level: ${trust}"
     )
 
