@@ -2249,11 +2249,10 @@ from datetime import datetime
 
 
 @bot.tree.command(name="open_account", description="Request to open an INTRA account")
-@app_commands.describe(requester_id="User ID requesting the account")
-async def open_account(interaction: discord.Interaction, requester_id: str):
+#@app_commands.describe(requester_id="User ID requesting the account")
+async def open_account(interaction: discord.Interaction):
     await interaction.response.defer()
-    user_id = requester_id.strip()
-
+    user_id = str(interaction.user.id)
     # Already has an account
     sheet, _, row = get_user_row(user_id)
     if row:
