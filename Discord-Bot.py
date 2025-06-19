@@ -945,7 +945,7 @@ class AccountApprovalView(discord.ui.View):
 
         # Remove request from sheet
         client = get_client()
-        req_sheet = client.open("BankAccounts").worksheet("RequestedAccounts")
+        req_sheet = client.open("BankAccounts").sheet1
         requests = req_sheet.get_all_values()
         for i, row in enumerate(requests, start=2):
             if row and row[0] == str(self.requester_id):
@@ -977,7 +977,7 @@ class AccountApprovalView(discord.ui.View):
 
         # Remove request from sheet
         client = get_client()
-        req_sheet = client.open("BankAccounts").worksheet("RequestedAccounts")
+        req_sheet = client.open("BankAccounts").sheet1
         requests = req_sheet.get_all_values()
         for i, row in enumerate(requests, start=2):
             if row and row[0] == str(self.requester_id):
@@ -2317,13 +2317,13 @@ async def open_account(interaction: discord.Interaction):
 
     # Check if a request is already pending
     client = get_client()
-    req_sheet = client.open("BankAccounts").worksheet("RequestedAccounts")
+    req_sheet = client.open("BankAccounts").sheet1
     existing = req_sheet.col_values(1)
     if user_id in existing:
         return await interaction.followup.send("🕐 A request is already pending.")
 
     # NEW: Check for alliance existence
-    main_sheet = client.open("BankAccounts").worksheet("Accounts")
+    main_sheet = client.open("BankAccounts").sheet1
     records = main_sheet.get_all_records()
     
     # Find alliance-linked account
