@@ -1364,44 +1364,53 @@ from datetime import datetime
 import json
 from datetime import datetime
 
+import json
+from datetime import datetime, timedelta
+
 def get_bank_sheet():
     sheet = get_client().open("BankAccounts").sheet1
     headers = sheet.row_values(1)
-    expected = ["owner","aa_name","money","loans","trading","trust","loan_history","deposit_history"]
+    expected = ["owner","aa_name","money","loans","trading","trust",
+                "loan_history","deposit_history","loan_weekly","loan_weeks_since"]
     if headers != expected:
         sheet.clear()
         sheet.insert_row(expected, index=1)
     return sheet
 
-def get_account_row(owner_id: str, aa_name: str):
+def get_account_row(owner, aa_name):
     sheet = get_bank_sheet()
-    records = sheet.get_all_records()
-    for idx, row in enumerate(records, start=2):  # Skip header row
-        if (
-            str(row.get("owner")).strip() == str(owner_id)
-            and str(row.get("aa_name", "")).strip().lower() == aa_name.strip().lower()
-        ):
-            return sheet, idx, row
-    return sheet, None, None
+    for i, row in enumerate(sheet.get_all_records(), start=2):
+        if row["owner"] == owner and row["aa_name"].lower() == aa_name.lower():
+            return sheet, i, row
+    return None, None, None
 
-def get_user_row(user_id: str):
-    sheet = get_private_account_sheet()  # NOT the AA sheet
-    records = sheet.get_all_records()
-    for idx, row in enumerate(records, start=2):  # Skip header
-        if str(row.get("user_id")) == str(user_id):
-            return sheet, idx, row
-    return sheet, None, None
+def append_history(sheet, idx, col_idx, entry):
+    hist = json.loads(sheet.cell(idx, col_idx).value or "[]")
+    hist.append(entry)
+    sheet.update_cell(idx, col_idx, json.dumps(hist))
+
+def update_weekly_payback(sheet, idx, loans, trust):
+    weekly = (loans * (1 + trust * 12)) / 12
+    sheet.update_cell(idx, 9, weekly)  # loan_weekly
+
+def update_weeks_since(sheet, idx, history):
+    if not history:
+        weeks = 0
+    else:
+        last = datetime.fromisoformat(history[-1]["date"])
+        weeks = (datetime.utcnow() - last).days // 7
+    sheet.update_cell(idx, 10, weeks)
 
 
-def append_history(sheet, row_idx: int, col_idx: int, entry: dict):
-    history = json.loads(sheet.cell(row_idx, col_idx).value or "[]")
-    history.append(entry)
-    sheet.update_cell(row_idx, col_idx, json.dumps(history))
+def create_account(user_id: str):
+    sheet = get_user_sheet()
+    # Assuming new headers: id, name, money, loans, trust, created_at, etc.
+    sheet.append_row([user_id, "", 0, 20000000, 0, datetime.utcnow().isoformat(), 0, 0])
 
-
-def create_account(user_id: str, aa_name: str):
+def create_aa_account(user_id: str, aa_name: str):
     sheet = get_bank_sheet()
-    sheet.append_row([user_id, "/", "0", "0", "0", "50000000"])
+    sheet.append_row([user_id, aa_name, 0, 0, 20000000, 0, "[]", "[]", 0, 0])
+
 
 
 def save_to_alliance_net(data_row):
@@ -2297,105 +2306,116 @@ from datetime import datetime
 
 
 @bot.tree.command(name="open_account", description="Request to open an INTRA account")
-#@app_commands.describe(requester_id="User ID requesting the account")
 async def open_account(interaction: discord.Interaction):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
+
     # Already has an account
     sheet, _, row = get_user_row(user_id)
     if row:
-        await interaction.followup.send("❌ This user already has an account.")
-        return
+        return await interaction.followup.send("❌ You already have an INTRA account.")
 
-    # Already requested?
     client = get_client()
-    req_sheet = client.open("BankAccounts").sheet1
+    req_sheet = client.open("BankAccounts").worksheet("RequestedAccounts")
     existing = req_sheet.col_values(1)
     if user_id in existing:
-        await interaction.followup.send("🕐 A request is already pending or the ID exists in the sheet.")
-        return
+        return await interaction.followup.send("🕐 You already have a pending account request.")
 
-    # Log request with ID and timestamp
+    # Log request to approval sheet
     req_sheet.append_row([user_id, "", 0, "", 0, datetime.utcnow().isoformat()])
 
     view = AccountApprovalView(user_id)
     await interaction.followup.send(
-        f"📝 <@{user_id}> has requested to open an INTRA account.\nA staff member must approve below:",
+        f"📝 <@{user_id}> has requested an INTRA account. A staff member must approve below:",
         view=view
     )
 
-@bot.tree.command(name="open_account_aa", description="Create a private AA account")
+
+@bot.tree.command(name="open_account_aa", description="Request to create a private AA account")
 @app_commands.describe(aa_name="Your AA account name (unique)")
 async def open_account_aa(interaction: discord.Interaction, aa_name: str):
     await interaction.response.defer()
     owner = str(interaction.user.id)
     sheet = get_bank_sheet()
+
     if get_account_row(owner, aa_name)[0]:
-        return await interaction.followup.send(f"❌ You already have an account named `{aa_name}`.")
-    # Optional: global uniqueness:
+        return await interaction.followup.send(f"❌ You already have an AA account named `{aa_name}`.")
+
+    # Optional: enforce global uniqueness
     global_names = [r["aa_name"].lower() for r in sheet.get_all_records()]
     if aa_name.lower() in global_names:
-        return await interaction.followup.send(f"❌ That name is taken—choose another.")
-    sheet.append_row([owner, aa_name, 0, 0, 0, 0, "[]", "[]"])
-    role = discord.utils.get(interaction.guild.roles, name="Account Owner")
-    if role:
-        await interaction.user.add_roles(role, reason="Created AA account")
-    await interaction.followup.send(f"✅ AA account `{aa_name}` created.")
+        return await interaction.followup.send(f"❌ That AA name is taken.")
 
-@bot.tree.command(name="balance_aa", description="Show your AA account balance")
-@app_commands.describe(aa_name="Your AA account name")
-async def balance_aa(interaction: discord.Interaction, aa_name: str):
-    await interaction.response.defer()
-    owner = str(interaction.user.id)
-    sheet, idx, row = get_account_row(owner, aa_name)
-    if not row:
-        return await interaction.followup.send(f"❌ No account named `{aa_name}`.")
-    money, loans, trading, trust = map(int, [row["money"], row["loans"], row["trading"], row["trust"]])
-    weekly_payback = (loans * (1 + trust * 12)) / 12
+    # Log request to approval sheet
+    req_sheet = get_client().open("BankAccounts").worksheet("RequestedAccounts")
+    req_sheet.append_row([owner, aa_name, 0, "", 0, datetime.utcnow().isoformat()])
+
+    view = AccountApprovalView(owner, aa_name=aa_name)
     await interaction.followup.send(
-        f"**{aa_name}**\n"
-        f"💰 Money: ${money}\n"
-        f"📉 Loans: ${loans} (weekly payback: ${weekly_payback:.2f})\n"
-        f"📈 Trading: ${trading}\n"
-        f"🤝 Trust rate (monthly): {trust}"
-    )    
+        f"📝 <@{owner}> has requested to open AA account `{aa_name}`. A staff member must approve below:",
+        view=view
+    )
 
-@bot.tree.command(name="take_loan_aa", description="Take out a loan from your AA account")
-@app_commands.describe(aa_name="Your AA account name", amount="How much to borrow")
-async def take_loan_aa(interaction: discord.Interaction, aa_name: str, amount: int):
+@bot.tree.command(name="take_loan_aa", description="Take a loan from your AA")
+@app_commands.describe(aa_name="Your AA account", amount="How much to borrow")
+async def take_loan_aa(interaction, aa_name: str, amount: int):
     await interaction.response.defer()
     owner = str(interaction.user.id)
     sheet, idx, row = get_account_row(owner, aa_name)
-    if not row:
-        return await interaction.followup.send(f"❌ No account named `{aa_name}`.")
-    if amount <= 0:
-        return await interaction.followup.send("❌ Amount must be positive.")
-    loans, trust = int(row["loans"]), float(row["trust"])
-    if loans + amount > trust * 12:
-        return await interaction.followup.send("🚫 Exceeds allowed loan based on trust.")
+    if not row: return await interaction.followup.send(f"❌ No account `{aa_name}`.")
+    if amount <= 0: return await interaction.followup.send("❌ Must be positive.")
+
+    loans = int(row["loans"])
+    trust = float(row["trust"])
     new_loans = loans + amount
-    sheet.update_cell(idx, 4, new_loans)
-    append_history(sheet, idx, 7, {"amount": amount, "date": datetime.utcnow().isoformat()})
-    await interaction.followup.send(f"✅ Borrowed ${amount}. Total debt: ${new_loans}.")
 
-@bot.tree.command(name="deposit_aa", description="Deposit into your AA account")
-@app_commands.describe(aa_name="Your AA account name", amount="How much to deposit")
-async def deposit_aa(interaction: discord.Interaction, aa_name: str, amount: int):
+    # Update loan only when adding or fully repaid
+    append_history(sheet, idx, 7, {"amount": amount, "date": datetime.utcnow().isoformat()})
+    update_weekly_payback(sheet, idx, new_loans, trust)
+    update_weeks_since(sheet, idx,
+                       json.loads(sheet.cell(idx,7).value))
+
+    sheet.update_cell(idx, 4, new_loans)  # loans
+
+    await interaction.followup.send(f"✅ Loaned ${amount}. Total debt: ${new_loans}. Weekly pay: ${(sheet.cell(idx,9).value)}")
+    
+@bot.tree.command(name="deposit_aa", description="Deposit into your AA")
+@app_commands.describe(aa_name="Your AA", amount="Amount to deposit")
+async def deposit_aa(interaction, aa_name: str, amount: int):
     await interaction.response.defer()
     owner = str(interaction.user.id)
     sheet, idx, row = get_account_row(owner, aa_name)
-    if not row:
-        return await interaction.followup.send(f"❌ No account named `{aa_name}`.")
-    if amount <= 0:
-        return await interaction.followup.send("❌ Amount must be positive.")
-    loans, money = int(row["loans"]), int(row["money"])
+    if not row: return await interaction.followup.send(f"❌ No account `{aa_name}`.")
+    if amount <= 0: return await interaction.followup.send("❌ Must be positive.")
+
+    loans = int(row["loans"])
+    money = int(row["money"])
     repay = min(amount, loans)
-    to_balance = amount - repay
-    sheet.update_cell(idx, 4, loans - repay)
-    sheet.update_cell(idx, 3, money + to_balance)
+    add = amount - repay
+    new_loans = loans - repay
+    new_money = money + add
+
+    sheet.update_cell(idx, 4, new_loans)
+    sheet.update_cell(idx, 3, new_money)
     append_history(sheet, idx, 8, {"amount": amount, "date": datetime.utcnow().isoformat()})
+    update_weekly_payback(sheet, idx, new_loans, float(row["trust"]))
+    update_weeks_since(sheet, idx,
+                       json.loads(sheet.cell(idx,8).value))
+
+    await interaction.followup.send(f"💵 Deposited ${amount}. Debt ${new_loans}. Balance ${new_money}. Weekly pay: ${sheet.cell(idx,9).value}")
+
+@bot.tree.command(name="balance_aa", description="Show AA balances")
+@app_commands.describe(aa_name="Your AA account")
+async def balance_aa(interaction, aa_name: str):
+    await interaction.response.defer()
+    owner = str(interaction.user.id)
+    sheet, idx, row = get_account_row(owner, aa_name)
+    if not row: return await interaction.followup.send(f"❌ No account `{aa_name}`.")
+
+    loans, money, trading = int(row["loans"]), int(row["money"]), int(row["trading"])
+    weekly, weeks = float(row["loan_weekly"]), int(row["loan_weeks_since"])
     await interaction.followup.send(
-        f"💵 Deposited ${amount}. Repaid ${repay}. New balance: ${money + to_balance}, debt: ${loans - repay}."
+        f"**{aa_name}**\nMoney: ${money}\nLoans: ${loans}  Weekly Pay: ${weekly:.2f}\nWeeks Since Last Payment: {weeks}\nTrading: ${trading}"
     )
 
 @bot.tree.command(name="trust_aa", description="Set trust rate on an AA (Staff only)")
