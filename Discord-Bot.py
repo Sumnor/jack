@@ -2310,21 +2310,40 @@ async def open_account(interaction: discord.Interaction):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
 
-    sheet = get_client().open("BankAccounts").sheet1
-    all_data = sheet.get_all_values()
-    header = all_data[0]
-    rows = all_data[1:]
+    # Check if they already have an account
+    sheet, _, row = get_user_row(user_id)
+    if row:
+        return await interaction.followup.send("❌ You already have an account.")
 
-    user_ids = [r[0] for r in rows if r]
-    if user_id in user_ids:
-        await interaction.followup.send("🕐 You already have an account or request pending.")
-        return
+    # Check if a request is already pending
+    client = get_client()
+    req_sheet = client.open("BankAccounts").worksheet("RequestedAccounts")
+    existing = req_sheet.col_values(1)
+    if user_id in existing:
+        return await interaction.followup.send("🕐 A request is already pending.")
 
-    # Append request (INTRA = no aa_name yet)
-    sheet.append_row([user_id, "", "0", "0", "0", "0", "[]", "[]", "", "0", datetime.utcnow().isoformat()])
+    # NEW: Check for alliance existence
+    main_sheet = client.open("BankAccounts").worksheet("Accounts")
+    records = main_sheet.get_all_records()
+    
+    # Find alliance-linked account
+    alliance_row = next(
+        (r for r in records if r["aa_name"].lower().startswith("alliance")), 
+        None
+    )
+    if not alliance_row:
+        return await interaction.followup.send("❌ No alliance account found. You must join an alliance first.")
+
+    # Prevent multiple users attaching to same alliance if you want that
+    users_with_main = [r for r in records if r["aa_name"] == "/" and r["owner"] != ""]
+    if users_with_main:
+        return await interaction.followup.send("❌ An INTRA account already exists for that alliance.")
+
+    # Log the request
+    req_sheet.append_row([user_id, "", 0, "", 0, datetime.utcnow().isoformat()])
     view = AccountApprovalView(user_id)
     await interaction.followup.send(
-        f"📝 <@{user_id}> requested an INTRA account. Staff must approve:",
+        f"📝 <@{user_id}> has requested to open an INTRA account.\nA staff member must approve below:",
         view=view
     )
 
