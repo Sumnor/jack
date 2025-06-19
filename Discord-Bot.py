@@ -1384,6 +1384,15 @@ def get_account_row(owner, aa_name):
             return sheet, i, row
     return None, None, None
 
+def get_user_row(user_id):
+    sheet = get_bank_sheet()
+    records = sheet.get_all_records()
+    for i, row in enumerate(records, start=2):  # start=2 to match row numbers in Sheets
+        if str(row.get("owner")) == str(user_id):
+            return sheet, i, row
+    return sheet, None, None
+
+
 def append_history(sheet, idx, col_idx, entry):
     hist = json.loads(sheet.cell(idx, col_idx).value or "[]")
     hist.append(entry)
@@ -2310,42 +2319,38 @@ async def open_account(interaction: discord.Interaction):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
 
-    # Check if they already have an account
-    sheet, _, row = get_user_row(user_id)
-    if row:
-        return await interaction.followup.send("❌ You already have an account.")
+    sheet = get_bank_sheet()
+    records = sheet.get_all_records()
 
-    # Check if a request is already pending
-    client = get_client()
-    req_sheet = client.open("BankAccounts").sheet1
+    # Check if user already has a personal (non-AA) account
+    for record in records:
+        if str(record.get("owner")) == user_id and not record.get("aa_name", "").lower().startswith("alliance_"):
+            return await interaction.followup.send("❌ You already have a personal account.")
+
+    # Check if user has at least one AA account with 'alliance_' prefix
+    has_valid_aa = any(
+        str(record.get("owner")) == user_id and record.get("aa_name", "").lower().startswith("alliance_")
+        for record in records
+    )
+    if not has_valid_aa:
+        return await interaction.followup.send("❌ You need an AA account starting with `alliance_` to open a personal account.")
+
+    # Check if already requested
+    req_sheet = get_client().open("BankAccounts").sheet1
     existing = req_sheet.col_values(1)
     if user_id in existing:
         return await interaction.followup.send("🕐 A request is already pending.")
 
-    # NEW: Check for alliance existence
-    main_sheet = client.open("BankAccounts").sheet1
-    records = main_sheet.get_all_records()
-    
-    # Find alliance-linked account
-    alliance_row = next(
-        (r for r in records if r["aa_name"].lower().startswith("alliance")), 
-        None
-    )
-    if not alliance_row:
-        return await interaction.followup.send("❌ No alliance account found. You must join an alliance first.")
-
-    # Prevent multiple users attaching to same alliance if you want that
-    users_with_main = [r for r in records if r["aa_name"] == "/" and r["owner"] != ""]
-    if users_with_main:
-        return await interaction.followup.send("❌ An INTRA account already exists for that alliance.")
-
-    # Log the request
+    # Add to request sheet
     req_sheet.append_row([user_id, "", 0, "", 0, datetime.utcnow().isoformat()])
+
+    # Send approval button
     view = AccountApprovalView(user_id)
     await interaction.followup.send(
         f"📝 <@{user_id}> has requested to open an INTRA account.\nA staff member must approve below:",
         view=view
     )
+
 
 @bot.tree.command(name="open_account_aa", description="Request to create a private AA account")
 @app_commands.describe(aa_name="Your AA account name (must be unique)")
