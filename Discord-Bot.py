@@ -928,6 +928,7 @@ class AccountApprovalView(discord.ui.View):
     def __init__(self, requester_id):
         super().__init__(timeout=None)
         self.requester_id = requester_id
+        self.aa_name = aa_name
 
     @discord.ui.button(label="Approve Account", style=discord.ButtonStyle.success)
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -938,7 +939,7 @@ class AccountApprovalView(discord.ui.View):
             return
     
         # Create account
-        create_account(self.requester_id)
+        create_account(self.requester_id, self.aa_name)
     
         # Remove from request sheet
         client = get_client()
@@ -1358,9 +1359,9 @@ def append_history(sheet, row_idx: int, col_idx: int, entry: dict):
     sheet.update_cell(row_idx, col_idx, json.dumps(history))
 
 
-def create_account(user_id: str):
+def create_account(user_id: str, aa_name: str)
     sheet = get_bank_sheet()
-    sheet.append_row([user_id, "0", "0", "50000000"])
+    sheet.append_row([user_id, "/", "0", "0", "0", "50000000"])
 
 
 def save_to_alliance_net(data_row):
