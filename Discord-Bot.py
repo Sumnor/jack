@@ -2322,18 +2322,20 @@ async def open_account(interaction: discord.Interaction):
     sheet = get_bank_sheet()
     records = sheet.get_all_records()
 
-    # Check if user already has a personal (non-AA) account
-    for record in records:
-        if str(record.get("owner")) == user_id and not record.get("aa_name", "").lower().startswith("alliance_"):
-            return await interaction.followup.send("❌ You already have a personal account.")
+    # Get all rows owned by this user
+    user_rows = [r for r in records if str(r.get("owner")) == user_id]
 
-    # Check if user has at least one AA account with 'alliance_' prefix
-    has_valid_aa = any(
-        str(record.get("owner")) == user_id and record.get("aa_name", "").lower().startswith("alliance_")
-        for record in records
-    )
-    if not has_valid_aa:
-        return await interaction.followup.send("❌ You need an AA account starting with `alliance_` to open a personal account.")
+    if not user_rows:
+        return await interaction.followup.send("❌ You must have an AA account before requesting a personal account.")
+
+    # If any AA name is blank, reject
+    if any(not r.get("aa_name") for r in user_rows):
+        return await interaction.followup.send("❌ You have an account without an AA name. Fix or remove it before requesting a personal account.")
+
+    # Check if they already have a personal account (aa_name ≠ alliance-style)
+    has_personal = any(not r["aa_name"].lower().startswith("alliance_") for r in user_rows if r["aa_name"])
+    if has_personal:
+        return await interaction.followup.send("❌ You already have a personal account.")
 
     # Check if already requested
     req_sheet = get_client().open("BankAccounts").sheet1
@@ -2341,15 +2343,16 @@ async def open_account(interaction: discord.Interaction):
     if user_id in existing:
         return await interaction.followup.send("🕐 A request is already pending.")
 
-    # Add to request sheet
+    # Append to request sheet
     req_sheet.append_row([user_id, "", 0, "", 0, datetime.utcnow().isoformat()])
 
-    # Send approval button
+    # Send approval view
     view = AccountApprovalView(user_id)
     await interaction.followup.send(
         f"📝 <@{user_id}> has requested to open an INTRA account.\nA staff member must approve below:",
         view=view
     )
+
 
 
 @bot.tree.command(name="open_account_aa", description="Request to create a private AA account")
