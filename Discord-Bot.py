@@ -1359,7 +1359,7 @@ def append_history(sheet, row_idx: int, col_idx: int, entry: dict):
     sheet.update_cell(row_idx, col_idx, json.dumps(history))
 
 
-def create_account(user_id: str, aa_name: str)
+def create_account(user_id: str, aa_name: str):
     sheet = get_bank_sheet()
     sheet.append_row([user_id, "/", "0", "0", "0", "50000000"])
 
