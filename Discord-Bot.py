@@ -1332,23 +1332,30 @@ def get_auto_requests_sheet():
 
 from datetime import datetime
 
+import json
+from datetime import datetime
+
 def get_bank_sheet():
-    client = get_client()
-    sheet = client.open("BankAccounts").sheet1
+    sheet = get_client().open("BankAccounts").sheet1
     headers = sheet.row_values(1)
-    expected = ["owner", "money", "loans", "trust", "loan_date", "deposit_date"]
+    expected = ["owner","aa_name","money","loans","trading","trust","loan_history","deposit_history"]
     if headers != expected:
         sheet.clear()
         sheet.insert_row(expected, index=1)
     return sheet
 
-def get_user_row(user_id):
+def get_account_row(owner_id: str, aa_name: str):
     sheet = get_bank_sheet()
     records = sheet.get_all_records()
     for i, row in enumerate(records, start=2):
-        if str(row["owner"]) == str(user_id):
+        if row["owner"] == owner_id and row["aa_name"].lower() == aa_name.lower():
             return sheet, i, row
     return None, None, None
+
+def append_history(sheet, row_idx: int, col_idx: int, entry: dict):
+    history = json.loads(sheet.cell(row_idx, col_idx).value or "[]")
+    history.append(entry)
+    sheet.update_cell(row_idx, col_idx, json.dumps(history))
 
 
 def create_account(user_id: str):
@@ -2275,6 +2282,94 @@ async def open_account(interaction: discord.Interaction):
         f"📝 <@{user_id}> has requested to open an INTRA account.\nA staff member must approve below:",
         view=view
     )
+
+@bot.tree.command(name="open_account_aa", description="Create a private AA account")
+@app_commands.describe(aa_name="Your AA account name (unique)")
+async def open_account_aa(interaction: discord.Interaction, aa_name: str):
+    await interaction.response.defer()
+    owner = str(interaction.user.id)
+    sheet = get_bank_sheet()
+    if get_account_row(owner, aa_name)[0]:
+        return await interaction.followup.send(f"❌ You already have an account named `{aa_name}`.")
+    # Optional: global uniqueness:
+    global_names = [r["aa_name"].lower() for r in sheet.get_all_records()]
+    if aa_name.lower() in global_names:
+        return await interaction.followup.send(f"❌ That name is taken—choose another.")
+    sheet.append_row([owner, aa_name, 0, 0, 0, 0, "[]", "[]"])
+    role = discord.utils.get(interaction.guild.roles, name="Account Owner")
+    if role:
+        await interaction.user.add_roles(role, reason="Created AA account")
+    await interaction.followup.send(f"✅ AA account `{aa_name}` created.")
+
+@bot.tree.command(name="balance_aa", description="Show your AA account balance")
+@app_commands.describe(aa_name="Your AA account name")
+async def balance_aa(interaction: discord.Interaction, aa_name: str):
+    await interaction.response.defer()
+    owner = str(interaction.user.id)
+    sheet, idx, row = get_account_row(owner, aa_name)
+    if not row:
+        return await interaction.followup.send(f"❌ No account named `{aa_name}`.")
+    money, loans, trading, trust = map(int, [row["money"], row["loans"], row["trading"], row["trust"]])
+    weekly_payback = (loans * (1 + trust * 12)) / 12
+    await interaction.followup.send(
+        f"**{aa_name}**\n"
+        f"💰 Money: ${money}\n"
+        f"📉 Loans: ${loans} (weekly payback: ${weekly_payback:.2f})\n"
+        f"📈 Trading: ${trading}\n"
+        f"🤝 Trust rate (monthly): {trust}"
+    )    
+
+@bot.tree.command(name="take_loan_aa", description="Take out a loan from your AA account")
+@app_commands.describe(aa_name="Your AA account name", amount="How much to borrow")
+async def take_loan_aa(interaction: discord.Interaction, aa_name: str, amount: int):
+    await interaction.response.defer()
+    owner = str(interaction.user.id)
+    sheet, idx, row = get_account_row(owner, aa_name)
+    if not row:
+        return await interaction.followup.send(f"❌ No account named `{aa_name}`.")
+    if amount <= 0:
+        return await interaction.followup.send("❌ Amount must be positive.")
+    loans, trust = int(row["loans"]), float(row["trust"])
+    if loans + amount > trust * 12:
+        return await interaction.followup.send("🚫 Exceeds allowed loan based on trust.")
+    new_loans = loans + amount
+    sheet.update_cell(idx, 4, new_loans)
+    append_history(sheet, idx, 7, {"amount": amount, "date": datetime.utcnow().isoformat()})
+    await interaction.followup.send(f"✅ Borrowed ${amount}. Total debt: ${new_loans}.")
+
+@bot.tree.command(name="deposit_aa", description="Deposit into your AA account")
+@app_commands.describe(aa_name="Your AA account name", amount="How much to deposit")
+async def deposit_aa(interaction: discord.Interaction, aa_name: str, amount: int):
+    await interaction.response.defer()
+    owner = str(interaction.user.id)
+    sheet, idx, row = get_account_row(owner, aa_name)
+    if not row:
+        return await interaction.followup.send(f"❌ No account named `{aa_name}`.")
+    if amount <= 0:
+        return await interaction.followup.send("❌ Amount must be positive.")
+    loans, money = int(row["loans"]), int(row["money"])
+    repay = min(amount, loans)
+    to_balance = amount - repay
+    sheet.update_cell(idx, 4, loans - repay)
+    sheet.update_cell(idx, 3, money + to_balance)
+    append_history(sheet, idx, 8, {"amount": amount, "date": datetime.utcnow().isoformat()})
+    await interaction.followup.send(
+        f"💵 Deposited ${amount}. Repaid ${repay}. New balance: ${money + to_balance}, debt: ${loans - repay}."
+    )
+
+@bot.tree.command(name="trust_aa", description="Set trust rate on an AA (Staff only)")
+@app_commands.describe(aa_name="AA account name", rate="Monthly trust rate (e.g., 0.05)")
+async def trust_aa(interaction: discord.Interaction, aa_name: str, rate: float):
+    await interaction.response.defer(ephemeral=True)
+    if not any(r.name == "Staff" for r in interaction.user.roles):
+        return await interaction.followup.send("🚫 Staff only.", ephemeral=True)
+    owner = str(interaction.user.id)
+    sheet, idx, row = get_account_row(owner, aa_name)
+    if not row:
+        return await interaction.followup.send("❌ No such AA account.")
+    sheet.update_cell(idx, 6, rate)
+    await interaction.followup.send(f"✅ Trust for `{aa_name}` set to {rate}.")
+
 
 @bot.tree.command(name="balance", description="Check your balance")
 async def balance(interaction: discord.Interaction):
