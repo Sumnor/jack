@@ -925,23 +925,25 @@ class RawsAuditView(discord.ui.View):
         await interaction.followup.send(f"✅ Processed {color_emoji} requests.")
 
 class AccountApprovalView(discord.ui.View):
-    def __init__(self, requester_id):
+    def __init__(self, requester_id, aa_name=None):
         super().__init__(timeout=None)
         self.requester_id = requester_id
-        self.aa_name = aa_name
+        self.aa_name = aa_name  # Optional, for AA accounts
 
-    @discord.ui.button(label="Approve Account", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="✅ Approve Account", style=discord.ButtonStyle.success)
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-    
         if not any(role.name == "Staff" for role in interaction.user.roles):
             await interaction.followup.send("🚫 Only Staff can approve.", ephemeral=True)
             return
-    
+
         # Create account
-        create_account(self.requester_id, self.aa_name)
-    
-        # Remove from request sheet
+        if self.aa_name:
+            create_aa_account(self.requester_id, self.aa_name)
+        else:
+            create_account(self.requester_id)
+
+        # Remove request from sheet
         client = get_client()
         req_sheet = client.open("BankAccounts").worksheet("RequestedAccounts")
         requests = req_sheet.get_all_values()
@@ -949,22 +951,48 @@ class AccountApprovalView(discord.ui.View):
             if row and row[0] == str(self.requester_id):
                 req_sheet.delete_rows(i)
                 break
-    
-        # Assign Account Owner role
+
+        # Assign role
         guild = interaction.guild
         member = guild.get_member(int(self.requester_id))
         role = discord.utils.get(guild.roles, name="Account Owner")
         if member and role:
             await member.add_roles(role, reason="INTRA account approved")
-    
-        # Disable the button
+
+        # Disable all buttons and update message
         for child in self.children:
             child.disabled = True
-    
+
         await interaction.message.edit(
             content=f"✅ Account approved for <@{self.requester_id}> by <@{interaction.user.id}>.",
             view=self
         )
+
+    @discord.ui.button(label="❌ Deny Account", style=discord.ButtonStyle.danger)
+    async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        if not any(role.name == "Staff" for role in interaction.user.roles):
+            await interaction.followup.send("🚫 Only Staff can deny.", ephemeral=True)
+            return
+
+        # Remove request from sheet
+        client = get_client()
+        req_sheet = client.open("BankAccounts").worksheet("RequestedAccounts")
+        requests = req_sheet.get_all_values()
+        for i, row in enumerate(requests, start=2):
+            if row and row[0] == str(self.requester_id):
+                req_sheet.delete_rows(i)
+                break
+
+        # Disable all buttons
+        for child in self.children:
+            child.disabled = True
+
+        await interaction.message.edit(
+            content=f"❌ Account denied for <@{self.requester_id}> by <@{interaction.user.id}>.",
+            view=self
+        )
+
 
 
 
@@ -1348,10 +1376,22 @@ def get_bank_sheet():
 def get_account_row(owner_id: str, aa_name: str):
     sheet = get_bank_sheet()
     records = sheet.get_all_records()
-    for i, row in enumerate(records, start=2):
-        if row["owner"] == owner_id and row["aa_name"].lower() == aa_name.lower():
-            return sheet, i, row
-    return None, None, None
+    for idx, row in enumerate(records, start=2):  # Skip header row
+        if (
+            str(row.get("owner")).strip() == str(owner_id)
+            and str(row.get("aa_name", "")).strip().lower() == aa_name.strip().lower()
+        ):
+            return sheet, idx, row
+    return sheet, None, None
+
+def get_user_row(user_id: str):
+    sheet = get_private_account_sheet()  # NOT the AA sheet
+    records = sheet.get_all_records()
+    for idx, row in enumerate(records, start=2):  # Skip header
+        if str(row.get("user_id")) == str(user_id):
+            return sheet, idx, row
+    return sheet, None, None
+
 
 def append_history(sheet, row_idx: int, col_idx: int, entry: dict):
     history = json.loads(sheet.cell(row_idx, col_idx).value or "[]")
