@@ -2310,49 +2310,43 @@ async def open_account(interaction: discord.Interaction):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
 
-    # Already has an account
-    sheet, _, row = get_user_row(user_id)
-    if row:
-        return await interaction.followup.send("❌ You already have an INTRA account.")
+    sheet = get_client().open("BankAccounts").sheet1
+    all_data = sheet.get_all_values()
+    header = all_data[0]
+    rows = all_data[1:]
 
-    client = get_client()
-    req_sheet = client.open("BankAccounts").worksheet("RequestedAccounts")
-    existing = req_sheet.col_values(1)
-    if user_id in existing:
-        return await interaction.followup.send("🕐 You already have a pending account request.")
+    user_ids = [r[0] for r in rows if r]
+    if user_id in user_ids:
+        await interaction.followup.send("🕐 You already have an account or request pending.")
+        return
 
-    # Log request to approval sheet
-    req_sheet.append_row([user_id, "", 0, "", 0, datetime.utcnow().isoformat()])
-
+    # Append request (INTRA = no aa_name yet)
+    sheet.append_row([user_id, "", "0", "0", "0", "0", "[]", "[]", "", "0", datetime.utcnow().isoformat()])
     view = AccountApprovalView(user_id)
     await interaction.followup.send(
-        f"📝 <@{user_id}> has requested an INTRA account. A staff member must approve below:",
+        f"📝 <@{user_id}> requested an INTRA account. Staff must approve:",
         view=view
     )
 
-
 @bot.tree.command(name="open_account_aa", description="Request to create a private AA account")
-@app_commands.describe(aa_name="Your AA account name (unique)")
+@app_commands.describe(aa_name="Your AA account name (must be unique)")
 async def open_account_aa(interaction: discord.Interaction, aa_name: str):
     await interaction.response.defer()
-    owner = str(interaction.user.id)
+    user_id = str(interaction.user.id)
+
     sheet = get_bank_sheet()
+    all_records = sheet.get_all_records()
+    global_names = [r["aa_name"].lower() for r in all_records]
 
-    if get_account_row(owner, aa_name)[0]:
-        return await interaction.followup.send(f"❌ You already have an AA account named `{aa_name}`.")
-
-    # Optional: enforce global uniqueness
-    global_names = [r["aa_name"].lower() for r in sheet.get_all_records()]
     if aa_name.lower() in global_names:
-        return await interaction.followup.send(f"❌ That AA name is taken.")
+        await interaction.followup.send("❌ That name is already taken.")
+        return
 
-    # Log request to approval sheet
-    req_sheet = get_client().open("BankAccounts").worksheet("RequestedAccounts")
-    req_sheet.append_row([owner, aa_name, 0, "", 0, datetime.utcnow().isoformat()])
-
-    view = AccountApprovalView(owner, aa_name=aa_name)
+    # Request with aa_name filled
+    sheet.append_row([user_id, aa_name, 0, 0, 0, 0, "[]", "[]", "", 0, datetime.utcnow().isoformat()])
+    view = AccountApprovalView(user_id, aa_name)
     await interaction.followup.send(
-        f"📝 <@{owner}> has requested to open AA account `{aa_name}`. A staff member must approve below:",
+        f"📝 <@{user_id}> requested to create AA `{aa_name}`. Staff must approve:",
         view=view
     )
 
