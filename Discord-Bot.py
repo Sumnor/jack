@@ -2318,38 +2318,29 @@ from datetime import datetime
 async def open_account(interaction: discord.Interaction):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
-
     sheet = get_bank_sheet()
     records = sheet.get_all_records()
 
-    # Get all rows owned by this user
-    user_rows = [r for r in records if str(r.get("owner")) == user_id]
+    # All rows by this user
+    user_rows = [r for r in records if str(r["owner"]) == user_id]
 
-    if not user_rows:
-        return await interaction.followup.send("❌ You must have an AA account before requesting a personal account.")
+    has_aa = any(r["aa_name"] for r in user_rows)
+    has_personal = any(not r["aa_name"] for r in user_rows)
 
-    # If any AA name is blank, reject
-    if any(not r.get("aa_name") for r in user_rows):
-        return await interaction.followup.send("❌ You have an account without an AA name. Fix or remove it before requesting a personal account.")
-
-    # Check if they already have a personal account (aa_name ≠ alliance-style)
-    has_personal = any(not r["aa_name"].lower().startswith("alliance_") for r in user_rows if r["aa_name"])
     if has_personal:
         return await interaction.followup.send("❌ You already have a personal account.")
 
-    # Check if already requested
-    req_sheet = get_client().open("BankAccounts").sheet1
-    existing = req_sheet.col_values(1)
-    if user_id in existing:
-        return await interaction.followup.send("🕐 A request is already pending.")
+    if not has_aa:
+        return await interaction.followup.send("❌ You must have an AA account before creating a personal one.")
 
-    # Append to request sheet
-    req_sheet.append_row([user_id, "", 0, "", 0, datetime.utcnow().isoformat()])
+    # All good, log request (in same sheet)
+    sheet.append_row([
+        user_id, "", 0, 0, 0, 20000000, "[]", "[]", "", 0, datetime.utcnow().isoformat()
+    ])
 
-    # Send approval view
     view = AccountApprovalView(user_id)
     await interaction.followup.send(
-        f"📝 <@{user_id}> has requested to open an INTRA account.\nA staff member must approve below:",
+        f"📝 <@{user_id}> has requested to open an INTRA personal account.\nA staff member must approve below:",
         view=view
     )
 
@@ -2370,7 +2361,7 @@ async def open_account_aa(interaction: discord.Interaction, aa_name: str):
         return
 
     # Request with aa_name filled
-    sheet.append_row([user_id, aa_name, 0, 0, 0, 0, "[]", "[]", "", 0, datetime.utcnow().isoformat()])
+    sheet.append_row([user_id, aa_name, 0, 0, 0, 20000000, "[]", "[]", "", 0, datetime.utcnow().isoformat()])
     view = AccountApprovalView(user_id, aa_name)
     await interaction.followup.send(
         f"📝 <@{user_id}> requested to create AA `{aa_name}`. Staff must approve:",
