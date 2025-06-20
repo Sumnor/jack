@@ -1380,7 +1380,7 @@ def get_bank_sheet():
 def get_account_row(owner, aa_name):
     sheet = get_bank_sheet()
     for i, row in enumerate(sheet.get_all_records(), start=2):
-        if row["owner"] == owner and row["aa_name"].lower() == aa_name.lower():
+        if row["owner"] == owner and str(row["aa_name"]).lower() == aa_name.lower():
             return sheet, i, row
     return None, None, None
 
@@ -2324,8 +2324,8 @@ async def open_account(interaction: discord.Interaction):
     # All rows by this user
     user_rows = [r for r in records if str(r["owner"]) == user_id]
 
-    has_aa = any(r["aa_name"] for r in user_rows)
-    has_personal = any(not r["aa_name"] for r in user_rows)
+    has_aa = any(str(r["aa_name"]) for r in user_rows)
+    has_personal = any(not(str(r["aa_name"]) for r in user_rows)
 
     if has_personal:
         return await interaction.followup.send("❌ You already have a personal account.")
@@ -2354,7 +2354,7 @@ async def open_account_aa(interaction: discord.Interaction, aa_name: str):
 
     sheet = get_bank_sheet()
     all_records = sheet.get_all_records()
-    global_names = [r["aa_name"].lower() for r in all_records]
+    global_names = [str(r["aa_name"]).lower() for r in all_records]
 
     if aa_name.lower() in global_names:
         await interaction.followup.send("❌ That name is already taken.")
