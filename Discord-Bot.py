@@ -1377,12 +1377,14 @@ def get_bank_sheet():
         sheet.insert_row(expected, index=1)
     return sheet
 
-def get_account_row(owner, aa_name):
-    sheet = get_bank_sheet()
-    for i, row in enumerate(sheet.get_all_records(), start=2):
-        if row["owner"] == owner and str(row["aa_name"]).lower() == aa_name.lower():
-            return sheet, i, row
-    return None, None, None
+def get_account_row(owner_id: str, aa_name: str):
+    sheet = get_bank_sheet()  # Your function to get the sheet object
+    records = sheet.get_all_records()
+    for idx, row in enumerate(records, start=2):  # start=2 because sheet rows start at 1 and first is header
+        if str(row["owner"]) == owner_id and str(row["aa_name"]).lower() == aa_name.lower():
+            return sheet, idx, row
+    return sheet, None, None
+
 
 def get_user_row(user_id):
     sheet = get_bank_sheet()
