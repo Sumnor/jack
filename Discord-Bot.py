@@ -2324,7 +2324,7 @@ async def open_account(interaction: discord.Interaction):
     # All rows by this user
     user_rows = [r for r in records if str(r["owner"]) == user_id]
 
-    has_aa = any(str(r["aa_name"])) for r in user_rows)
+    has_aa = any(str(r["aa_name"])) for r in user_rows
     has_personal = any(not(str(r["aa_name"])) for r in user_rows)
 
     if has_personal:
