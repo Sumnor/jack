@@ -56,7 +56,7 @@ load_dotenv("cred.env")
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="/", intents=intents)
-bot_ey = os.getenv("Key")
+bot_key = os.getenv("Key")
 API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
@@ -928,34 +928,20 @@ class AccountApprovalView(discord.ui.View):
     def __init__(self, requester_id, aa_name=None):
         super().__init__(timeout=None)
         self.requester_id = requester_id
-        self.aa_name = aa_name  # Optional, for AA accounts
+        self.aa_name = aa_name  # Optional for AA accounts
 
     @discord.ui.button(label="✅ Approve Account", style=discord.ButtonStyle.success)
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
 
-        # Permission check
         if not any(role.name == "Staff" for role in interaction.user.roles):
             return await interaction.followup.send("🚫 Only Staff can approve.", ephemeral=True)
 
-        # Create account
+        # Add account now
         if self.aa_name:
             create_aa_account(self.requester_id, self.aa_name)
         else:
             create_account(self.requester_id)
-
-        # Remove request from sheet
-        client = get_client()
-        req_sheet = client.open("BankAccounts").sheet1
-        requests = req_sheet.get_all_values()
-
-        for i, row in enumerate(requests[1:], start=2):  # Skip header
-            if not row: continue
-            owner_match = row[0] == str(self.requester_id)
-            aa_match = (row[1].strip().lower() == self.aa_name.lower()) if self.aa_name else not row[1].strip()
-            if owner_match and aa_match:
-                req_sheet.delete_rows(i)
-                break
 
         # Assign role
         guild = interaction.guild
@@ -964,7 +950,7 @@ class AccountApprovalView(discord.ui.View):
         if member and role:
             await member.add_roles(role, reason="INTRA account approved")
 
-        # Disable button
+        # Disable buttons after approval
         for child in self.children:
             child.disabled = True
 
@@ -976,20 +962,11 @@ class AccountApprovalView(discord.ui.View):
     @discord.ui.button(label="❌ Deny Account", style=discord.ButtonStyle.danger)
     async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
+
         if not any(role.name == "Staff" for role in interaction.user.roles):
-            await interaction.followup.send("🚫 Only Staff can deny.", ephemeral=True)
-            return
+            return await interaction.followup.send("🚫 Only Staff can deny.", ephemeral=True)
 
-        # Remove request from sheet
-        client = get_client()
-        req_sheet = client.open("BankAccounts").sheet1
-        requests = req_sheet.get_all_values()
-        for i, row in enumerate(requests, start=2):
-            if row and row[0] == str(self.requester_id):
-                req_sheet.delete_rows(i)
-                break
-
-        # Disable all buttons
+        # No sheet update — just disable buttons and edit message
         for child in self.children:
             child.disabled = True
 
@@ -997,6 +974,7 @@ class AccountApprovalView(discord.ui.View):
             content=f"❌ Account denied for <@{self.requester_id}> by <@{interaction.user.id}>.",
             view=self
         )
+
 
 
 
@@ -1375,30 +1353,33 @@ from datetime import datetime, timedelta
 def get_bank_sheet():
     sheet = get_client().open("BankAccounts").sheet1
     headers = sheet.row_values(1)
-    expected = ["owner","aa_name","money","loans","trading","trust",
-                "loan_history","deposit_history","loan_weekly","loan_weeks_since"]
+    expected = ["owner", "aa_name", "money", "loans", "trading", "trust", "loan_history", "deposit_history", "loan_weekly", "loan_weeks_since", "members"]
     if headers != expected:
         sheet.clear()
         sheet.insert_row(expected, index=1)
     return sheet
 
-def get_account_row(owner_id: str, aa_name: str):
-    sheet = get_bank_sheet()  # Your function to get the sheet object
+def get_account_row(user_id: str, aa_name: str):
+    sheet = get_bank_sheet()
     records = sheet.get_all_records()
-    for idx, row in enumerate(records, start=2):  # start=2 because sheet rows start at 1 and first is header
-        if str(row["owner"]) == owner_id and str(row["aa_name"]).lower() == aa_name.lower():
-            return sheet, idx, row
+    for idx, row in enumerate(records, start=2):
+        members = []
+        try:
+            members = json.loads(row.get("members", "[]"))
+        except:
+            pass
+        if str(row["owner"]) == user_id or str(user_id) in members:
+            if str(row["aa_name"]).lower() == aa_name.lower():
+                return sheet, idx, row
     return sheet, None, None
-
 
 def get_user_row(user_id):
     sheet = get_bank_sheet()
     records = sheet.get_all_records()
-    for i, row in enumerate(records, start=2):  # start=2 to match row numbers in Sheets
-        if str(row.get("owner")) == str(user_id):
+    for i, row in enumerate(records, start=2):
+        if str(row["owner"]) == str(user_id) and not row["aa_name"].strip():
             return sheet, i, row
     return sheet, None, None
-
 
 def append_history(sheet, idx, col_idx, entry):
     hist = json.loads(sheet.cell(idx, col_idx).value or "[]")
@@ -1420,12 +1401,12 @@ def update_weeks_since(sheet, idx, history):
 
 def create_account(user_id: str):
     sheet = get_bank_sheet()
-    # Assuming new headers: id, name, money, loans, trust, created_at, etc.
-    sheet.append_row([user_id, "", 0, 0, 0, 20000000, 0, 0, "[]", "[]"])	
+    # owner, aa_name, money, loans, trading, trust, loan_history, deposit_history, loan_weekly, loan_weeks_since
+    sheet.append_row([user_id, "", 0, 0, 0, 20000000, "[]", "[]", 0, 0, "[]"])
 
 def create_aa_account(user_id: str, aa_name: str):
     sheet = get_bank_sheet()
-    sheet.append_row([user_id, aa_name, 0, 0, 0, 20000000, 0, 0, "[]", "[]"])	
+    sheet.append_row([user_id, aa_name, 0, 0, 0, 20000000, "[]", "[]", 0, 0, "[]"])
 
 
 
@@ -2366,6 +2347,7 @@ async def open_account_aa(interaction: discord.Interaction, aa_name: str):
     )
 
 
+
 @bot.tree.command(name="take_loan_aa", description="Take a loan from your AA")
 @app_commands.describe(aa_name="Your AA account", amount="How much to borrow")
 async def take_loan_aa(interaction, aa_name: str, amount: int):
@@ -2395,10 +2377,10 @@ async def take_loan_aa(interaction, aa_name: str, amount: int):
 @app_commands.describe(aa_name="Your AA", amount="Amount to deposit")
 async def deposit_aa(interaction, aa_name: str, amount: int):
     await interaction.response.defer()
-    owner = str(interaction.user.id)
-    sheet, idx, row = get_account_row(owner, aa_name)
+    user_id = str(interaction.user.id)
+    sheet, idx, row = get_account_row(user_id, aa_name)
     if not row:
-        return await interaction.followup.send(f"❌ No account `{aa_name}`.")
+        return await interaction.followup.send(f"❌ No account `{aa_name}` or you don’t have access.")
     if amount <= 0:
         return await interaction.followup.send("❌ Must be positive.")
 
@@ -2424,10 +2406,11 @@ async def deposit_aa(interaction, aa_name: str, amount: int):
 @app_commands.describe(aa_name="Your AA account")
 async def balance_aa(interaction, aa_name: str):
     await interaction.response.defer()
-    owner = str(interaction.user.id)
-    sheet, idx, row = get_account_row(owner, aa_name)
+    user_id = str(interaction.user.id)
+    sheet, idx, row = get_account_row(user_id, aa_name)
     if not row:
-        return await interaction.followup.send(f"❌ No account `{aa_name}`.")
+        return await interaction.followup.send(f"❌ No account `{aa_name}` or you don’t have access.")
+
 
     loans, money, trading = int(row["loans"]), int(row["money"]), int(row["trading"])
     weekly, weeks = float(row["loan_weekly"]), int(row["loan_weeks_since"])
@@ -2442,13 +2425,71 @@ async def trust_aa(interaction: discord.Interaction, aa_name: str, rate: float):
     await interaction.response.defer(ephemeral=True)
     if not any(role.name == "Staff" for role in interaction.user.roles):
         return await interaction.followup.send("🚫 Staff only.", ephemeral=True)
-    owner = str(interaction.user.id)
-    sheet, idx, row = get_account_row(owner, aa_name)
+    user_id = str(interaction.user.id)
+    sheet, idx, row = get_account_row(user_id, aa_name)
     if not row:
-        return await interaction.followup.send("❌ No such AA account.")
+        return await interaction.followup.send(f"❌ No account `{aa_name}` or you don’t have access.")
+
     sheet.update_cell(idx, 6, rate)
     await interaction.followup.send(f"✅ Trust for `{aa_name}` set to {rate}.")
 
+@bot.tree.command(name="grant_access", description="Grant someone access to your AA account")
+@app_commands.describe(aa_name="Name of your AA account", user="User to grant access to")
+async def grant_access(interaction: discord.Interaction, aa_name: str, user: discord.Member):
+    await interaction.response.defer()
+    owner_id = str(interaction.user.id)
+
+    sheet = get_bank_sheet()
+    records = sheet.get_all_records()
+    for idx, row in enumerate(records, start=2):
+        if str(row["owner"]) == owner_id and str(row["aa_name"]).lower() == aa_name.lower():
+            try:
+                members = json.loads(row.get("members", "[]"))
+            except:
+                members = []
+
+            if str(user.id) in members:
+                return await interaction.followup.send("⚠️ That user already has access.")
+
+            members.append(str(user.id))
+            sheet.update_cell(idx, 11, json.dumps(members))  # assuming column 11 = members
+
+            role = discord.utils.get(interaction.guild.roles, name="AA Account Owner")
+            if role and not user.get_role(role.id):
+                await user.add_roles(role, reason="Granted access to AA")
+
+            return await interaction.followup.send(f"✅ <@{user.id}> has been granted access to `{aa_name}`.")
+
+    return await interaction.followup.send("❌ You don’t own that AA.")
+
+@bot.tree.command(name="revoke_access", description="Revoke a user's access to your AA")
+@app_commands.describe(aa_name="Name of your AA account", user="User to remove access from")
+async def revoke_access(interaction: discord.Interaction, aa_name: str, user: discord.Member):
+    await interaction.response.defer()
+    owner_id = str(interaction.user.id)
+
+    sheet = get_bank_sheet()
+    records = sheet.get_all_records()
+    for idx, row in enumerate(records, start=2):
+        if str(row["owner"]) == owner_id and str(row["aa_name"]).lower() == aa_name.lower():
+            try:
+                members = json.loads(row.get("members", "[]"))
+            except:
+                members = []
+
+            if str(user.id) not in members:
+                return await interaction.followup.send("⚠️ That user doesn’t have access.")
+
+            members.remove(str(user.id))
+            sheet.update_cell(idx, 11, json.dumps(members))
+
+            role = discord.utils.get(interaction.guild.roles, name="AA Account Owner")
+            if role and user.get_role(role.id):
+                await user.remove_roles(role, reason="Access to AA revoked")
+
+            return await interaction.followup.send(f"🚫 <@{user.id}>'s access to `{aa_name}` has been revoked.")
+
+    return await interaction.followup.send("❌ You don’t own that AA.")
 
 @bot.tree.command(name="balance", description="Check your balance")
 async def balance(interaction: discord.Interaction):
@@ -2482,8 +2523,8 @@ async def take_loan(interaction: discord.Interaction, amount: int):
         )
 
     new_loan = current_loans + amount
-    sheet.update_cell(row_index, 3, new_loan)
-    sheet.update_cell(row_index, 5, datetime.utcnow().strftime("%Y-%m-%d"))
+    sheet.update_cell(row_index, 4, new_loan)
+    sheet.update_cell(row_index, 6, datetime.utcnow().strftime("%Y-%m-%d"))
     await interaction.followup.send(f"✅ Loan of ${amount} taken. Total debt: ${new_loan}")
 
 
@@ -2507,9 +2548,9 @@ async def deposit(interaction: discord.Interaction, amount: int):
     if new_balance > 1_000_000_000:
         return await interaction.followup.send("❌ Cannot exceed safekeep limit of $1,000,000,000.")
 
-    sheet.update_cell(row_index, 3, new_loans)
-    sheet.update_cell(row_index, 2, new_balance)
-    sheet.update_cell(row_index, 6, datetime.utcnow().strftime("%Y-%m-%d"))
+    sheet.update_cell(row_index, 4, new_loans)
+    sheet.update_cell(row_index, 3, new_balance)
+    sheet.update_cell(row_index, 7, datetime.utcnow().strftime("%Y-%m-%d"))
 
     msg = f"💵 Deposit of ${amount} processed.\n"
     if to_loan > 0:
@@ -2528,7 +2569,7 @@ async def trust(interaction: discord.Interaction, member: discord.Member, amount
     sheet, row_index, row = get_user_row(member.id)
     if not row:
         return await interaction.followup.send("❌ User does not have an account.")
-    sheet.update_cell(row_index, 4, amount)
+    sheet.update_cell(row_index, 6, amount)
     await interaction.followup.send(f"✅ Set trust level for <@{member.id}> to ${amount}")
 
 
