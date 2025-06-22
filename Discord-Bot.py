@@ -56,7 +56,7 @@ load_dotenv("cred.env")
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="/", intents=intents)
-bot_ke = os.getenv("Key")
+bot_key = os.getenv("Key")
 API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
@@ -925,55 +925,29 @@ class RawsAuditView(discord.ui.View):
         await interaction.followup.send(f"✅ Processed {color_emoji} requests.")
 
 class AccountApprovalView(discord.ui.View):
-    def __init__(self, requester_id, aa_name=None):
-        super().__init__(timeout=None)
-        self.requester_id = requester_id
-        self.aa_name = aa_name  # Optional for AA accounts
+    def __init__(self, user_id, aa_name=None, nation_id=None):
+        super().__init__()
+        self.user_id = user_id
+        self.aa_name = aa_name
+        self.nation_id = nation_id
 
-    @discord.ui.button(label="✅ Approve Account", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="Approve", style=discord.ButtonStyle.green)
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer()
+        try:
+            if self.aa_name:
+                create_aa_account(self.user_id, self.aa_name, self.nation_id)
+                await interaction.response.send_message(
+                    f"✅ Created AA account `{self.aa_name}` for <@{self.user_id}>.", ephemeral=True
+                )
+            else:
+                create_account(self.user_id, self.nation_id)
+                await interaction.response.send_message(
+                    f"✅ Created personal account for <@{self.user_id}>.", ephemeral=True
+                )
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Error creating account: {e}", ephemeral=True)
+        self.stop()
 
-        if not any(role.name == "Staff" for role in interaction.user.roles):
-            return await interaction.followup.send("🚫 Only Staff can approve.", ephemeral=True)
-
-        # Add account now
-        if self.aa_name:
-            create_aa_account(self.requester_id, self.aa_name)
-        else:
-            create_account(self.requester_id)
-
-        # Assign role
-        guild = interaction.guild
-        member = guild.get_member(int(self.requester_id))
-        role = discord.utils.get(guild.roles, name="Account Owner")
-        if member and role:
-            await member.add_roles(role, reason="INTRA account approved")
-
-        # Disable buttons after approval
-        for child in self.children:
-            child.disabled = True
-
-        await interaction.message.edit(
-            content=f"✅ Account approved for <@{self.requester_id}> by <@{interaction.user.id}>.",
-            view=self
-        )
-
-    @discord.ui.button(label="❌ Deny Account", style=discord.ButtonStyle.danger)
-    async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer()
-
-        if not any(role.name == "Staff" for role in interaction.user.roles):
-            return await interaction.followup.send("🚫 Only Staff can deny.", ephemeral=True)
-
-        # No sheet update — just disable buttons and edit message
-        for child in self.children:
-            child.disabled = True
-
-        await interaction.message.edit(
-            content=f"❌ Account denied for <@{self.requester_id}> by <@{interaction.user.id}>.",
-            view=self
-        )
 
 
 
@@ -1353,11 +1327,24 @@ from datetime import datetime, timedelta
 def get_bank_sheet():
     sheet = get_client().open("BankAccounts").sheet1
     headers = sheet.row_values(1)
-    expected = ["owner", "aa_name", "money", "loans", "trading", "trust", "loan_history", "deposit_history", "loan_weekly", "loan_weeks_since", "members"]
+
+    # Add missing columns without clearing existing data
+    expected = [
+    "owner", "aa_name", "money", "loans", "trading", "trust",
+    "loan_history", "deposit_history", "loan_weekly", "loan_weeks_since",
+    "members", "nation_id"
+]
+
     if headers != expected:
-        sheet.clear()
-        sheet.insert_row(expected, index=1)
+        combined = list(headers)
+        for h in expected:
+            if h not in combined:
+                combined.append(h)
+        sheet.delete_row(1)
+        sheet.insert_row(combined, index=1)
+
     return sheet
+
 
 def get_account_row(user_id: str, aa_name: str):
     sheet = get_bank_sheet()
@@ -1399,14 +1386,42 @@ def update_weeks_since(sheet, idx, history):
     sheet.update_cell(idx, 10, weeks)
 
 
-def create_account(user_id: str):
+def create_account(user_id: str, nation_id: str):
     sheet = get_bank_sheet()
-    # owner, aa_name, money, loans, trading, trust, loan_history, deposit_history, loan_weekly, loan_weeks_since
-    sheet.append_row([user_id, "", 0, 0, 0, 20000000, "[]", "[]", 0, 0, "[]"])
+    sheet.append_row([
+        user_id,
+        "",         # aa_name
+        0,          # money
+        0,          # loans
+        0,          # trading
+        20000000,   # trust - will stay numeric with RAW
+        json.dumps([]),
+        json.dumps([]),
+        0,
+        0,
+        json.dumps([user_id]),
+        nation_id
+    ], value_input_option="RAW")
 
-def create_aa_account(user_id: str, aa_name: str):
+def create_aa_account(user_id: str, aa_name: str, nation_id: str):
     sheet = get_bank_sheet()
-    sheet.append_row([user_id, aa_name, 0, 0, 0, 20000000, "[]", "[]", 0, 0, "[]"])
+    sheet.append_row([
+        user_id,
+        aa_name,
+        0,
+        0,
+        0,
+        20000000,
+        json.dumps([]),
+        json.dumps([]),
+        0,
+        0,
+        json.dumps([user_id]),
+        nation_id
+    ], value_input_option="RAW")
+
+
+
 
 
 
@@ -2119,6 +2134,21 @@ async def on_message(message):
                     print("No permission to reply in this channel")
                 except Exception as e:
                     print(f"Error replying: {e}")
+
+            elif "Nuke" in message.content:
+                try:
+                    reply = await message.reply(
+                        "From fires forged in honor’s name,\n"
+                        "A force unleashed without a blame,\n"
+                        "With steady hand and courage quick,\n"
+                        "I summon forth the valiant <@1059576506684289034>."
+                    )
+                    await asyncio.sleep(10)
+                    await reply.delete()
+                except discord.Forbidden:
+                    print("No permission to reply in this channel")
+                except Exception as e:
+                    print(f"Error replying: {e}")
     
             elif "Tax Evasion" in message.content:
                 try:
@@ -2170,6 +2200,21 @@ async def on_message(message):
                     "I call thee now, in coin’s own name.\n"
                     "From vaults unseen and whispers charring,\n"
                     "Rise from the depths—I summon thee, <@722094493343416392>!"
+                )
+                await asyncio.sleep(10)
+                await reply.delete()
+            except discord.Forbidden:
+                print("No permission to reply in this channel")
+            except Exception as e:
+                print(f"Error replying: {e}")
+
+        elif "Nuke" in message.content:
+            try:
+                reply = await message.reply(
+                    "From fires forged in honor’s name,\n"
+                    "A force unleashed without a blame,\n"
+                    "With steady hand and courage quick,\n"
+                    "I summon forth the valiant <@1059576506684289034>."
                 )
                 await asyncio.sleep(10)
                 await reply.delete()
@@ -2308,7 +2353,8 @@ import discord
 import json
 
 @bot.tree.command(name="open_account", description="Request to open an INTRA personal account")
-async def open_account(interaction: discord.Interaction):
+@app_commands.describe(nation_id="Your own id, not the AA one")
+async def open_account(interaction: discord.Interaction, nation_id: str):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
     sheet = get_bank_sheet()
@@ -2320,16 +2366,18 @@ async def open_account(interaction: discord.Interaction):
     if has_personal:
         return await interaction.followup.send("❌ You already have a personal account.")
 
-    # Don't add to sheet yet — wait for approval
-    view = AccountApprovalView(user_id)
+    # Pass nation_id to the approval view
+    view = AccountApprovalView(user_id=user_id, nation_id=nation_id, aa_name=None)
     await interaction.followup.send(
         f"📝 <@{user_id}> has requested to open an INTRA personal account.\nA staff member must approve below:",
         view=view
     )
 
+
 @bot.tree.command(name="open_account_aa", description="Request to create a private AA account")
 @app_commands.describe(aa_name="Your AA account name (must be unique)")
-async def open_account_aa(interaction: discord.Interaction, aa_name: str):
+@app_commands.describe(nation_id="Your own id, not the AA one")
+async def open_account_aa(interaction: discord.Interaction, aa_name: str, nation_id: str):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
     sheet = get_bank_sheet()
@@ -2339,12 +2387,13 @@ async def open_account_aa(interaction: discord.Interaction, aa_name: str):
     if aa_name.lower() in global_names:
         return await interaction.followup.send("❌ That name is already taken.")
 
-    # Wait for staff approval before adding to sheet
-    view = AccountApprovalView(user_id, aa_name)
+    # Pass nation_id and aa_name to approval view
+    view = AccountApprovalView(user_id=user_id, aa_name=aa_name, nation_id=nation_id)
     await interaction.followup.send(
         f"📝 <@{user_id}> requested to create AA `{aa_name}`. Staff must approve:",
         view=view
     )
+
 
 
 
@@ -2373,17 +2422,108 @@ async def take_loan_aa(interaction, aa_name: str, amount: int):
     )
 
 
+import json
+from datetime import datetime
+import discord
+from discord import app_commands
+import requests
+from dateutil.parser import isoparse
+from dateutil.tz import UTC
+
 @bot.tree.command(name="deposit_aa", description="Deposit into your AA")
 @app_commands.describe(aa_name="Your AA", amount="Amount to deposit")
-async def deposit_aa(interaction, aa_name: str, amount: int):
+async def deposit_aa(interaction: discord.Interaction, aa_name: str, amount: int):
     await interaction.response.defer()
+
+    if amount <= 0:
+        return await interaction.followup.send("❌ Must be positive.")
+
     user_id = str(interaction.user.id)
     sheet, idx, row = get_account_row(user_id, aa_name)
     if not row:
         return await interaction.followup.send(f"❌ No account `{aa_name}` or you don’t have access.")
-    if amount <= 0:
-        return await interaction.followup.send("❌ Must be positive.")
 
+    last_deposit_str = row.get("last_deposit") or "2000-01-01T00:00:00Z"
+    try:
+        last_deposit = (
+            isoparse(last_deposit_str)
+            .replace(second=0, microsecond=0)
+            .astimezone(UTC)
+        )
+    except Exception:
+        last_deposit = datetime(2000, 1, 1, tzinfo=UTC)
+
+    API_KEY_PERS = "7f07d02e27f57fdba1f9"
+    GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY_PERS}"
+
+    # Get Neprito's nation ID with error handling
+    nation_id_query = """
+    query {
+      nations(nation_name: "Neprito") {
+        data {
+          id
+        }
+      }
+    }
+    """
+    try:
+        res = requests.post(GRAPHQL_URL, json={"query": nation_id_query}).json()
+        neprito_data = res["data"]["nations"]["data"]
+        if not neprito_data:
+            return await interaction.followup.send("❌ Could not find nation 'Neprito'.")
+        neprito_id = int(neprito_data[0]["id"])
+    except Exception as e:
+        return await interaction.followup.send(f"❌ Error fetching Neprito ID: {e}")
+
+    # Get recent trades for Neprito
+    trade_query = """
+    query {
+      nations(nation_name: "Neprito") {
+        data {
+          trades(offer_resource: "food") {
+            id
+            receiver_id
+            offer_resource
+            offer_amount
+            price
+            accepted
+            date
+          }
+        }
+      }
+    }
+    """
+    try:
+        response = requests.post(GRAPHQL_URL, json={"query": trade_query})
+        trades = response.json()["data"]["nations"]["data"][0]["trades"]
+    except Exception as e:
+        return await interaction.followup.send(f"❌ Error fetching trades: {e}")
+
+    valid_trade = None
+    for trade in trades[:10]:
+        try:
+            trade_date = (
+                isoparse(trade["date"])
+                .replace(second=0, microsecond=0)
+                .astimezone(UTC)
+            )
+        except Exception:
+            continue
+
+        if (
+            trade["accepted"]
+            and int(trade["receiver_id"]) == neprito_id
+            and trade["offer_amount"] == 1
+            and int(trade["price"]) == amount
+            and trade_date > last_deposit
+        ):
+            valid_trade = trade
+            break
+
+    if not valid_trade:
+        return await interaction.followup.send("❌ No valid 1-food trade found since your last deposit.")
+
+    # Process deposit
     loans = int(row["loans"])
     money = int(row["money"])
     repay = min(amount, loans)
@@ -2391,15 +2531,26 @@ async def deposit_aa(interaction, aa_name: str, amount: int):
     new_loans = loans - repay
     new_money = money + add
 
-    sheet.update_cell(idx, 4, new_loans)
-    sheet.update_cell(idx, 3, new_money)
-    append_history(sheet, idx, 8, {"amount": amount, "date": datetime.utcnow().isoformat()})
-    update_weekly_payback(sheet, idx, new_loans, float(row["trust"]))
-    update_weeks_since(sheet, idx, json.loads(sheet.cell(idx,8).value))
+    # Update the sheet cells
+    try:
+        sheet.update_cell(idx, 4, new_loans)  # loans column index
+        sheet.update_cell(idx, 3, new_money)  # money column index
+        # Save last_deposit as ISO8601 with Z
+        new_date_str = datetime.utcnow().replace(second=0, microsecond=0, tzinfo=UTC).isoformat().replace("+00:00", "Z")
+        sheet.update_cell(idx, 7, new_date_str)  # last_deposit column index
+
+        append_history(sheet, idx, 8, {"amount": amount, "date": new_date_str})
+        update_weekly_payback(sheet, idx, new_loans, float(row["trust"]))
+        update_weeks_since(sheet, idx, json.loads(sheet.cell(idx, 8).value))
+    except Exception as e:
+        return await interaction.followup.send(f"❌ Failed to update sheet: {e}")
 
     await interaction.followup.send(
-        f"💵 Deposited ${amount}. Debt ${new_loans}. Balance ${new_money}. Weekly pay: ${sheet.cell(idx,9).value}"
+        f"💵 Deposited ${amount} via trade ID {valid_trade['id']}.\n"
+        f"Debt ${new_loans}. Balance ${new_money}. Weekly pay: ${sheet.cell(idx, 9).value}"
     )
+
+
 
 
 @bot.tree.command(name="balance_aa", description="Show AA balances")
@@ -2411,12 +2562,15 @@ async def balance_aa(interaction, aa_name: str):
     if not row:
         return await interaction.followup.send(f"❌ No account `{aa_name}` or you don’t have access.")
 
-
     loans, money, trading = int(row["loans"]), int(row["money"]), int(row["trading"])
     weekly, weeks = float(row["loan_weekly"]), int(row["loan_weeks_since"])
-    await interaction.followup.send(
-        f"**{aa_name}**\nMoney: ${money}\nLoans: ${loans}  Weekly Pay: ${weekly:.2f}\nWeeks Since Last Payment: {weeks}\nTrading: ${trading}"
+    embed = discord.Embed(
+        title="**DS**",
+        colour=discord.Colour.dark_gold(),
+        description=f"**{aa_name}**\nMoney: ${money}\nLoans: ${loans}  Weekly Pay: ${weekly:.2f}\nWeeks Since Last Payment: {weeks}\nTrading: ${trading}"
     )
+    embed.set_footer(text="Brought to you by INTRA")
+    await interaction.followup.send(embed=embed)
 
 
 @bot.tree.command(name="trust_aa", description="Set trust rate on an AA (Staff only)")
@@ -2500,8 +2654,18 @@ async def balance(interaction: discord.Interaction):
     money = row.get("money", "0")
     loans = row.get("loans", "0")
     trust = row.get("trust", "0")
+    balance_message = (
+        f"💰 Balance: ${money}\n"
+        f"💸 Loans: ${loans}\n"
+        f"🤝 Trust Level: ${trust}"
+    )
+    embed = discord.Embed(
+        title=f"Your Balance",
+        colour=discord.Colour.dark_gold(),
+        description=balance_message
+    )
     await interaction.followup.send(
-        f"💰 Balance: ${money}\n💸 Loans: ${loans}\n🤝 Trust Level: ${trust}"
+        embed=embed
     )
 
 
@@ -2524,40 +2688,161 @@ async def take_loan(interaction: discord.Interaction, amount: int):
 
     new_loan = current_loans + amount
     sheet.update_cell(row_index, 4, new_loan)
-    sheet.update_cell(row_index, 6, datetime.utcnow().strftime("%Y-%m-%d"))
+    sheet.update_cell(row_index, 7, datetime.utcnow().strftime("%Y-%m-%d"))
     await interaction.followup.send(f"✅ Loan of ${amount} taken. Total debt: ${new_loan}")
 
+
+import json
+from datetime import datetime
+import discord
+from discord import app_commands
+import requests
+from dateutil.parser import isoparse
+from dateutil.tz import UTC
 
 @bot.tree.command(name="deposit", description="Deposit into safekeep")
 @app_commands.describe(amount="How much to deposit")
 async def deposit(interaction: discord.Interaction, amount: int):
     await interaction.response.defer()
+
     if amount <= 0:
         return await interaction.followup.send("❌ Amount must be positive.")
+
+    # Get user row (implement this to get user's row and index from your sheet)
     sheet, row_index, row = get_user_row(interaction.user.id)
     if not row:
         return await interaction.followup.send("❌ You don't have an account.")
 
+    date_sheet_str = row.get("deposit_history", None)
+
+    try:
+        # Parse sheet date, set seconds and microseconds to 0, ensure UTC aware
+        sheet_date = (
+            isoparse(date_sheet_str)
+            .replace(second=0, microsecond=0)
+            .astimezone(UTC)
+            if date_sheet_str else None
+        )
+    except Exception:
+        sheet_date = None
+
+    # API setup
+    API_KEY_PERS = "7f07d02e27f57fdba1f9"
+    GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY_PERS}"
+
+    # Get Neprito's nation ID
+    nation_id_query = """
+    query {
+      nations(nation_name: "Neprito") {
+        data {
+          id
+        }
+      }
+    }
+    """
+    try:
+        res = requests.post(GRAPHQL_URL, json={"query": nation_id_query}).json()
+        neprito_data = res["data"]["nations"]["data"]
+        if not neprito_data:
+            return await interaction.followup.send("❌ Could not find nation 'Neprito'.")
+        neprito_id = int(neprito_data[0]["id"])
+    except Exception as e:
+        return await interaction.followup.send(f"❌ Error fetching Neprito ID: {e}")
+
+    # Get last trades for Neprito
+    trade_query = """
+    query {
+      nations(nation_name: "Neprito") {
+        data {
+          trades(offer_resource: "food") {
+            id
+            sender_id
+            offer_resource
+            offer_amount
+            price
+            accepted
+            date
+          }
+        }
+      }
+    }
+    """
+    try:
+        response = requests.post(GRAPHQL_URL, json={"query": trade_query})
+        trades = response.json()["data"]["nations"]["data"][0]["trades"]
+    except Exception as e:
+        return await interaction.followup.send(f"❌ Error fetching trades: {e}")
+
+    if not trades:
+        return await interaction.followup.send("❌ No trades found for Neprito.")
+
+    # Sort trades descending by date
+    trades = sorted(trades, key=lambda t: isoparse(t["date"]).replace(second=0, microsecond=0).astimezone(UTC), reverse=True)
+
+    latest_trade = trades[0]
+    trade_date = isoparse(latest_trade["date"]).replace(second=0, microsecond=0).astimezone(UTC)
+
+    # Debug print exactly as you requested
+    if trade_date == sheet_date:
+        print("No")
+        print(trade_date)
+        print(date_sheet_str)
+    else:
+        print("Yes")
+        print(trade_date)
+        print(date_sheet_str)
+
+    # Check if trade date matches sheet date
+    if sheet_date is not None and trade_date == sheet_date:
+        return await interaction.followup.send("❌ Trade already processed, not enough funds to deposit again.")
+
+    # Validate the trade: accepted, sender_id in members, offer_amount=1, offer_resource="food"
+    try:
+        member_ids = json.loads(row.get("members", "[]"))
+    except Exception:
+        member_ids = []
+
+    if not (latest_trade["accepted"] and int(latest_trade["sender_id"]) in member_ids and
+            latest_trade["offer_amount"] == 1 and latest_trade["offer_resource"] == "food"):
+        return await interaction.followup.send("❌ No valid matching trade found.")
+
+    # Check amount requested vs trade price
+    trade_paid = int(latest_trade["price"])
+    if amount > trade_paid:
+        return await interaction.followup.send(
+            f"❌ You offered to deposit ${amount}, but the trade only paid ${trade_paid}."
+        )
+
+    # Deposit logic
     current_loans = int(row["loans"])
     current_balance = int(row["money"])
-    to_loan = min(amount, current_loans)
-    to_balance = amount - to_loan
+    to_loan = min(trade_paid, current_loans)
+    to_balance = trade_paid - to_loan
     new_loans = current_loans - to_loan
     new_balance = current_balance + to_balance
 
     if new_balance > 1_000_000_000:
         return await interaction.followup.send("❌ Cannot exceed safekeep limit of $1,000,000,000.")
 
-    sheet.update_cell(row_index, 4, new_loans)
-    sheet.update_cell(row_index, 3, new_balance)
-    sheet.update_cell(row_index, 7, datetime.utcnow().strftime("%Y-%m-%d"))
+    # Save date back as ISO8601 string with Z timezone indicator
+    new_date_str = trade_date.isoformat().replace("+00:00", "Z")
 
-    msg = f"💵 Deposit of ${amount} processed.\n"
+    try:
+        sheet.update_cell(row_index, 4, new_loans)        # loans column index
+        sheet.update_cell(row_index, 3, new_balance)      # money column index
+        sheet.update_cell(row_index, 8, new_date_str)     # deposit_history column index
+    except Exception as e:
+        return await interaction.followup.send(f"❌ Failed to update sheet: {e}")
+
+    # Confirmation message
+    msg = f"💵 Deposit of ${trade_paid} processed from trade ID `{latest_trade['id']}`.\n"
     if to_loan > 0:
         msg += f"🧾 ${to_loan} went to repay loans (remaining debt: ${new_loans}).\n"
     if to_balance > 0:
         msg += f"💰 ${to_balance} added to balance (new balance: ${new_balance})."
     await interaction.followup.send(msg)
+
+
 
 
 @bot.tree.command(name="trust", description="Set a user's trust level")
