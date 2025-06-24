@@ -2783,13 +2783,18 @@ async def next_turn(table_id):
     table = poker_tables[table_id]
     channel = bot.get_channel(table_id)
 
-    # Check if round should end
-    active_players = [p for pid, p in table['players'].items() if pid in table['turn_order'] and not p.folded and p.balance > 0]
-    if len(active_players) <= 1 or all(p.current_bet == table['current_bet'] for p in active_players):
-        await end_round(table_id)
+    # Get current active players
+    active_players = [
+        p for pid, p in table['players'].items()
+        if pid in table['turn_order'] and not p.folded and p.balance > 0
+    ]
+
+    # If only one active player left → they win immediately
+    if len(active_players) == 1:
+        await end_round(table_id, forced_winner=active_players[0])
         return
 
-    # Get next player in turn
+    # Skip turns until a valid player is found
     while True:
         if table['turn_index'] >= len(table['turn_order']):
             table['turn_index'] = 0
@@ -2808,7 +2813,7 @@ async def next_turn(table_id):
             view=view
         )
 
-        # Wait up to 60 seconds for button interaction
+        # Wait up to 60 seconds for a button interaction
         def check(inter: discord.Interaction):
             return inter.user.id == pid and inter.message.id == message.id
 
@@ -2818,22 +2823,34 @@ async def next_turn(table_id):
             player.folded = True
             await channel.send(f"⏰ {player.user.mention} took too long and folded.")
 
-        break  # End turn after this playe
+            # Re-check how many are left
+            remaining = [
+                p for pid, p in table['players'].items()
+                if pid in table['turn_order'] and not p.folded and p.balance > 0
+            ]
+            if len(remaining) == 1:
+                await end_round(table_id, forced_winner=remaining[0])
+                return
+            else:
+                # Try next player
+                await next_turn(table_id)
+            return
 
-
-async def end_round(table_id):
+        break  # Exit loop after one turn is handled
+async def end_round(table_id, forced_winner=None):
     table = poker_tables[table_id]
     players = table['players']
     players_in_game = [p for p in players.values() if not p.folded]
 
-    # Example: assigning dummy hands and results — you should later replace this with real hand comparison logic.
     actions = []
-    winner = None
 
-    if not players_in_game:
+    if forced_winner:
+        forced_winner.balance += table['pot']
+        result_msg = f"🏆 {forced_winner.user.display_name} wins by default (others folded/timed out) and takes ${table['pot']}!"
+    elif not players_in_game:
         result_msg = "❌ All players folded. No winner."
     else:
-        # Choose the first player as winner (placeholder logic)
+        # Placeholder: pick first non-folded player
         winner = players_in_game[0]
         winner.balance += table['pot']
         result_msg = f"🏆 Winner: {winner.user.display_name} wins ${table['pot']}!"
@@ -2843,7 +2860,7 @@ async def end_round(table_id):
             actions.append(f"{player.user.display_name}: Folded")
         else:
             actions.append(
-                f"{player.user.display_name}: Called ${player.current_bet}, Remaining Balance: ${player.balance}"
+                f"{player.user.display_name}: Called ${player.current_bet}, Balance: ${player.balance}"
             )
 
     action_summary = "\n".join(actions)
