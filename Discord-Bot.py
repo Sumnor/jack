@@ -2637,58 +2637,30 @@ class PokerPlayer:
         self.balance = 0
         self.current_bet = 0
 
-class PokerView(discord.ui.View):
-    def __init__(self, table_id, player_id):
-        super().__init__(timeout=None)
-        self.table_id = table_id
-        self.player_id = player_id
+async def next_turn(table_id):
+    table = poker_tables[table_id]
+    channel = bot.get_channel(table_id)
 
-    @discord.ui.button(label="Fold", style=discord.ButtonStyle.danger)
-    async def fold(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != self.player_id:
-            await interaction.response.send_message("Not your turn!", ephemeral=True)
-            return
-        table = poker_tables[self.table_id]
-        table['players'][self.player_id].folded = True
-        await interaction.response.send_message("You folded.", ephemeral=True)
-        await next_turn(self.table_id)
+    while True:
+        if table['turn_index'] >= len(table['turn_order']):
+            table['turn_index'] = 0
 
-    @discord.ui.button(label="Check/Call", style=discord.ButtonStyle.secondary)
-    async def call(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != self.player_id:
-            await interaction.response.send_message("Not your turn!", ephemeral=True)
-            return
-        table = poker_tables[self.table_id]
-        player = table['players'][self.player_id]
-        call_amount = table['current_bet'] - player.current_bet
-        if call_amount > player.balance:
-            call_amount = player.balance
-        player.balance -= call_amount
-        table['pot'] += call_amount
-        player.current_bet = table['current_bet']
-        await interaction.response.send_message(f"You called ${call_amount}.", ephemeral=True)
-        await next_turn(self.table_id)
+        pid = table['turn_order'][table['turn_index']]
+        table['turn_index'] += 1
+        player = table['players'][pid]
 
-    @discord.ui.button(label="Raise $10", style=discord.ButtonStyle.primary)
-    async def raise_bet(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != self.player_id:
-            await interaction.response.send_message("Not your turn!", ephemeral=True)
-            return
-        table = poker_tables[self.table_id]
-        player = table['players'][self.player_id]
-        raise_amount = 10
-        total_bet = table['current_bet'] + raise_amount
-        to_call = total_bet - player.current_bet
-        if to_call > player.balance:
-            await interaction.response.send_message("Insufficient balance.", ephemeral=True)
-            return
-        player.balance -= to_call
-        table['pot'] += to_call
-        player.current_bet = total_bet
-        table['current_bet'] = total_bet
-        table['raise_by'] = self.player_id
-        await interaction.response.send_message(f"You raised ${raise_amount}. Total bet is now ${total_bet}.", ephemeral=True)
-        await next_turn(self.table_id)
+        if player.folded or player.balance <= 0:
+            continue
+
+        view = PokerView(table_id, pid)
+        await channel.send(
+            f"🎯 {player.user.mention}, it's your turn.\n"
+            f"Pot: ${table['pot']} | Your Balance: ${player.balance} | Current Bet: ${table['current_bet']}",
+            view=view
+        )
+
+        # The button handler now takes care of waiting and continuing
+        break
 
 @bot.tree.command(name="poker", description="Start a poker table")
 async def poker(interaction: discord.Interaction):
@@ -2771,41 +2743,42 @@ async def start_poker_round(interaction: discord.Interaction):
     await interaction.followup.send("🟢 Poker round started!", ephemeral=True)
     await next_turn(interaction.channel.id)
 
+async def handle_action(interaction, table_id, player_id, action):
+    table = poker_tables[table_id]
+    player = table['players'][player_id]
+
+    if interaction.user.id != player_id:
+        await interaction.response.send_message("Not your turn.", ephemeral=True)
+        return
+
+    if action == "fold":
+        player.folded = True
+        await interaction.response.send_message(f"{player.user.mention} folded.")
+    elif action == "call":
+        to_call = table['current_bet'] - player.current_bet
+        if player.balance >= to_call:
+            player.balance -= to_call
+            player.current_bet += to_call
+            table['pot'] += to_call
+        await interaction.response.send_message(f"{player.user.mention} called ${to_call}.")
+    elif action == "raise":
+        raise_amount = 10  # You can make this dynamic later
+        total_bet = table['current_bet'] + raise_amount
+        to_call = total_bet - player.current_bet
+        if player.balance >= to_call:
+            player.balance -= to_call
+            player.current_bet += to_call
+            table['pot'] += to_call
+            table['current_bet'] = player.current_bet
+            table['raise_by'] = player_id
+        await interaction.response.send_message(f"{player.user.mention} raised to ${total_bet}.")
+
+    await next_turn(table_id)
+
+
 async def next_turn(table_id):
     table = poker_tables[table_id]
     channel = bot.get_channel(table_id)
-
-    active_players = [
-        p for pid, p in table['players'].items()
-        if pid in table['turn_order'] and not p.folded and p.balance > 0
-    ]
-
-    everyone_called = all(p.current_bet == table['current_bet'] for p in active_players)
-    if len(active_players) <= 1 or everyone_called:
-        if table['stage'] == 'pre-flop':
-            table['stage'] = 'flop'
-            table['community_cards'] = [table['deck'].pop() for _ in range(3)]
-            await channel.send(f"🃏 Community cards: {' '.join(table['community_cards'])}")
-            await reset_bets_and_continue(table_id)
-            return
-
-        elif table['stage'] == 'flop':
-            table['stage'] = 'turn'
-            table['community_cards'].append(table['deck'].pop())
-            await channel.send(f"🃏 Community cards: {' '.join(table['community_cards'])}")
-            await reset_bets_and_continue(table_id)
-            return
-
-        elif table['stage'] == 'turn':
-            table['stage'] = 'river'
-            table['community_cards'].append(table['deck'].pop())
-            await channel.send(f"🃏 Community cards: {' '.join(table['community_cards'])}")
-            await reset_bets_and_continue(table_id)
-            return
-
-        elif table['stage'] == 'river':
-            await end_round(table_id)
-            return
 
     while True:
         if table['turn_index'] >= len(table['turn_order']):
@@ -2819,20 +2792,13 @@ async def next_turn(table_id):
             continue
 
         view = PokerView(table_id, pid)
-        message = await channel.send(
+        await channel.send(
             f"🎯 {player.user.mention}, it's your turn.\n"
             f"Pot: ${table['pot']} | Your Balance: ${player.balance} | Current Bet: ${table['current_bet']}",
             view=view
         )
 
-        def check(inter: discord.Interaction):
-            return inter.user.id == pid and inter.message.id == message.id
-
-        try:
-            await bot.wait_for("interaction", check=check, timeout=60)
-        except asyncio.TimeoutError:
-            player.folded = True
-            await channel.send(f"⏰ {player.user.mention} took too long and folded.")
+        # The button handler now takes care of waiting and continuing
         break
 
 async def reset_bets_and_continue(table_id):
