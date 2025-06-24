@@ -2780,35 +2780,45 @@ async def start_poker_round(interaction: discord.Interaction):
 
 async def next_turn(table_id):
     table = poker_tables[table_id]
-    players = table['players']
-    turn_order = table['turn_order']
+    channel = bot.get_channel(table_id)
 
-    # Check if betting round is over
-    if all(p.folded or p.current_bet == table['current_bet'] for pid, p in players.items() if pid in turn_order):
+    # Check if round should end
+    active_players = [p for pid, p in table['players'].items() if pid in table['turn_order'] and not p.folded and p.balance > 0]
+    if len(active_players) <= 1 or all(p.current_bet == table['current_bet'] for p in active_players):
         await end_round(table_id)
         return
 
-    while table['turn_index'] < len(turn_order):
-        pid = turn_order[table['turn_index']]
-        player = players[pid]
+    # Get next player in turn
+    while True:
+        if table['turn_index'] >= len(table['turn_order']):
+            table['turn_index'] = 0
+
+        pid = table['turn_order'][table['turn_index']]
+        table['turn_index'] += 1
+        player = table['players'][pid]
 
         if player.folded or player.balance <= 0:
-            table['turn_index'] += 1
             continue
 
         view = PokerView(table_id, pid)
-        channel = bot.get_channel(table_id)
-        await channel.send(
-            f"{player.user.mention}, it's your turn.\n"
-            f"💰 Pot: ${table['pot']} | Your Balance: ${player.balance} | Current Bet: ${table['current_bet']}",
+        message = await channel.send(
+            f"🎯 {player.user.mention}, it's your turn.\n"
+            f"Pot: ${table['pot']} | Your Balance: ${player.balance} | Current Bet: ${table['current_bet']}",
             view=view
         )
-        table['turn_index'] += 1
-        return
 
-    # If we got here, all turns are done. Go back to start to check again.
-    table['turn_index'] = 0
-    await next_turn(table_id)
+        # Wait up to 60 seconds for button interaction
+        def check(inter: discord.Interaction):
+            return inter.user.id == pid and inter.message.id == message.id
+
+        try:
+            await bot.wait_for("interaction", check=check, timeout=60)
+        except asyncio.TimeoutError:
+            player.folded = True
+            await channel.send(f"⏰ {player.user.mention} took too long and folded.")
+
+        break  # End turn after this player
+
 
 def deal_cards(table):
     deck = [f"{r}{s}" for r in "23456789TJQKA" for s in "♠♥♦♣"]
