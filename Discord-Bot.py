@@ -2620,261 +2620,189 @@ async def resolve_round(table_id):
     await channel.send("🌀 Round complete. Players may now place new bets with `/bet_blackjack` or new users can `/join_blackjack`.")
 
 
-MAX_PLAYERS = 10
+import discord
+from discord.ext import commands
+from discord import app_commands
+import random
+import asyncio
+from typing import Dict, List
 
-SUITS = ['♥', '♦', '♣', '♠']
-RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
-
-def create_deck():
-    return [f"{rank}{suit}" for suit in SUITS for rank in RANKS]
-
-def evaluate_hand(cards: List[str], community: List[str]) -> int:
-    # Simplified: We'll score hand by sum of card ranks for demonstration
-    # You can replace with real poker hand evaluator (e.g. https://github.com/chenosaurus/poker)
-    rank_value = {r: i for i, r in enumerate(RANKS, 2)}
-    all_cards = cards + community
-    value = sum(rank_value[card[:-1]] for card in all_cards)
-    return value
+intents = discord.Intents.default()
+intents.message_content = True
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 poker_tables: Dict[int, Dict] = {}
 
-class ActionButtons(discord.ui.View):
-    def __init__(self, player_id, table_id):
-        super().__init__(timeout=120)
-        self.player_id = player_id
+class PokerPlayer:
+    def __init__(self, user: discord.User):
+        self.user = user
+        self.hand = []
+        self.folded = False
+        self.balance = 0
+        self.current_bet = 0
+
+class PokerView(discord.ui.View):
+    def __init__(self, table_id, player_id):
+        super().__init__(timeout=None)
         self.table_id = table_id
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id != self.player_id:
-            await interaction.response.send_message("Not your turn!", ephemeral=True)
-            return False
-        return True
-
-    @discord.ui.button(label="Check/Call", style=discord.ButtonStyle.primary)
-    async def check_call(self, interaction: discord.Interaction, button: discord.ui.Button):
-        table = poker_tables[self.table_id]
-        table['player_actions'][self.player_id] = 'call'
-        await interaction.response.send_message("You checked/called.", ephemeral=True)
-        await advance_turn(self.table_id)
-
-    @discord.ui.button(label="Raise", style=discord.ButtonStyle.success)
-    async def raise_bet(self, interaction: discord.Interaction, button: discord.ui.Button):
-        table = poker_tables[self.table_id]
-        # For simplicity fixed raise amount:
-        raise_amount = 10
-        table['player_actions'][self.player_id] = f'raise {raise_amount}'
-        await interaction.response.send_message(f"You raised by ${raise_amount}.", ephemeral=True)
-        await advance_turn(self.table_id)
+        self.player_id = player_id
 
     @discord.ui.button(label="Fold", style=discord.ButtonStyle.danger)
     async def fold(self, interaction: discord.Interaction, button: discord.ui.Button):
-        table = poker_tables[self.table_id]
-        table['player_status'][self.player_id] = 'folded'
-        await interaction.response.send_message("You folded.", ephemeral=True)
-        await advance_turn(self.table_id)
-
-async def advance_turn(table_id):
-    table = poker_tables[table_id]
-
-    # Find next active player who hasn't acted this betting round
-    players = list(table['players'].keys())
-    current_index = players.index(table['current_player'])
-    for _ in range(len(players)):
-        current_index = (current_index + 1) % len(players)
-        next_player = players[current_index]
-        if table['player_status'][next_player] == 'active' and next_player not in table['player_actions']:
-            table['current_player'] = next_player
-            await prompt_player_action(table_id, next_player)
+        if interaction.user.id != self.player_id:
+            await interaction.response.send_message("Not your turn!", ephemeral=True)
             return
+        table = poker_tables[self.table_id]
+        table['players'][self.player_id].folded = True
+        await interaction.response.send_message("You folded.", ephemeral=True)
+        await next_turn(self.table_id)
 
-    # All players acted, move to next stage
-    await proceed_next_stage(table_id)
+    @discord.ui.button(label="Check/Call", style=discord.ButtonStyle.secondary)
+    async def call(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.player_id:
+            await interaction.response.send_message("Not your turn!", ephemeral=True)
+            return
+        table = poker_tables[self.table_id]
+        player = table['players'][self.player_id]
+        call_amount = table['current_bet'] - player.current_bet
+        player.balance -= call_amount
+        table['pot'] += call_amount
+        player.current_bet = table['current_bet']
+        await interaction.response.send_message(f"You called ${call_amount}.", ephemeral=True)
+        await next_turn(self.table_id)
 
-async def prompt_player_action(table_id, player_id):
-    table = poker_tables[table_id]
-    player = table['players'][player_id]
-    # DM player their cards and current community cards
-    try:
-        embed = discord.Embed(title="Your Turn to Act", color=discord.Color.blue())
-        embed.add_field(name="Your Cards", value=", ".join(player['hole_cards']), inline=False)
-        embed.add_field(name="Community Cards", value=", ".join(table['community_cards']) if table['community_cards'] else "None", inline=False)
-        await player['user'].send(embed=embed, view=ActionButtons(player_id, table_id))
-    except discord.Forbidden:
-        # Can't DM, maybe remove player or skip
-        pass
+    @discord.ui.button(label="Raise $10", style=discord.ButtonStyle.primary)
+    async def raise_bet(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.player_id:
+            await interaction.response.send_message("Not your turn!", ephemeral=True)
+            return
+        table = poker_tables[self.table_id]
+        player = table['players'][self.player_id]
+        raise_amount = 10
+        total_bet = table['current_bet'] + raise_amount
+        to_call = total_bet - player.current_bet
+        player.balance -= to_call
+        table['pot'] += to_call
+        player.current_bet = total_bet
+        table['current_bet'] = total_bet
+        table['raise_by'] = self.player_id
+        await interaction.response.send_message(f"You raised ${raise_amount}. Total bet is now ${total_bet}.", ephemeral=True)
+        await next_turn(self.table_id)
 
-async def proceed_next_stage(table_id):
-    table = poker_tables[table_id]
-    table['player_actions'] = {}
-    # Cycle stages: pre-flop -> flop -> turn -> river -> showdown
-    stages = ['pre-flop', 'flop', 'turn', 'river', 'showdown']
-    current_stage_index = stages.index(table['stage'])
-    if current_stage_index == len(stages) - 1:
-        # Showdown time!
-        await resolve_round(table_id)
-        return
-
-    next_stage = stages[current_stage_index + 1]
-    table['stage'] = next_stage
-
-    if next_stage == 'flop':
-        table['community_cards'] = [table['deck'].pop() for _ in range(3)]
-    elif next_stage in ['turn', 'river']:
-        table['community_cards'].append(table['deck'].pop())
-
-    # Announce community cards in thread
-    channel = bot.get_channel(table_id)
-    await channel.send(f"🃏 **{next_stage.capitalize()} cards:** {', '.join(table['community_cards'])}")
-
-    # Reset player actions and start with first active player
-    table['player_actions'] = {}
-    active_players = [pid for pid, status in table['player_status'].items() if status == 'active']
-    if not active_players:
-        await channel.send("All players folded. Round ends.")
-        await resolve_round(table_id)
-        return
-
-    table['current_player'] = active_players[0]
-    await prompt_player_action(table_id, table['current_player'])
-
-async def resolve_round(table_id):
-    table = poker_tables[table_id]
-    channel = bot.get_channel(table_id)
-
-    # Determine active players who didn't fold
-    active_players = [p for p in table['players'].values() if table['player_status'][p['user'].id] == 'active']
-
-    if not active_players:
-        await channel.send("No active players remain. No winners this round.")
-        table['started'] = False
-        return
-
-    # Evaluate hands and find winner(s)
-    best_score = 0
-    winners = []
-    for pdata in active_players:
-        score = evaluate_hand(pdata['hole_cards'], table['community_cards'])
-        pdata['score'] = score
-        if score > best_score:
-            best_score = score
-            winners = [pdata]
-        elif score == best_score:
-            winners.append(pdata)
-
-    total_pot = sum(p['bet'] for p in table['players'].values() if p['bet'] is not None)
-
-    if winners:
-        payout_per_winner = total_pot // len(winners)
-        winner_mentions = []
-        for winner in winners:
-            winner_mentions.append(f"{winner['user'].mention} (${payout_per_winner})")
-
-        winners_text = ", ".join(winner_mentions)
-        await channel.send(f"🏆 Round over! Winner(s): {winners_text} with score {best_score}. Total pot: ${total_pot} split evenly.")
-    else:
-        await channel.send("💥 All players folded or busted. No winners this round.")
-
-    # Reset for next round but keep players
-    for pdata in table['players'].values():
-        pdata['hole_cards'] = []
-        pdata['bet'] = None
-        table['player_status'][pdata['user'].id] = 'active'
-
-    table['community_cards'] = []
-    table['deck'] = []
-    table['stage'] = 'pre-flop'
-    table['started'] = False
-    table.pop('player_actions', None)
-    table.pop('current_player', None)
-
-    await channel.send("🌀 Round complete. Players may place new bets or start a new round.")
-
-@bot.tree.command(name="poker", description="Create a poker table")
+@bot.tree.command(name="poker", description="Start a poker table")
 async def poker(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
-    if interaction.channel.id in poker_tables:
-        return await interaction.followup.send("Poker table already active in this channel.", ephemeral=True)
-
     thread = await interaction.channel.create_thread(name=f"Poker Table - {interaction.user.display_name}", type=discord.ChannelType.private_thread)
     poker_tables[thread.id] = {
         'host': interaction.user.id,
-        'players': {interaction.user.id: {'user': interaction.user, 'hole_cards': [], 'bet': None}},
-        'player_status': {interaction.user.id: 'active'},
-        'stage': 'pre-flop',
-        'community_cards': [],
-        'deck': [],
-        'started': False,
+        'players': {},
+        'pot': 0,
+        'current_bet': 0,
+        'raise_by': None,
+        'turn_order': [],
+        'turn_index': 0
     }
-    await thread.send(f"🎲 Poker table created by {interaction.user.mention}. Use `/join_poker` to join the game.")
+    await interaction.followup.send(f"🃏 Poker table created in {thread.mention}! Use `/join_poker` and `/buyin_poker`.", ephemeral=True)
 
-    await interaction.followup.send(f"Poker table thread created: {thread.mention}", ephemeral=True)
-
-@bot.tree.command(name="join_poker", description="Join the poker table in this thread")
+@bot.tree.command(name="join_poker", description="Join a poker thread")
 async def join_poker(interaction: discord.Interaction):
-    # Check if channel is a thread and poker table exists there
-    if interaction.channel.id not in poker_tables:
-        return await interaction.response.send_message(
-            "No active poker table found in this channel. Please join the poker thread and run this command there.", ephemeral=True)
-
-    table = poker_tables[interaction.channel.id]
+    if not isinstance(interaction.channel, discord.Thread):
+        return await interaction.response.send_message("Use this in a poker thread.", ephemeral=True)
+    table = poker_tables.get(interaction.channel.id)
+    if not table:
+        return await interaction.response.send_message("No active table.", ephemeral=True)
     if interaction.user.id in table['players']:
-        return await interaction.response.send_message("You are already in the poker table.", ephemeral=True)
+        return await interaction.response.send_message("Already joined.", ephemeral=True)
+    table['players'][interaction.user.id] = PokerPlayer(interaction.user)
+    await interaction.response.send_message("Joined poker table! Use `/buyin_poker`.", ephemeral=True)
 
-    if len(table['players']) >= MAX_PLAYERS:
-        return await interaction.response.send_message("Poker table is full.", ephemeral=True)
+@bot.tree.command(name="buyin_poker", description="Add funds to your poker account")
+@app_commands.describe(amount="Amount to deposit")
+async def buyin_poker(interaction: discord.Interaction, amount: int):
+    if not isinstance(interaction.channel, discord.Thread):
+        return await interaction.response.send_message("Use this in a poker thread.", ephemeral=True)
+    table = poker_tables.get(interaction.channel.id)
+    if not table or interaction.user.id not in table['players']:
+        return await interaction.response.send_message("Not at this table.", ephemeral=True)
+    player = table['players'][interaction.user.id]
+    player.balance += amount
+    await interaction.response.send_message(f"Added ${amount} to your poker balance. Total: ${player.balance}.", ephemeral=True)
 
-    table['players'][interaction.user.id] = {'user': interaction.user, 'hole_cards': [], 'bet': None}
-    table['player_status'][interaction.user.id] = 'active'
-    await interaction.response.send_message(f"{interaction.user.mention} joined the poker table!", ephemeral=False)
+@bot.tree.command(name="start_poker_round", description="Start a poker round (host only)")
+async def start_poker_round(interaction: discord.Interaction):
+    if not isinstance(interaction.channel, discord.Thread):
+        return await interaction.response.send_message("Use this in a poker thread.", ephemeral=True)
+    table = poker_tables.get(interaction.channel.id)
+    if not table or interaction.user.id != table['host']:
+        return await interaction.response.send_message("Only the host can start a round.", ephemeral=True)
+    table['pot'] = 0
+    table['current_bet'] = 0
+    table['raise_by'] = None
+    table['turn_order'] = [pid for pid in table['players'] if not table['players'][pid].folded and table['players'][pid].balance > 0]
+    table['turn_index'] = 0
 
+    if not table['turn_order']:
+        return await interaction.response.send_message("No players with funds to play.", ephemeral=True)
 
-@bot.tree.command(name="start_poker", description="Start the poker round (host only)")
-async def start_poker(interaction: discord.Interaction):
-    if interaction.channel.id not in poker_tables:
-        return await interaction.response.send_message("No poker table in this channel.", ephemeral=True)
+    for pid in table['turn_order']:
+        table['players'][pid].current_bet = 0
+        table['players'][pid].folded = False
 
-    table = poker_tables[interaction.channel.id]
-    if table['host'] != interaction.user.id:
-        return await interaction.response.send_message("Only the host can start the game.", ephemeral=True)
+    await interaction.response.send_message("🟢 Poker round started!", ephemeral=True)
+    await next_turn(interaction.channel.id)
 
-    if table['started']:
-        return await interaction.response.send_message("Round already started.", ephemeral=True)
+async def next_turn(table_id):
+    table = poker_tables[table_id]
+    while True:
+        if all(p.folded or p.current_bet == table['current_bet'] for p in table['players'].values() if p.user.id in table['turn_order']):
+            await end_round(table_id)
+            return
 
-    if len(table['players']) < 2:
-        return await interaction.response.send_message("Need at least 2 players to start.", ephemeral=True)
+        if table['turn_index'] >= len(table['turn_order']):
+            table['turn_index'] = 0
 
-    # Initialize round
-    table['started'] = True
-    table['deck'] = create_deck()
-    random.shuffle(table['deck'])
-    table['community_cards'] = []
-    table['stage'] = 'pre-flop'
-    table['player_status'] = {pid: 'active' for pid in table['players']}
-    table['player_actions'] = {}
-    table['current_player'] = list(table['players'].keys())[0]
+        pid = table['turn_order'][table['turn_index']]
+        player = table['players'][pid]
 
-    # Deal 2 cards each
-    for pdata in table['players'].values():
-        pdata['hole_cards'] = [table['deck'].pop(), table['deck'].pop()]
-        pdata['bet'] = 10  # fixed blind bet for demo, replace with betting logic
+        if player.folded or player.balance <= 0:
+            table['turn_index'] += 1
+            continue
 
-    channel = bot.get_channel(interaction.channel.id)
-    await channel.send("🃏 Round started! Hole cards dealt. Players, check your DMs.")
+        view = PokerView(table_id, pid)
+        channel = bot.get_channel(table_id)
+        await channel.send(f"{player.user.mention}, it's your turn. Pot: ${table['pot']} | Your Balance: ${player.balance} | Current Bet: ${table['current_bet']}", view=view)
+        table['turn_index'] += 1
+        break
 
-    # DM players their cards and prompt first player's action
-    for pdata in table['players'].values():
-        try:
-            embed = discord.Embed(title="Poker Round Started", color=discord.Color.green())
-            embed.add_field(name="Your Hole Cards", value=", ".join(pdata['hole_cards']), inline=False)
-            await pdata['user'].send(embed=embed)
-        except discord.Forbidden:
-            pass  # can't DM
+async def end_round(table_id):
+    table = poker_tables[table_id]
+    players = table['players']
+    players_in_game = [p for p in players.values() if not p.folded]
 
-    # Prompt first player
-    await prompt_player_action(interaction.channel.id, table['current_player'])
+    # Example: assigning dummy hands and results — you should later replace this with real hand comparison logic.
+    actions = []
+    winner = None
 
-    await interaction.response.send_message("Poker round started!", ephemeral=True)
+    if not players_in_game:
+        result_msg = "❌ All players folded. No winner."
+    else:
+        # Choose the first player as winner (placeholder logic)
+        winner = players_in_game[0]
+        winner.balance += table['pot']
+        result_msg = f"🏆 Winner: {winner.user.display_name} wins ${table['pot']}!"
 
+    for player in players.values():
+        if player.folded:
+            actions.append(f"{player.user.display_name}: Folded")
+        else:
+            actions.append(
+                f"{player.user.display_name}: Called ${player.current_bet}, Remaining Balance: ${player.balance}"
+            )
+
+    action_summary = "\n".join(actions)
+    channel = bot.get_channel(table_id)
+    await channel.send(f"🎯 Round Results:\n{result_msg}\n\n📝 Actions:\n{action_summary}")
+    await channel.send("🌀 Round reset. Use `/start_poker_round` for the next round.")
 
 @bot.tree.command(name="open_account", description="Request to open an INTRA personal account")
 @app_commands.describe(nation_id="Your own id, not the AA one")
