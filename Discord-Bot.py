@@ -2639,51 +2639,49 @@ class PokerPlayer:
 
 class PokerView(discord.ui.View):
     def __init__(self, table_id, player_id):
-        super().__init__(timeout=None)
+        super().__init__(timeout=60)  # Optional timeout
         self.table_id = table_id
         self.player_id = player_id
 
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.player_id:
+            await interaction.response.send_message("Not your turn.", ephemeral=True)
+            return False
+        return True
+
     @discord.ui.button(label="Fold", style=discord.ButtonStyle.danger)
     async def fold(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != self.player_id:
-            await interaction.response.send_message("Not your turn!", ephemeral=True)
-            return
+        await interaction.response.defer(ephemeral=True)
         table = poker_tables[self.table_id]
         table['players'][self.player_id].folded = True
-        await interaction.response.send_message("You folded.", ephemeral=True)
         await next_turn(self.table_id)
 
     @discord.ui.button(label="Check/Call", style=discord.ButtonStyle.secondary)
     async def call(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != self.player_id:
-            await interaction.response.send_message("Not your turn!", ephemeral=True)
-            return
+        await interaction.response.defer(ephemeral=True)
         table = poker_tables[self.table_id]
         player = table['players'][self.player_id]
         call_amount = table['current_bet'] - player.current_bet
         player.balance -= call_amount
-        table['pot'] += call_amount
         player.current_bet = table['current_bet']
-        await interaction.response.send_message(f"You called ${call_amount}.", ephemeral=True)
+        table['pot'] += call_amount
         await next_turn(self.table_id)
 
     @discord.ui.button(label="Raise $10", style=discord.ButtonStyle.primary)
     async def raise_bet(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user.id != self.player_id:
-            await interaction.response.send_message("Not your turn!", ephemeral=True)
-            return
+        await interaction.response.defer(ephemeral=True)
         table = poker_tables[self.table_id]
         player = table['players'][self.player_id]
         raise_amount = 10
         total_bet = table['current_bet'] + raise_amount
         to_call = total_bet - player.current_bet
         player.balance -= to_call
-        table['pot'] += to_call
         player.current_bet = total_bet
+        table['pot'] += to_call
         table['current_bet'] = total_bet
         table['raise_by'] = self.player_id
-        await interaction.response.send_message(f"You raised ${raise_amount}. Total bet is now ${total_bet}.", ephemeral=True)
         await next_turn(self.table_id)
+
 
 @bot.tree.command(name="poker", description="Start a poker table")
 async def poker(interaction: discord.Interaction):
@@ -2733,12 +2731,13 @@ async def start_poker_round(interaction: discord.Interaction):
     if not table or interaction.user.id != table['host']:
         return await interaction.response.send_message("Only the host can start a round.", ephemeral=True)
 
-    # Filter eligible players
     table['turn_order'] = [pid for pid, p in table['players'].items() if p.balance > 0]
     if len(table['turn_order']) < 2:
         return await interaction.response.send_message("Need at least 2 players with balance to start.", ephemeral=True)
 
-    # Reset round state
+    await interaction.response.defer()
+
+    # Reset table state
     table['pot'] = 0
     table['current_bet'] = 0
     table['raise_by'] = None
@@ -2767,7 +2766,7 @@ async def start_poker_round(interaction: discord.Interaction):
         except discord.Forbidden:
             await interaction.channel.send(f"❗ Couldn't DM {player.user.mention}", delete_after=10)
 
-    # Optional: Opening blind bet from first player
+    # Opening blind bet from first player
     opener_id = table['turn_order'][0]
     opener = table['players'][opener_id]
     opening_bet = 10
@@ -2776,7 +2775,9 @@ async def start_poker_round(interaction: discord.Interaction):
         opener.current_bet = opening_bet
         table['pot'] += opening_bet
         table['current_bet'] = opening_bet
-        await interaction.c
+
+    await interaction.followup.send("🎮 Poker round has started! Players have been dealt their hands.")
+    await next_turn(interaction.channel.id)
 
 async def next_turn(table_id):
     table = poker_tables[table_id]
@@ -2817,14 +2818,7 @@ async def next_turn(table_id):
             player.folded = True
             await channel.send(f"⏰ {player.user.mention} took too long and folded.")
 
-        break  # End turn after this player
-
-
-def deal_cards(table):
-    deck = [f"{r}{s}" for r in "23456789TJQKA" for s in "♠♥♦♣"]
-    random.shuffle(deck)
-    for pid in table['turn_order']:
-        table['players'][pid].hand = [deck.pop(), deck.pop()]
+        break  # End turn after this playe
 
 
 async def end_round(table_id):
