@@ -2729,14 +2729,13 @@ async def buyin_poker(interaction: discord.Interaction, amount: int):
 
 @bot.tree.command(name="start_poker_round", description="Start a poker round (host only)")
 async def start_poker_round(interaction: discord.Interaction):
+    await interaction.response.defer()
     if not isinstance(interaction.channel, discord.Thread):
-        return await interaction.response.send_message("Use this in a poker thread.", ephemeral=True)
+        return await interaction.followup.send("Use this in a poker thread.", ephemeral=True)
 
     table = poker_tables.get(interaction.channel.id)
     if not table or interaction.user.id != table['host']:
-        return await interaction.response.send_message("Only the host can start a round.", ephemeral=True)
-
-    await interaction.response.defer()
+        return await interaction.followup.send("Only the host can start a round.", ephemeral=True)
 
     table['pot'] = 0
     table['current_bet'] = 0
