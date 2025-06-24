@@ -2728,29 +2728,55 @@ async def buyin_poker(interaction: discord.Interaction, amount: int):
 async def start_poker_round(interaction: discord.Interaction):
     if not isinstance(interaction.channel, discord.Thread):
         return await interaction.response.send_message("Use this in a poker thread.", ephemeral=True)
-    
+
     table = poker_tables.get(interaction.channel.id)
     if not table or interaction.user.id != table['host']:
         return await interaction.response.send_message("Only the host can start a round.", ephemeral=True)
 
-    active_players = [pid for pid, p in table['players'].items() if p.balance > 0]
-    if len(active_players) < 2:
-        return await interaction.response.send_message("At least 2 players with funds are required.", ephemeral=True)
+    # Filter eligible players
+    table['turn_order'] = [pid for pid, p in table['players'].items() if p.balance > 0]
+    if len(table['turn_order']) < 2:
+        return await interaction.response.send_message("Need at least 2 players with balance to start.", ephemeral=True)
 
-    # Reset table state
+    # Reset round state
     table['pot'] = 0
     table['current_bet'] = 0
     table['raise_by'] = None
-    table['turn_order'] = active_players
     table['turn_index'] = 0
 
-    for pid in active_players:
+    for pid in table['turn_order']:
         player = table['players'][pid]
         player.folded = False
         player.current_bet = 0
+        player.hand = []
 
-    await interaction.response.send_message("🟢 Poker round started!", ephemeral=True)
-    await next_turn(interaction.channel.id)
+    # Deal cards
+    def deal_cards(table):
+        deck = [f"{r}{s}" for r in "23456789TJQKA" for s in "♠♥♦♣"]
+        random.shuffle(deck)
+        for pid in table['turn_order']:
+            table['players'][pid].hand = [deck.pop(), deck.pop()]
+
+    deal_cards(table)
+
+    # DM each player their hand
+    for pid in table['turn_order']:
+        player = table['players'][pid]
+        try:
+            await player.user.send(f"🃏 Your hand: {' '.join(player.hand)}")
+        except discord.Forbidden:
+            await interaction.channel.send(f"❗ Couldn't DM {player.user.mention}", delete_after=10)
+
+    # Optional: Opening blind bet from first player
+    opener_id = table['turn_order'][0]
+    opener = table['players'][opener_id]
+    opening_bet = 10
+    if opener.balance >= opening_bet:
+        opener.balance -= opening_bet
+        opener.current_bet = opening_bet
+        table['pot'] += opening_bet
+        table['current_bet'] = opening_bet
+        await interaction.c
 
 async def next_turn(table_id):
     table = poker_tables[table_id]
@@ -2783,6 +2809,12 @@ async def next_turn(table_id):
     # If we got here, all turns are done. Go back to start to check again.
     table['turn_index'] = 0
     await next_turn(table_id)
+
+def deal_cards(table):
+    deck = [f"{r}{s}" for r in "23456789TJQKA" for s in "♠♥♦♣"]
+    random.shuffle(deck)
+    for pid in table['turn_order']:
+        table['players'][pid].hand = [deck.pop(), deck.pop()]
 
 
 async def end_round(table_id):
