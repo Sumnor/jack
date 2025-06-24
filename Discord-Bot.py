@@ -2627,10 +2627,6 @@ import random
 import asyncio
 from typing import Dict, List
 
-intents = discord.Intents.default()
-intents.message_content = True
-bot = commands.Bot(command_prefix="!", intents=intents)
-
 poker_tables: Dict[int, Dict] = {}
 
 class PokerPlayer:
