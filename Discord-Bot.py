@@ -2728,37 +2728,43 @@ async def buyin_poker(interaction: discord.Interaction, amount: int):
 async def start_poker_round(interaction: discord.Interaction):
     if not isinstance(interaction.channel, discord.Thread):
         return await interaction.response.send_message("Use this in a poker thread.", ephemeral=True)
+    
     table = poker_tables.get(interaction.channel.id)
     if not table or interaction.user.id != table['host']:
         return await interaction.response.send_message("Only the host can start a round.", ephemeral=True)
+
+    active_players = [pid for pid, p in table['players'].items() if p.balance > 0]
+    if len(active_players) < 2:
+        return await interaction.response.send_message("At least 2 players with funds are required.", ephemeral=True)
+
+    # Reset table state
     table['pot'] = 0
     table['current_bet'] = 0
     table['raise_by'] = None
-    table['turn_order'] = [pid for pid in table['players'] if not table['players'][pid].folded and table['players'][pid].balance > 0]
+    table['turn_order'] = active_players
     table['turn_index'] = 0
 
-    if not table['turn_order']:
-        return await interaction.response.send_message("No players with funds to play.", ephemeral=True)
-
-    for pid in table['turn_order']:
-        table['players'][pid].current_bet = 0
-        table['players'][pid].folded = False
+    for pid in active_players:
+        player = table['players'][pid]
+        player.folded = False
+        player.current_bet = 0
 
     await interaction.response.send_message("🟢 Poker round started!", ephemeral=True)
     await next_turn(interaction.channel.id)
 
 async def next_turn(table_id):
     table = poker_tables[table_id]
-    while True:
-        if all(p.folded or p.current_bet == table['current_bet'] for p in table['players'].values() if p.user.id in table['turn_order']):
-            await end_round(table_id)
-            return
+    players = table['players']
+    turn_order = table['turn_order']
 
-        if table['turn_index'] >= len(table['turn_order']):
-            table['turn_index'] = 0
+    # Check if betting round is over
+    if all(p.folded or p.current_bet == table['current_bet'] for pid, p in players.items() if pid in turn_order):
+        await end_round(table_id)
+        return
 
-        pid = table['turn_order'][table['turn_index']]
-        player = table['players'][pid]
+    while table['turn_index'] < len(turn_order):
+        pid = turn_order[table['turn_index']]
+        player = players[pid]
 
         if player.folded or player.balance <= 0:
             table['turn_index'] += 1
@@ -2766,9 +2772,18 @@ async def next_turn(table_id):
 
         view = PokerView(table_id, pid)
         channel = bot.get_channel(table_id)
-        await channel.send(f"{player.user.mention}, it's your turn. Pot: ${table['pot']} | Your Balance: ${player.balance} | Current Bet: ${table['current_bet']}", view=view)
+        await channel.send(
+            f"{player.user.mention}, it's your turn.\n"
+            f"💰 Pot: ${table['pot']} | Your Balance: ${player.balance} | Current Bet: ${table['current_bet']}",
+            view=view
+        )
         table['turn_index'] += 1
-        break
+        return
+
+    # If we got here, all turns are done. Go back to start to check again.
+    table['turn_index'] = 0
+    await next_turn(table_id)
+
 
 async def end_round(table_id):
     table = poker_tables[table_id]
