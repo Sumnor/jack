@@ -2145,7 +2145,7 @@ async def register(interaction: discord.Interaction, nation_id: str):
 
     async def is_banker(interaction):
         return (
-        any(role.name == "Member" for role in interaction.user.roles)
+        any(role.name == "Starborn" for role in interaction.user.roles)
             or str(interaction.user.id) == "1148678095176474678"
         )
 
