@@ -6060,7 +6060,7 @@ GOV_ROLE = "Government member"
 REGISTRY_SHEET = "Registrations"
 ENTRIES_SHEET = "LottoEntries"
 # --- Configuration ---
-def get_sheet(sheet_name: str):
+def get_sheet_s(sheet_name: str):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(get_credentials(), scope)
     client = gspread.authorize(creds)
@@ -6076,7 +6076,7 @@ def update_cell(sheet, row: int, col: int, value):
 # ---------- Lotto Sheet Helpers ----------
 
 def get_lotto_entries():
-    sheet = get_sheet("LottoEntries")
+    sheet = get_sheet_s("LottoEntries")
     rows = sheet.get_all_records()
     if not rows:
         header = ["WinningNumbers", "Pot", "GovCut", "IACut", "1Correct", "2Correct", "3Correct", "4Correct", "5Correct", "6Correct"]
@@ -6122,7 +6122,7 @@ def clear_lotto_winners():
 # ---------- Registrations ----------
 
 def get_registered_row(user_id: int) -> Optional[dict]:
-    sheet = get_sheet("Registrations")
+    sheet = get_sheet_s("Registrations")
     records = sheet.get_all_records()
     for row in records:
         if str(row.get("DiscordID")).strip() == str(user_id):
@@ -6132,7 +6132,7 @@ def get_registered_row(user_id: int) -> Optional[dict]:
 # ---------- Winner Check ----------
 
 def check_winners_and_update_sheet(winning_numbers: list[int]):
-    reg_sheet = get_sheet("Registrations")
+    reg_sheet = get_sheet_s("Registrations")
     lotto_sheet, lotto_row = get_lotto_entries()
 
     all_users = reg_sheet.get_all_records()
@@ -6201,7 +6201,7 @@ async def set_numbers(interaction: discord.Interaction):
 
     try:
         numbers = random.sample(range(1, 101), 6)
-        sheet = get_sheet("LottoEntries")
+        sheet = get_sheet_s("LottoEntries")
         sheet.update_cell(2, 1, ",".join(map(str, numbers)))  # A2
         
         # Update pot split properly (do NOT write labels in row 2)
@@ -6337,8 +6337,8 @@ async def buy_lotto_ticket(interaction: Interaction, numbers: str):
         await interaction.followup.send(f"⚠️ Warning: Trade was for ${matching_trade['price']}, not $500,000.")
 
     try:
-        reg_sheet = get_sheet("Registrations")
-        lotto_sheet = get_sheet("LottoEntries")
+        reg_sheet = get_sheet_s("Registrations")
+        lotto_sheet = get_sheet_s("LottoEntries")
         all_rows = reg_sheet.get_all_records()
         row_index = next((i + 2 for i, r in enumerate(all_rows) if str(r.get("DiscordID")).strip() == user_id), None)
 
@@ -6385,8 +6385,8 @@ async def weekly_lotto_reset(interaction: Interaction):
     await interaction.response.defer(ephemeral=True)
 
     try:
-        reg_sheet = get_sheet("Registrations")
-        lotto_sheet = get_sheet("LottoEntries")
+        reg_sheet = get_sheet_s("Registrations")
+        lotto_sheet = get_sheet_s("LottoEntries")
         winning_numbers = get_winning_numbers()
 
         all_regs = reg_sheet.get_all_records()
