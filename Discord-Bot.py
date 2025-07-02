@@ -4,6 +4,7 @@ import math
 import io
 from collections import defaultdict
 import matplotlib.pyplot as plt
+from typing import Dict, List, Optional, Union
 import matplotlib.dates as mdates
 from matplotlib.ticker import FuncFormatter, MaxNLocator
 from datetime import datetime, timezone, timedelta
