@@ -6049,4 +6049,512 @@ async def send_message_to_channels(interaction: discord.Interaction, channel_ids
         f"❌ Failed for **{failed_count}** channel(s)."
     )
 
+LOTTO_NATION_ID = 649719
+POOL_CHANNEL_ID = 1389997182001610963
+POOL_MESSAGE_ID = 1389997309835874418
+YOUR_GUILD_ID = 1186655069530243183
+YOUR_CHANNEL_ID = 1389997182001610963
+GOV_ROLE = "Government member"
+REGISTRY_SHEET = "Registrations"
+ENTRIES_SHEET = "LottoEntries"
+# --- Configuration ---
+def get_sheet(sheet_name: str):
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(get_credentials(), scope)
+    client = gspread.authorize(creds)
+    return client.open(sheet_name).sheet1
+
+def get_column_index(sheet, col_name):
+    header = sheet.row_values(1)
+    return header.index(col_name) + 1
+
+def update_cell(sheet, row: int, col: int, value):
+    sheet.update_cell(row, col, value)
+
+# ---------- Lotto Sheet Helpers ----------
+
+def get_lotto_entries():
+    sheet = get_sheet("LottoEntries")
+    rows = sheet.get_all_records()
+    if not rows:
+        header = ["WinningNumbers", "Pot", "GovCut", "IACut", "1Correct", "2Correct", "3Correct", "4Correct", "5Correct", "6Correct"]
+        sheet.append_row(header)
+        return sheet, {k: "" for k in header}
+    return sheet, rows[0]
+
+def get_current_pot():
+    sheet, _ = get_lotto_entries()
+    pot_cell = sheet.cell(2, 2).value
+    return int(pot_cell) if pot_cell and pot_cell.isdigit() else 0
+
+def update_pot(new_amount: int):
+    sheet, _ = get_lotto_entries()
+    sheet.update_cell(2, 2, str(new_amount))
+
+def set_winning_numbers(numbers: list[int]):
+    sheet, _ = get_lotto_entries()
+    update_cell(sheet, 2, 1, ",".join(map(str, numbers)))
+    clear_lotto_winners()
+
+def get_winning_numbers() -> list[int]:
+    sheet, _ = get_lotto_entries()
+    raw = sheet.cell(2, 1).value
+    return list(map(int, raw.replace(" ", "").split(","))) if raw else []
+
+def update_lotto_winners(count: int, discord_id: str):
+    sheet, row = get_lotto_entries()
+    col_name = f"{count}Correct"
+    col_idx = get_column_index(sheet, col_name)
+    current_value = row.get(col_name, "")
+    ids = [i for i in current_value.split(",") if i.strip()]
+    if discord_id not in ids:
+        ids.append(discord_id)
+    update_cell(sheet, 2, col_idx, ",".join(ids))
+
+def clear_lotto_winners():
+    sheet, _ = get_lotto_entries()
+    for i in range(1, 7):
+        col_name = f"{i}Correct"
+        update_cell(sheet, 2, get_column_index(sheet, col_name), "")
+
+# ---------- Registrations ----------
+
+def get_registered_row(user_id: int) -> Optional[dict]:
+    sheet = get_sheet("Registrations")
+    records = sheet.get_all_records()
+    for row in records:
+        if str(row.get("DiscordID")).strip() == str(user_id):
+            return row
+    return None
+
+# ---------- Winner Check ----------
+
+def check_winners_and_update_sheet(winning_numbers: list[int]):
+    reg_sheet = get_sheet("Registrations")
+    lotto_sheet, lotto_row = get_lotto_entries()
+
+    all_users = reg_sheet.get_all_records()
+    pot = get_current_pot()
+
+    payout_percent = {1: 0.005, 2: 0.01, 3: 0.02, 4: 0.03, 5: 0.04, 6: 1.0}
+    payouts = {}
+
+    for user in all_users:
+        discord_id = str(user.get("DiscordID"))
+        ticket_data = user.get("LotteryNumbers", "")
+        if not ticket_data:
+            continue
+
+        tickets = [t.strip() for t in ticket_data.split(",") if t.strip()]
+        for ticket_str in tickets:
+            try:
+                ticket = list(map(int, ticket_str.replace(" ", "").split("|")))
+                if len(ticket) != 6:
+                    continue
+                matches = len(set(ticket) & set(winning_numbers))
+                if 1 <= matches <= 6:
+                    update_lotto_winners(matches, discord_id)
+                    reward = int(pot * payout_percent[matches])
+                    if discord_id in payouts:
+                        payouts[discord_id] += reward
+                    else:
+                        payouts[discord_id] = reward
+            except Exception as e:
+                print(f"[ERROR] Malformed ticket: {ticket_str}, error: {e}")
+
+    total_payout = sum(payouts.values())
+    new_pot = pot - total_payout
+    update_pot(new_pot)
+
+    print(f"🏆 Total paid out: ${total_payout:,}")
+    print(f"💰 New pot: ${new_pot:,}")
+    for winner, amount in payouts.items():
+        print(f"✅ {winner} won ${amount:,}")
+
+
+# ---------- Update Pool Message ----------
+
+async def update_pool_message(pot: int, gov_cut: int, ia_cut: int):
+    channel = get_lotto_channel()  # Your method to get the target channel
+    message_id = get_pool_message_id()  # Your method to get the stored message ID
+    message = await channel.fetch_message(message_id)
+
+    embed = discord.Embed(
+        title="🎟️ Lottery Pool",
+        description=(
+            f"**Total Pot:** ${pot:,}\n"
+            f"**Government Cut:** ${gov_cut:,}\n"
+            f"**IA Cut:** ${ia_cut:,}"
+        ),
+        color=discord.Color.gold()
+    )
+    await message.edit(embed=embed)
+
+
+# ---------- Weekly Reset ----------
+@bot.tree.command(name="set_numbers", description="Set winning numbers (Government only)")
+@app_commands.checks.has_role("Government member")
+async def set_numbers(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+
+    try:
+        numbers = random.sample(range(1, 101), 6)
+        sheet = get_sheet("LottoEntries")
+        sheet.update_cell(2, 1, ",".join(map(str, numbers)))  # A2
+        
+        # Update pot split properly (do NOT write labels in row 2)
+        total_pot = get_current_pot()
+        gov_cut = int(total_pot * 0.9)
+        ia_cut = total_pot - gov_cut
+        
+        # Save values (only values) to cells B2, C2, D2
+        sheet.update_cell(2, 2, str(total_pot))  # B2 = Pot
+        sheet.update_cell(2, 3, str(gov_cut))    # C2 = GovCut
+        sheet.update_cell(2, 4, str(ia_cut))     # D2 = IACut
+
+        await interaction.followup.send(f"✅ Winning numbers set.\n🎰 Pot: ${total_pot:,}\n👥 Gov: ${gov_cut:,} | 🛠️ IA: ${ia_cut:,}", ephemeral=True)
+
+        # Update the winners
+        check_winners_and_update_sheet(numbers)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error: {e}", ephemeral=True)
+
+@bot.tree.command(name="pool_ratio", description="Show pool split (admin only).")
+async def pool_ratio(interaction: Interaction):
+    if "Government member" not in [role.name for role in interaction.user.roles]:
+        await interaction.response.send_message("Unauthorized.", ephemeral=True)
+        return
+
+    total_pool, gov_cut, ia_cut = calculate_pool()
+
+    await interaction.response.send_message(
+        f"🎰 Pool split:\n- Government Pool: ${gov_cut:,}\n- IA Cut: ${ia_cut:,}",
+        ephemeral=True
+    )
+
+@bot.tree.command(name="buy_lotto_ticket", description="Buy a lottery ticket (500k via 1 iron trade)")
+@app_commands.describe(numbers="Pick 6 numbers between 1–100, comma-separated")
+async def buy_lotto_ticket(interaction: Interaction, numbers: str):
+    await interaction.response.defer(ephemeral=True)
+
+    user_id = str(interaction.user.id)
+    row = get_registered_row(user_id)
+
+    if not row:
+        return await interaction.followup.send("❌ You're not registered.")
+
+    try:
+        user_nation_id = int(row.get("NationID", 0))
+        if not user_nation_id:
+            return await interaction.followup.send("❌ Your nation ID is missing.")
+    except Exception as e:
+        return await interaction.followup.send(f"❌ Invalid nation ID: {e}")
+
+    # Parse the input numbers
+    try:
+        number_list = [int(n.strip()) for n in numbers.replace(" ", "").split(",")]
+        if len(number_list) != 6 or any(n < 1 or n > 100 for n in number_list):
+            return await interaction.followup.send("❌ Invalid numbers. Pick exactly 6 between 1–100.")
+    except Exception:
+        return await interaction.followup.send("❌ Could not parse numbers. Use comma-separated values like: 4,22,78,19,63,45")
+
+    GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
+
+    # Get 'Kingdom of Duloc' nation ID
+    nation_id_query = """
+    query {
+      nations(nation_name: "Kingdom of Duloc") {
+        data {
+          id
+        }
+      }
+    }
+    """
+    try:
+        res = requests.post(GRAPHQL_URL, json={"query": nation_id_query}).json()
+        duloc_data = res["data"]["nations"]["data"]
+        if not duloc_data:
+            return await interaction.followup.send("❌ Could not find nation 'Kingdom of Duloc'.")
+        duloc_id = int(duloc_data[0]["id"])
+    except Exception as e:
+        return await interaction.followup.send(f"❌ Error fetching Kingdom of Duloc ID: {e}")
+
+    # Fetch recent trades to Duloc
+    trade_query = """
+    query {
+      nations(nation_name: "Kingdom of Duloc") {
+        data {
+          trades(offer_resource: "iron") {
+            id
+            sender_id
+            receiver_id
+            offer_resource
+            offer_amount
+            price
+            accepted
+            date
+          }
+        }
+      }
+    }
+    """
+    try:
+        res = requests.post(GRAPHQL_URL, json={"query": trade_query}).json()
+        trades = res["data"]["nations"]["data"][0]["trades"]
+    except Exception as e:
+        return await interaction.followup.send(f"❌ Error fetching trades: {e}")
+
+    if not trades:
+        return await interaction.followup.send("❌ No trades found for Kingdom of Duloc.")
+
+    matching_trade = next((
+        trade for trade in trades
+        if trade["offer_resource"] == "iron"
+        and int(trade["offer_amount"]) == 1
+        and trade.get("accepted")
+        and int(trade["sender_id"]) == user_nation_id
+        and int(trade["receiver_id"]) == duloc_id
+    ), None)
+
+    if not matching_trade:
+        return await interaction.followup.send("❌ No valid 1 iron trade found from your nation to Kingdom of Duloc.")
+
+    # Safely parse used trade IDs, handle int or empty gracefully
+    trade_id_str = str(matching_trade["id"])
+    used_trade_ids_cell = row.get("Lotto Dates", "")
+    if isinstance(used_trade_ids_cell, int):
+        used_trade_ids_cell = str(used_trade_ids_cell)
+    used_trade_ids = [tid.strip() for tid in used_trade_ids_cell.split(",") if tid.strip()]
+
+    if trade_id_str in used_trade_ids:
+        return await interaction.followup.send("❌ You've already used this trade to buy a ticket.")
+
+    # Warn if price isn't 500k
+    if int(matching_trade.get("price", 0)) != 500_000:
+        await interaction.followup.send(f"⚠️ Warning: Trade was for ${matching_trade['price']}, not $500,000.")
+
+    try:
+        reg_sheet = get_sheet("Registrations")
+        lotto_sheet = get_sheet("LottoEntries")
+        all_rows = reg_sheet.get_all_records()
+        row_index = next((i + 2 for i, r in enumerate(all_rows) if str(r.get("DiscordID")).strip() == user_id), None)
+
+        if row_index is None:
+            return await interaction.followup.send("❌ Error: You're not registered.")
+
+        # Append new ticket
+        existing_tickets = reg_sheet.cell(row_index, 5).value or ""
+        new_entry = "|".join(map(str, number_list))
+        updated_tickets = existing_tickets + "," + new_entry if existing_tickets else new_entry
+        reg_sheet.update_cell(row_index, 5, updated_tickets)
+
+        # Append trade ID to used trade IDs column
+        col_index = get_column_index(reg_sheet, "Lotto Dates")
+        trade_ids_cell = reg_sheet.cell(row_index, col_index).value or ""
+        if isinstance(trade_ids_cell, int):
+            trade_ids_cell = str(trade_ids_cell)
+        updated_trade_ids = (trade_ids_cell + "," + trade_id_str) if trade_ids_cell else trade_id_str
+        reg_sheet.update_cell(row_index, col_index, updated_trade_ids)
+
+        # Update pot amounts
+        current_pot = get_current_pot()
+        new_pot = current_pot + 500_000
+        gov_add = int(500_000 * 0.9)
+        ia_add = 500_000 - gov_add
+        update_pot(new_pot)
+
+        gov_cut = int(lotto_sheet.cell(2, 3).value or 0)
+        ia_cut = int(lotto_sheet.cell(2, 4).value or 0)
+        lotto_sheet.update_cell(2, 3, str(gov_cut + gov_add))
+        lotto_sheet.update_cell(2, 4, str(ia_cut + ia_add))
+
+        await interaction.followup.send("✅ Ticket purchased and trade recorded!")
+        await update_pool_message(new_pot, gov_cut + gov_add, ia_cut + ia_add)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to buy ticket: {e}")
+
+
+
+@bot.tree.command(name="weekly_lotto_reset", description="Run the weekly lotto reset (Government only)")
+@app_commands.checks.has_role(GOV_ROLE)
+async def weekly_lotto_reset(interaction: Interaction):
+    await interaction.response.defer(ephemeral=True)
+
+    try:
+        reg_sheet = get_sheet("Registrations")
+        lotto_sheet = get_sheet("LottoEntries")
+        winning_numbers = get_winning_numbers()
+
+        all_regs = reg_sheet.get_all_records()
+        # Track each user's highest correct count
+        user_best_match = {}
+        
+        for record in all_regs:
+            discord_id = str(record.get("DiscordID"))
+            tickets_str = record.get("LotteryNumbers", "")
+            if not tickets_str:
+                continue
+            tickets = tickets_str.split(",")
+            for ticket in tickets:
+                try:
+                    ticket_nums = list(map(int, ticket.strip().split("|")))
+                    correct_count = len(set(ticket_nums) & set(winning_numbers))
+                    if correct_count >= 1:
+                        user_best_match[discord_id] = max(user_best_match.get(discord_id, 0), correct_count)
+                except:
+                    continue
+        
+        # Convert to winners_by_correct
+        winners_by_correct = {i: [] for i in range(1, 7)}
+        for uid, best_match in user_best_match.items():
+            winners_by_correct[best_match].append(uid)
+
+
+        ping_lines = []
+        # Build winner map with highest category per user
+        user_best_counts = {}
+        for count in reversed(range(1, 7)):  # Start from 6 down to 1
+            for uid in winners_by_correct[count]:
+                if uid not in user_best_counts:
+                    user_best_counts[uid] = count
+        
+        # Group users by their best match count
+        count_to_users = {}
+        for uid, count in user_best_counts.items():
+            count_to_users.setdefault(count, []).append(uid)
+        
+        channel = interaction.channel
+        
+        if count_to_users:
+            # Sort counts ascending to show from 1 Number up
+            sorted_counts = sorted(count_to_users.keys())
+        
+            lines = [
+                f"@lotto players Welcome to the Big Dipper Lotto Weekly Drawing! The Winning Numbers were {', '.join(map(str, winning_numbers))} and the following people have won a portion of the pot!",
+            ]
+        
+            for count in sorted_counts:
+                mentions = [f"<@{uid}>" for uid in count_to_users[count]]
+                lines.append(f"{count} Number{'s' if count > 1 else ''}:\n" + ", ".join(mentions))
+        
+            lines.append("\n-# Your winnings will be sent to you within the next 24 hours!")
+        
+            await channel.send("PPL won:")
+            await channel.send("\n".join(lines))
+        else:
+            await channel.send(
+                "Hello @lotto players! During the weekly drawing we have found no winners. "
+                "Don't be discouraged! This just means the pot is increased for next week's drawing. Better luck next time!"
+            )
+
+
+        # Get pot and IA cut from sheet
+        pot = get_current_pot()
+        ia_cut_cell = lotto_sheet.cell(2, 4).value
+        old_ia_cut = int(ia_cut_cell) if ia_cut_cell and ia_cut_cell.isdigit() else 0
+
+        gov_cut = pot - old_ia_cut
+        if gov_cut < 0:
+            gov_cut = 0
+
+        # Save pot and gov cut (do NOT update IA cut here)
+        lotto_sheet.update_cell(2, 2, str(pot))     # Pot (B2)
+        lotto_sheet.update_cell(2, 3, str(gov_cut)) # GovCut (C2)
+
+        # Pay out rewards from gov_cut
+        percentages = {1: 0.005, 2: 0.01, 3: 0.02, 4: 0.05, 5: 0.10, 6: 1.0}
+        total_paid = 0
+
+        for i in range(1, 7):
+            winners = winners_by_correct[i]
+            if winners:
+                payout = int(gov_cut * percentages[i])
+                per_user = payout // len(winners)
+                total_paid += payout
+                for uid in winners:
+                    print(f"User {uid} gets ${per_user:,} for {i} correct.")
+
+        # Recalculate remaining gov cut and pot (IA cut never goes down)
+        remaining_gov = max(gov_cut - total_paid, 0)
+        new_pot = remaining_gov + old_ia_cut
+
+        # Update pot and gov cut again
+        update_pot(new_pot)  # Make sure this only updates Pot, not IA cut
+        lotto_sheet.update_cell(2, 3, str(remaining_gov))  # GovCut (C2)
+
+        # Ensure IA Cut never decreases (write back if needed)
+        ia_cut_cell_after = lotto_sheet.cell(2, 4).value
+        current_ia_cut = int(ia_cut_cell_after) if ia_cut_cell_after and ia_cut_cell_after.isdigit() else 0
+        if old_ia_cut > current_ia_cut:
+            lotto_sheet.update_cell(2, 4, str(old_ia_cut))
+
+        # Clear ticket entries but keep row 2 intact
+        num_rows = len(all_regs) + 1
+        reg_sheet.batch_clear([f"E2:E{num_rows}"])  # Clear LotteryNumbers (E2+)
+
+        # Clear winners below row 2, NOT row 2 itself
+        lotto_sheet.batch_clear(["A3:F10"])  # Adjust range depending on your winners rows
+
+        clear_lotto_winners()  # If you have helper for additional cleanup
+
+        # Update the pool message
+        await update_pool_message(new_pot, remaining_gov, old_ia_cut)
+
+        await interaction.followup.send("✅ Weekly lotto reset complete.", ephemeral=True)
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error: {e}", ephemeral=True)
+
+def get_lotto_channel():
+    guild = bot.get_guild(YOUR_GUILD_ID)
+    return guild.get_channel(YOUR_CHANNEL_ID)
+
+def get_pool_message_id():
+    return POOL_MESSAGE_ID  # Replace with actual message ID
+
+def find_iron_trade(user_nation_id: int):
+    GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
+    query = """
+    query ($id: Int!) {
+      nation(id: $id) {
+        trades(type: "offer") {
+          id
+          date
+          resource
+          quantity
+          price
+          accepted
+          seller {
+            id
+          }
+        }
+      }
+    }
+    """
+    variables = {"id": user_nation_id}
+    try:
+        res = requests.post(GRAPHQL_URL, json={"query": query, "variables": variables})
+        data = res.json()
+        trades = data.get("data", {}).get("nation", {}).get("trades", [])
+        for trade in trades:
+            if (
+                trade["resource"] == "iron"
+                and int(trade["quantity"]) == 1
+                and trade.get("accepted")
+                and str(trade.get("seller", {}).get("id")) == "649719"
+            ):
+                return trade
+    except Exception as e:
+        print(f"[ERROR] find_iron_trade: {e}")
+    return None
+
+
+def calculate_pool():
+    pot = get_current_pot()
+    gov_cut = int(pot * 0.9)
+    ia_cut = pot - gov_cut
+    return pot, gov_cut, ia_cut
+
 bot.run(bot_key)
