@@ -6038,7 +6038,8 @@ async def send_message_to_channels(interaction: discord.Interaction, channel_ids
         try:
             channel = await bot.fetch_channel(int(channel_id))
             if isinstance(channel, TextChannel):
-                await channel.send(message)
+                better_msg = message.replace(")(", "\n")
+                await channel.send(better_msg)
                 sent_count += 1
             else:
                 failed_count += 1
