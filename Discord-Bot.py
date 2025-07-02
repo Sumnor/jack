@@ -6433,7 +6433,7 @@ async def weekly_lotto_reset(interaction: Interaction):
             sorted_counts = sorted(count_to_users.keys())
         
             lines = [
-                f"@lotto players Welcome to the Big Dipper Lotto Weekly Drawing! The Winning Numbers were {', '.join(map(str, winning_numbers))} and the following people have won a portion of the pot!",
+                f"<@1388256392426688654> Welcome to the Big Dipper Lotto Weekly Drawing! The Winning Numbers were {', '.join(map(str, winning_numbers))} and the following people have won a portion of the pot!",
             ]
         
             for count in sorted_counts:
@@ -6446,7 +6446,7 @@ async def weekly_lotto_reset(interaction: Interaction):
             await channel.send("\n".join(lines))
         else:
             await channel.send(
-                "Hello @lotto players! During the weekly drawing we have found no winners. "
+                "Hello <@1388256392426688654>! During the weekly drawing we have found no winners. "
                 "Don't be discouraged! This just means the pot is increased for next week's drawing. Better luck next time!"
             )
 
