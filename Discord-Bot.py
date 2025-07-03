@@ -1900,7 +1900,60 @@ async def hourly_snapshot():
     except Exception as e:
         print(f"Error: {e}")
 
+@tasks.loop(hours=2)
+async def check_api_loop():
+    nation_id = "680627"  # Replace with a valid nation ID
+    score = get_nation_score(nation_id)
+    EG_ID = 1338510585595428895
 
+    if score is None:
+        channel = bot.get_channel(EG_ID)
+        message1 = (
+            f"# Important #\n"
+            f"The PnW API is currently offline so commands which use it are aswell. Those inculde:\n"
+            f"- All `/request_...` commands\n"
+            f"- `/nation_info`\n"
+            f"- The Lotto Commands\n"
+            f"You will be notified when the API is back online. Thanks for the understanding ||<@1192368632622219305>||"
+        )
+        message2 = (
+            f"# Good News #\n"
+            f"The API is back online, and so are the commands\n"
+            f"We thank you for your patience, have a cookie 🍪 ||<@1192368632622219305>||"
+        )
+        await channel.send(message1)
+        for _ in range(12):  # 24 * 5 mins = 2 hours
+            await asyncio.sleep(300)  # 5 minutes
+            score = get_nation_score(nation_id)
+            if score is not None:
+                await channel.send(message2)
+                return
+
+def get_nation_score(nation_id: str) -> float | None:
+    GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
+    query = """
+    query ($id: [Int!]) {
+      nations(id: $id) {
+        data {
+          id
+          nation_name
+          score
+        }
+      }
+    }
+    """
+    variables = {"id": [int(nation_id)]}
+    try:
+        res = requests.post(GRAPHQL_URL, json={"query": query, "variables": variables})
+        res.raise_for_status()
+        data = res.json()
+        nation_data = data["data"]["nations"]["data"]
+        if not nation_data:
+            return None
+        return float(nation_data[0]["score"])
+    except Exception as e:
+        print(f"[ERROR] get_nation_score: {e}")
+        return None
 
 @hourly_snapshot.before_loop
 async def before_hourly():
@@ -1919,6 +1972,8 @@ async def on_ready():
         hourly_snapshot.start()
     if not process_auto_requests.is_running():
         process_auto_requests.start()
+    if not check_api_loop.is_running():
+        check_api_loop.start()
     if not hasattr(bot, "war_check_started"):  # Prevent multiple starts if on_ready fires again
         bot.war_check_started = True
         bot.loop.create_task(hourly_war_check())
