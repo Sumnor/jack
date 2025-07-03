@@ -6249,17 +6249,32 @@ async def update_pool_message(pot: int, gov_cut: int, ia_cut: int):
     channel = get_lotto_channel()  # Your method to get the target channel
     message_id = get_pool_message_id()  # Your method to get the stored message ID
     message = await channel.fetch_message(message_id)
+    win1 = gov_cut*0.01
+    win2 = gov_cut*0.03
+    win3 = gov_cut*0.05
+    win4 = gov_cut*0.07
+    win5 = gov_cut*0.1
+    win6 = gov_cut
 
     embed = discord.Embed(
         title="🎟️ Lottery Pool",
         description=(
-            f"**Total Pot:** ${pot:,}\n"
-            f"**Government Cut:** ${gov_cut:,}\n"
-            f"**IA Cut:** ${ia_cut:,}"
+            f"**Member Pool:** ${gov_cut:,}\n"
+            f"**IA Cut(already deducted from the above):** ${ia_cut:,}\n"
+            f"**Winning Amounts:**\n"
+            f"- 1 Number = {int(win1):,} (1%)\n"
+            f"- 2 Numbers = {int(win2):,} (3%)\n"
+            f"- 3 Numbers = {int(win3):,} (5%)\n"
+            f"- 4 Numbers = {int(win4):,} (7%)\n"
+            f"- 5 Numbers ={int(win5):,} (10%)\n"
+            f"- All Numbers = {int(win6):,} (100%)\n"
+            f"Winner Announcements are each Saturday at 0:00 UTC\n"
+            f"-# Brought to you and funded by <@303031001116835842>"
         ),
         color=discord.Color.gold()
     )
     await message.edit(embed=embed)
+
 
 
 # ---------- Weekly Reset ----------
@@ -6283,7 +6298,7 @@ async def set_numbers(interaction: discord.Interaction):
         sheet.update_cell(2, 3, str(gov_cut))    # C2 = GovCut
         sheet.update_cell(2, 4, str(ia_cut))     # D2 = IACut
 
-        await interaction.followup.send(f"✅ Winning numbers set.\n🎰 Pot: ${total_pot:,}\n👥 Gov: ${gov_cut:,} | 🛠️ IA: ${ia_cut:,}", ephemeral=True)
+        await interaction.followup.send(f"✅ Winning numbers set.\n🎰 Pot: ${total_pot:,}\n👥 Members: ${gov_cut:,} | 🛠️ IA: ${ia_cut:,}", ephemeral=True)
 
         # Update the winners
         check_winners_and_update_sheet(numbers)
