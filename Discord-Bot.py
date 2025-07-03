@@ -698,7 +698,7 @@ class BlueGuy(discord.ui.View):
 
         # Reason field
         embed.add_field(name="Reason", value=reason, inline=False)
-        embed.add_field="Note", value=note, inline=False
+        embed.add_field(name="Note", value=note, inline=False)
 
         # Footer
         image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
