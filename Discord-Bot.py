@@ -1914,12 +1914,12 @@ async def check_api_loop():
             f"- All `/request_...` commands\n"
             f"- `/nation_info`\n"
             f"- The Lotto Commands\n"
-            f"You will be notified when the API is back online. Thanks for the understanding ||<@1192368632622219305>||"
+            f"You will be notified when the API is back online. Thanks for the understanding ||<@&1192368632622219305>||"
         )
         message2 = (
             f"# Good News #\n"
             f"The API is back online, and so are the commands\n"
-            f"We thank you for your patience, have a cookie 🍪 ||<@1192368632622219305>||"
+            f"We thank you for your patience, have a cookie 🍪 ||<@&1192368632622219305>||"
         )
         await channel.send(message1)
         for _ in range(12):  # 24 * 5 mins = 2 hours
