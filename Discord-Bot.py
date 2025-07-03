@@ -683,6 +683,7 @@ class BlueGuy(discord.ui.View):
             project_name = self.data.get("project_name", "?")
             reason = f"Build project: {project_name}"
             materials = self.data.get("materials", {})
+            note = self.data.get("note", "None")
 
         # Start embed description
         description_lines = [f"**Nation:** {nation_name} (`{nation_id}`)", "**Request:**"]
@@ -697,6 +698,7 @@ class BlueGuy(discord.ui.View):
 
         # Reason field
         embed.add_field(name="Reason", value=reason, inline=False)
+        embed.add_field="Note", value=note, inline=False
 
         # Footer
         image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
@@ -4704,7 +4706,8 @@ async def disable_auto_request(interaction: discord.Interaction):
     gasoline="Amount of gasoline requested",
     money="Amount of money requested",
     food="Amount of food requested",
-    munitions="Amount of munitions requested"
+    munitions="Amount of munitions requested",
+    note="A note"
 )
 async def request_for_ing(
     interaction: discord.Interaction,
@@ -4721,7 +4724,8 @@ async def request_for_ing(
     gasoline: str = "0",
     money: str = "0",
     food: str = "0",
-    munitions: str = "0"
+    munitions: str = "0",
+    note: str= "/"
 ):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
@@ -4779,6 +4783,7 @@ async def request_for_ing(
                 f"**Requested by:** {interaction.user.mention}\n"
                 f"**Request:**\n{description_text}\n"
                 f"**Reason:** Player support (with screenshot)\n"
+                f"**Note:** {note}\n"
             )
         )
         embed.set_image(url=screenshot.url)
@@ -4806,7 +4811,8 @@ async def request_for_ing(
     gasoline="Amount of gasoline requested",
     money="Amount of money requested",
     food="Amount of food requested",
-    munitions="Amount of munitions requested"
+    munitions="Amount of munitions requested",
+    note="A Note"
 )
 #@app_commands.choices(reason=reasons_for_grant)
 async def request_grant(
@@ -4824,6 +4830,7 @@ async def request_grant(
     money: str = "0",
     food: str = "0",
     munitions: str = "0",
+    note: str = "0",
 ):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
@@ -4883,11 +4890,13 @@ async def request_grant(
                 f"**Requested by:** {interaction.user.mention}\n"
                 f"**Request:**\n{description_text}\n"
                 f"**Reason:** {reason.title()}\n"
+                f"**Note:** {note}\n"
             )
         )
         image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
         embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
-
+        message = await interaction.followup.send("<@1390237054872322148> <@1388161354086617220>")
+        await message.delete()
         await interaction.followup.send(embed=embed, view=GrantView())
 
     except Exception as e:
@@ -5002,9 +5011,9 @@ reasons_for_grant = [
 ]
 
 @bot.tree.command(name="request_warchest", description="Request a  grant")
-@app_commands.describe(percent="How much percent of the warchest do you want")
+@app_commands.describe(percent="How much percent of the warchest do you want", note="A Note")
 @app_commands.choices(percent=percent_list)
-async def warchest(interaction: discord.Interaction, percent: app_commands.Choice[str]):
+async def warchest(interaction: discord.Interaction, percent: app_commands.Choice[str]), note: str = None:
     await interaction.response.defer()
     global commandscalled
     commandscalled["_global"] += 1
@@ -5168,10 +5177,13 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
                 f"**Requested by:** {interaction.user.mention}\n"
                 f"**Request:**\n{description_text}\n"
                 f"**Reason:** Warchest\n"
+                f"**Note:** {note}\n"
             )
         )
         image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
         embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
+        message = await interaction.followup.send("<@1390237054872322148> <@1388161354086617220>")
+        await message.delete()
         await interaction.followup.send(embed=embed, view=GrantView())
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {e}")
@@ -5894,7 +5906,7 @@ def get_materials(project_name):
 @bot.tree.command(name="request_project", description="Fetch resources for a project")
 #@app_commands.choices(project_name=aller_names)
 @app_commands.describe(project_name="Name of the project", tech_advancement="Is Technological Advancement active?")
-async def request_project(interaction: Interaction, project_name: str, tech_advancement: bool = False):
+async def request_project(interaction: Interaction, project_name: str, tech_advancement: bool = False, note: str = "None"):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
 
@@ -5937,12 +5949,13 @@ async def request_project(interaction: Interaction, project_name: str, tech_adva
             "\n".join([f"{mat}: {amount:,.0f}" for mat, amount in mats.items()]) +
             f"\n\n**Requested by:** {interaction.user.mention}\n"
             f"**Reason:**\nBuild project: {project_name.title()}"
+            f"**Note:** {note}\n" 
         )
         user_id = interaction.user.id
 
         await interaction.followup.send(
             embed=embed,
-            view=BlueGuy(category="project", data={"nation_name": nation_name, "nation_id": own_id, "project_name": project_name, "materials": mats, "person": user_id})
+            view=BlueGuy(category="project", data={"nation_name": nation_name, "nation_id": own_id, "project_name": project_name, "materials": mats, "person": user_id, "note": note})
         )
     else:
         await interaction.followup.send("❌ Project not found.")
