@@ -5013,7 +5013,7 @@ reasons_for_grant = [
 @bot.tree.command(name="request_warchest", description="Request a  grant")
 @app_commands.describe(percent="How much percent of the warchest do you want", note="A Note")
 @app_commands.choices(percent=percent_list)
-async def warchest(interaction: discord.Interaction, percent: app_commands.Choice[str]), note: str = None:
+async def warchest(interaction: discord.Interaction, percent: app_commands.Choice[str], note: str = None):
     await interaction.response.defer()
     global commandscalled
     commandscalled["_global"] += 1
