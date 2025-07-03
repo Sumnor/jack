@@ -683,7 +683,8 @@ class BlueGuy(discord.ui.View):
             project_name = self.data.get("project_name", "?")
             reason = f"Build project: {project_name}"
             materials = self.data.get("materials", {})
-            note = self.data.get("note", "None")
+            notes = self.data.get("note", "None")
+            note = f"Note: {notes}"
 
         # Start embed description
         description_lines = [f"**Nation:** {nation_name} (`{nation_id}`)", "**Request:**"]
