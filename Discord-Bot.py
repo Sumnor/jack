@@ -6444,14 +6444,18 @@ async def buy_lotto_ticket(interaction: Interaction, numbers: str):
         reg_sheet.update_cell(row_index, col_index, updated_trade_ids)
 
         # Update pot amounts
+        # Increase total pot
         current_pot = get_current_pot()
         new_pot = current_pot + 500_000
-        gov_add = int(500_000 * 0.9)
-        ia_add = 500_000 - gov_add
         update_pot(new_pot)
-
+        
+        # Split ticket price into Gov and IA cut
+        gov_add = 450_000  # 90% of ticket price
+        ia_add = 50_000    # 10% of ticket price
+        
         gov_cut = int(lotto_sheet.cell(2, 3).value or 0)
         ia_cut = int(lotto_sheet.cell(2, 4).value or 0)
+        
         lotto_sheet.update_cell(2, 3, str(gov_cut + gov_add))
         lotto_sheet.update_cell(2, 4, str(ia_cut + ia_add))
 
