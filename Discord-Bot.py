@@ -6253,8 +6253,7 @@ async def update_pool_message(pot: int, gov_cut: int, ia_cut: int):
     win2 = gov_cut*0.03
     win3 = gov_cut*0.05
     win4 = gov_cut*0.07
-    win5 = gov_cut*0.1
-    win6 = gov_cut
+    win5 = gov_cut
 
     embed = discord.Embed(
         title="🎟️ Lottery Pool",
@@ -6266,8 +6265,7 @@ async def update_pool_message(pot: int, gov_cut: int, ia_cut: int):
             f"- 2 Numbers = {int(win2):,} (3%)\n"
             f"- 3 Numbers = {int(win3):,} (5%)\n"
             f"- 4 Numbers = {int(win4):,} (7%)\n"
-            f"- 5 Numbers ={int(win5):,} (10%)\n"
-            f"- All Numbers = {int(win6):,} (100%)\n"
+            f"- 5 Numbers ={int(win5):,} (100%)\n"
             f"Winner Announcements are each Saturday at 0:00 UTC\n"
             f"-# Brought to you and funded by <@303031001116835842>"
         ),
