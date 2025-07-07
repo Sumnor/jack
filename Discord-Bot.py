@@ -6148,7 +6148,7 @@ def get_lotto_entries():
     sheet = get_sheet_s("LottoEntries")
     rows = sheet.get_all_records()
     if not rows:
-        header = ["WinningNumbers", "Pot", "GovCut", "IACut", "1Correct", "2Correct", "3Correct", "4Correct", "5Correct", "6Correct"]
+        header = ["WinningNumbers", "Pot", "GovCut", "IACut", "FutPot", "1Correct", "2Correct", "3Correct", "4Correct", "5Correct", "6Correct"]
         sheet.append_row(header)
         return sheet, {k: "" for k in header}
     return sheet, rows[0]
@@ -6450,17 +6450,20 @@ async def buy_lotto_ticket(interaction: Interaction, numbers: str):
         update_pot(new_pot)
         
         # Split ticket price into Gov and IA cut
-        gov_add = 450_000  # 90% of ticket price
+        gov_add = 400_000
+        fut_add = 50_000# 90% of ticket price
         ia_add = 50_000    # 10% of ticket price
         
         gov_cut = int(lotto_sheet.cell(2, 3).value or 0)
         ia_cut = int(lotto_sheet.cell(2, 4).value or 0)
+        fut_cut = int(lotto_sheet.cell(2, 5).value or 0)
         
         lotto_sheet.update_cell(2, 3, str(gov_cut + gov_add))
         lotto_sheet.update_cell(2, 4, str(ia_cut + ia_add))
+         lotto_sheet.update_cell(2, 5, str(fut_cut + fut_add))
 
         await interaction.followup.send("✅ Ticket purchased and trade recorded!")
-        await update_pool_message(new_pot, gov_cut + gov_add, ia_cut + ia_add)
+        await update_pool_message(new_pot, gov_cut + gov_add, ia_cut + ia_add, fut_cut + fut_add)
 
     except Exception as e:
         await interaction.followup.send(f"❌ Failed to buy ticket: {e}")
