@@ -6207,7 +6207,7 @@ def check_winners_and_update_sheet(winning_numbers: list[int]):
     all_users = reg_sheet.get_all_records()
     pot = get_current_pot()
 
-    payout_percent = {1: 0.005, 2: 0.01, 3: 0.02, 4: 0.03, 5: 0.04, 6: 1.0}
+    payout_percent = {1: 0.005, 2: 0.01, 3: 0.02, 4: 0.03, 5: 1.0}
     payouts = {}
 
     for user in all_users:
@@ -6220,10 +6220,10 @@ def check_winners_and_update_sheet(winning_numbers: list[int]):
         for ticket_str in tickets:
             try:
                 ticket = list(map(int, ticket_str.replace(" ", "").split("|")))
-                if len(ticket) != 6:
+                if len(ticket) != 5:
                     continue
                 matches = len(set(ticket) & set(winning_numbers))
-                if 1 <= matches <= 6:
+                if 1 <= matches <= 5:
                     update_lotto_winners(matches, discord_id)
                     reward = int(pot * payout_percent[matches])
                     if discord_id in payouts:
@@ -6284,7 +6284,7 @@ async def set_numbers(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
 
     try:
-        numbers = random.sample(range(1, 101), 6)
+        numbers = random.sample(range(1, 21), 5)
         sheet = get_sheet_s("LottoEntries")
         sheet.update_cell(2, 1, ",".join(map(str, numbers)))  # A2
         
@@ -6293,10 +6293,6 @@ async def set_numbers(interaction: discord.Interaction):
         gov_cut = int(total_pot * 0.9)
         ia_cut = total_pot - gov_cut
         
-        # Save values (only values) to cells B2, C2, D2
-        sheet.update_cell(2, 2, str(total_pot))  # B2 = Pot
-        sheet.update_cell(2, 3, str(gov_cut))    # C2 = GovCut
-        sheet.update_cell(2, 4, str(ia_cut))     # D2 = IACut
 
         await interaction.followup.send(f"✅ Winning numbers set.\n🎰 Pot: ${total_pot:,}\n👥 Members: ${gov_cut:,} | 🛠️ IA: ${ia_cut:,}", ephemeral=True)
 
@@ -6320,7 +6316,7 @@ async def pool_ratio(interaction: Interaction):
     )
 
 @bot.tree.command(name="buy_lotto_ticket", description="Buy a lottery ticket (500k via 1 iron trade)")
-@app_commands.describe(numbers="Pick 6 numbers between 1–100, comma-separated")
+@app_commands.describe(numbers="Pick 5 numbers between 1–20, comma-separated")
 async def buy_lotto_ticket(interaction: Interaction, numbers: str):
     await interaction.response.defer(ephemeral=True)
 
@@ -6340,10 +6336,10 @@ async def buy_lotto_ticket(interaction: Interaction, numbers: str):
     # Parse the input numbers
     try:
         number_list = [int(n.strip()) for n in numbers.replace(" ", "").split(",")]
-        if len(number_list) != 6 or any(n < 1 or n > 100 for n in number_list):
-            return await interaction.followup.send("❌ Invalid numbers. Pick exactly 6 between 1–100.")
+        if len(number_list) != 5 or any(n < 1 or n > 20 for n in number_list):
+            return await interaction.followup.send("❌ Invalid numbers. Pick exactly 5 between 1–20.")
     except Exception:
-        return await interaction.followup.send("❌ Could not parse numbers. Use comma-separated values like: 4,22,78,19,63,45")
+        return await interaction.followup.send("❌ Could not parse numbers. Use comma-separated values like: 4,20,19,13,15")
 
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
 
