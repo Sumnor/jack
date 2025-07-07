@@ -6460,7 +6460,7 @@ async def buy_lotto_ticket(interaction: Interaction, numbers: str):
         
         lotto_sheet.update_cell(2, 3, str(gov_cut + gov_add))
         lotto_sheet.update_cell(2, 4, str(ia_cut + ia_add))
-         lotto_sheet.update_cell(2, 5, str(fut_cut + fut_add))
+        lotto_sheet.update_cell(2, 5, str(fut_cut + fut_add))
 
         await interaction.followup.send("✅ Ticket purchased and trade recorded!")
         await update_pool_message(new_pot, gov_cut + gov_add, ia_cut + ia_add, fut_cut + fut_add)
