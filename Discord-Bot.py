@@ -6245,7 +6245,7 @@ def check_winners_and_update_sheet(winning_numbers: list[int]):
 
 # ---------- Update Pool Message ----------
 
-async def update_pool_message(pot: int, gov_cut: int, ia_cut: int):
+async def update_pool_message(pot: int, gov_cut: int, ia_cut: int, fut_cut: int):
     channel = get_lotto_channel()  # Your method to get the target channel
     message_id = get_pool_message_id()  # Your method to get the stored message ID
     message = await channel.fetch_message(message_id)
@@ -6565,7 +6565,7 @@ async def weekly_lotto_reset(interaction: Interaction):
 
         # Recalculate remaining gov cut and pot (IA cut never goes down)
         remaining_gov = max(gov_cut - total_paid, 0)
-        new_pot = remaining_gov + old_ia_cut
+        new_pot = remaining_gov + old_ia_cut 
 
         # Update pot and gov cut again
         update_pot(new_pot)  # Make sure this only updates Pot, not IA cut
