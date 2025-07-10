@@ -683,7 +683,7 @@ class BlueGuy(discord.ui.View):
             project_name = self.data.get("project_name", "?")
             reason = f"Build project: {project_name}"
             materials = self.data.get("materials", {})
-            notes = self.data.get("note", "None")
+            notes = self.data.get("note", "/")
             note = f"Note: {notes}"
 
         # Start embed description
@@ -699,7 +699,8 @@ class BlueGuy(discord.ui.View):
 
         # Reason field
         embed.add_field(name="Reason", value=reason, inline=False)
-        embed.add_field(name="Note", value=note, inline=False)
+        if self.category == "project":
+            embed.add_field(name="Note", value=note, inline=False)
 
         # Footer
         image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
