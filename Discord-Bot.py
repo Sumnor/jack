@@ -683,7 +683,7 @@ class BlueGuy(discord.ui.View):
             project_name = self.data.get("project_name", "?")
             reason = f"Build project: {project_name}"
             materials = self.data.get("materials", {})
-            notes = self.data.get("note", "/")
+            notes = self.data.get("note", "None")
             note = f"Note: {notes}"
 
         # Start embed description
@@ -699,8 +699,7 @@ class BlueGuy(discord.ui.View):
 
         # Reason field
         embed.add_field(name="Reason", value=reason, inline=False)
-        if self.category == "project":
-            embed.add_field(name="Note", value=note, inline=False)
+        embed.add_field(name="Note", value=note, inline=False)
 
         # Footer
         image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
@@ -849,7 +848,7 @@ class GrantView(View):
                 except ValueError:
                     continue
 
-            await interaction.response.send_message(f"***TARS COMMAND: {' '.join(command_parts)}***", ephemeral=True)
+            await interaction.response.send_message(f"{' '.join(command_parts)}***", ephemeral=True)
 
         except Exception as e:
             await interaction.response.send_message(f"❌ Error parsing embed: `{e}`", ephemeral=True)
@@ -5239,7 +5238,7 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
         )
         image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
         embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
-        message = await interaction.followup.send("<@1390237054872322148> <@1388161354086617220>")
+        message = await interaction.followup.send("<@1390237054872322148> <@1388161354086617220> <@1148678095176474678>")
         await message.delete()
         await interaction.followup.send(embed=embed, view=GrantView())
     except Exception as e:
