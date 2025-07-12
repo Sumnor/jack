@@ -848,7 +848,7 @@ class GrantView(View):
                 except ValueError:
                     continue
 
-            await interaction.response.send_message(f"{' '.join(command_parts)}***", ephemeral=True)
+            await interaction.response.send_message(f"{' '.join(command_parts)}", ephemeral=True)
 
         except Exception as e:
             await interaction.response.send_message(f"❌ Error parsing embed: `{e}`", ephemeral=True)
