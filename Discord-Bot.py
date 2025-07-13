@@ -119,9 +119,12 @@ PROJECT_KEYS = [
 
 class NationInfoView(discord.ui.View):
     def __init__(self, nation_id, original_embed):
-        super().__init__(timeout=120)
+        super().__init__(timeout=None)
         self.nation_id = nation_id
         self.original_embed = original_embed
+
+        self.pages = []
+        self.current_page = 0
 
     async def fetch_and_group(self, keys):
         df = graphql_cities(self.nation_id)
@@ -162,8 +165,30 @@ class NationInfoView(discord.ui.View):
         embed = discord.Embed(title=title, description=description, color=discord.Color.blurple())
         embed.set_footer(text="Data fetched live from Politics & War API")
 
-        # Reset buttons: only show Back + Close after grouping
         self.clear_items()
+        self.add_item(BackButton(self.original_embed, self))
+        self.add_item(CloseButton())
+
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    async def show_current_page(self, interaction):
+        page_blocks = self.pages[self.current_page]
+        description = "".join(page_blocks)
+
+        embed = discord.Embed(
+            title=f"Grouped City Builds (Page {self.current_page + 1}/{len(self.pages)})",
+            description=description,
+            color=discord.Color.blurple()
+        )
+        embed.set_footer(text="Data fetched live from Politics & War API")
+
+        self.clear_items()
+        if len(self.pages) > 1:
+            if self.current_page > 0:
+                self.add_item(PrevPageButton())
+            if self.current_page < len(self.pages) - 1:
+                self.add_item(NextPageButton())
+
         self.add_item(BackButton(self.original_embed, self))
         self.add_item(CloseButton())
 
@@ -171,57 +196,46 @@ class NationInfoView(discord.ui.View):
 
     @discord.ui.button(label="Show Builds", style=discord.ButtonStyle.primary)
     async def builds_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        nation_id = self.nation_id
-        df = graphql_cities(nation_id)
+        df = graphql_cities(self.nation_id)
         if df is None or df.empty:
             await interaction.response.send_message("❌ Failed to fetch or parse city data.", ephemeral=True)
             return
-    
+
         try:
             nation = df.iloc[0]
             num_cities = nation.get("num_cities", 999999)
             cities = nation.get("cities", [])
-    
+
             grouped = {}
             for city in cities:
                 infra = city.get("infrastructure", 0)
                 build_signature = tuple((key, city.get(key, 0)) for key in BUILD_KEYS)
                 grouped.setdefault(build_signature, []).append((city["name"], infra))
-    
-            description = ""
+
+            blocks = []
+
             for build, city_list in grouped.items():
                 count = len(city_list)
                 header = f"🏙️ **{count}/{num_cities} have this build:**\n"
                 build_lines = [f"{name} (Infra: {infra})" for name, infra in city_list]
-    
-                # Organize build details by category
-                category_lines = []
+
                 build_dict = dict(build)
+                category_lines = []
                 for cat, keys in BUILD_CATEGORIES.items():
                     parts = [f"{k.replace('_', ' ').title()}: {build_dict.get(k, 0)}"
                              for k in keys if k in build_dict and build_dict[k]]
                     if parts:
                         category_lines.append(f"🔹 __{cat}__:\n" + "\n".join(f"• {p}" for p in parts))
-    
+
                 build_desc = "\n".join(category_lines)
                 block = header + "\n".join(build_lines) + f"\n\n{build_desc}\n\n"
-    
-                if len(description) + len(block) > 3900:
-                    break  # stay within embed limit
-                description += block
-    
-            if not description:
-                description = "No valid build data found."
-    
-            embed = discord.Embed(title="Grouped City Builds", description=description, color=discord.Color.blurple())
-            embed.set_footer(text="Data fetched live from Politics & War API")
-    
-            self.clear_items()
-            self.add_item(BackButton(self.original_embed, self))
-            self.add_item(CloseButton())
-    
-            await interaction.response.edit_message(embed=embed, view=self)
-    
+                blocks.append(block)
+
+            self.pages = [blocks[i:i + 4] for i in range(0, len(blocks), 4)]
+            self.current_page = 0
+
+            await self.show_current_page(interaction)
+
         except Exception as e:
             await interaction.followup.send(f"❌ Error while formatting builds: {e}", ephemeral=True)
 
@@ -479,6 +493,27 @@ class NationInfoView(discord.ui.View):
     
         except Exception as e:
             await interaction.followup.send(f"❌ An error occurred during MMR audit: {e}", ephemeral=True)
+
+class PrevPageButton(discord.ui.Button):
+    def __init__(self):
+        super().__init__(label="⬅ Prev", style=discord.ButtonStyle.secondary)
+
+    async def callback(self, interaction: discord.Interaction):
+        view: NationInfoView = self.view
+        if view.current_page > 0:
+            view.current_page -= 1
+            await view.show_current_page(interaction)
+
+
+class NextPageButton(discord.ui.Button):
+    def __init__(self):
+        super().__init__(label="Next ➡", style=discord.ButtonStyle.secondary)
+
+    async def callback(self, interaction: discord.Interaction):
+        view: NationInfoView = self.view
+        if view.current_page < len(view.pages) - 1:
+            view.current_page += 1
+            await view.show_current_page(interaction)
 
 class BackButton(discord.ui.Button):
     def __init__(self, original_embed, parent_view):
