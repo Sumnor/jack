@@ -699,7 +699,7 @@ class BlueGuy(discord.ui.View):
         nation_name = self.data.get("nation_name", "?")
         nation_id = self.data.get("nation_id", "unknown")
 
-        # Set up Reason and Materials
+        note = "/"
         if self.category == "infra":
             from_level = self.data.get("from", "?")
             to_level = self.data.get("infra", "?")
