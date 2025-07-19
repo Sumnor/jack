@@ -2073,7 +2073,85 @@ async def on_message(message):
     # Your 1st logic: Respond to wilted rose in target guild excluding ignored users
     TARGET_GUILD_ID = 1186655069530243183
     IGNORED_USER_IDS = {1167879888892608663, 1148678095176474678}
-    
+    intel_pattern = re.compile(
+        r"You successfully gathered intelligence about (?P<nation>.+?)\. .*?has "
+        r"\$(?P<money>[\d,\.]+), (?P<coal>[\d,\.]+) coal, (?P<oil>[\d,\.]+) oil, "
+        r"(?P<uranium>[\d,\.]+) uranium, (?P<lead>[\d,\.]+) lead, (?P<iron>[\d,\.]+) iron, "
+        r"(?P<bauxite>[\d,\.]+) bauxite, (?P<gasoline>[\d,\.]+) gasoline, "
+        r"(?P<munitions>[\d,\.]+) munitions, (?P<steel>[\d,\.]+) steel, "
+        r"(?P<aluminum>[\d,\.]+) aluminum and (?P<food>[\d,\.]+) food"
+    )
+
+    match = intel_pattern.search(message.content)
+    if match:
+        await message.add_reaction("<:traumacat:1383500525189861517>")
+
+        nation = match.group("nation")
+        resources = {
+            key: float(match.group(key).replace(",", ""))
+            for key in match.groupdict() if key != "nation"
+        }
+
+        estimated_loot = sum([
+            resources["money"] * 0.1,
+            resources["coal"] * 0.2,
+            resources["oil"] * 0.2,
+            resources["uranium"] * 0.2,
+            resources["lead"] * 0.2,
+            resources["iron"] * 0.2,
+            resources["bauxite"] * 0.2,
+            resources["gasoline"] * 0.2,
+            resources["munitions"] * 0.5,
+            resources["steel"] * 0.2,
+            resources["aluminum"] * 0.2,
+            resources["food"] * 0.1,
+        ])
+
+        embed = discord.Embed(
+            title=f"🕵️ Intel Report: {nation}",
+            description="Your spies report the following stockpile:",
+            color=discord.Color.orange()
+        )
+        for k, v in resources.items():
+            embed.add_field(name=k.capitalize(), value=f"{v:,.2f}", inline=True)
+
+        embed.add_field(name="💰 Estimated Loot", value=f"${estimated_loot:,.2f}", inline=False)
+        embed.set_footer(text=f"Updated {datetime.now().strftime('%B %d, %Y at %I:%M %p')}")
+        await message.channel.send(embed=embed)
+
+        # --- SHEET UPDATE ---
+        try:
+            sheet = get_sheet_s("Nation WC")
+            all_records = sheet.get_all_records()
+            nation_names = [row["Nation"] for row in all_records if "Nation" in row]
+
+            update_row = [
+                nation,
+                f"{resources['money']:.2f}",
+                f"{resources['coal']:.2f}",
+                f"{resources['oil']:.2f}",
+                f"{resources['uranium']:.2f}",
+                f"{resources['lead']:.2f}",
+                f"{resources['iron']:.2f}",
+                f"{resources['bauxite']:.2f}",
+                f"{resources['gasoline']:.2f}",
+                f"{resources['munitions']:.2f}",
+                f"{resources['steel']:.2f}",
+                f"{resources['aluminum']:.2f}",
+                f"{resources['food']:.2f}",
+                datetime.now().strftime('%B %d, %Y at %I:%M %p')
+            ]
+
+            if nation in nation_names:
+                row_index = nation_names.index(nation) + 2  # +2 for header + 1-index
+                sheet.update(f"A{row_index}:N{row_index}", [update_row])
+            else:
+                sheet.append_row(update_row)
+        except Exception as e:
+            print(f"Sheet update failed: {e}")
+
+    # Continue handling commands
+    await bot.process_commands(message)
     if message.guild and message.guild.id == TARGET_GUILD_ID:
         if message.author.id in IGNORED_USER_IDS:
             if "money" in message.content.lower():
