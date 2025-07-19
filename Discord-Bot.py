@@ -4243,6 +4243,80 @@ async def register_manual(interaction: discord.Interaction, nation_id: str, disc
 
     await interaction.followup.send("✅ Registered successfully (manually, no validation).")
 '''
+
+@bot.tree.command(name="see_report", description="See the WC of other nations (may be wrong, idk nor care)")
+async def see_report(interaction: discord.Interaction, nation: str):
+    await interaction.response.defer(thinking=True)
+
+    try:
+        sheet = get_sheet_s("Nation WC")
+        rows = sheet.get_all_records()
+
+        # Case-insensitive match for nation name
+        match = next((row for row in rows if row["Nation"].lower() == nation.lower()), None)
+
+        if not match:
+            await interaction.followup.send(f"❌ No report found for `{nation}`.")
+            return
+
+        # Extract timestamp (if present)
+        timestamp = match.get("Timestamp", "Unknown time")
+
+        embed = discord.Embed(
+            title=f"🕵️ WC Report: {match['Nation']}",
+            description=f"Report as of `{timestamp}`",
+            color=discord.Color.blue()
+        )
+
+        # Add all resources
+        for key, value in match.items():
+            if key == "Nation" or key == "Timestamp":
+                continue
+            try:
+                val = float(value.replace(",", "")) if isinstance(value, str) else float(value)
+                embed.add_field(name=key.capitalize(), value=f"{val:,.2f}", inline=True)
+            except:
+                embed.add_field(name=key.capitalize(), value=str(value), inline=True)
+
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        print(f"Error in see_report: {e}")
+        await interaction.followup.send("❌ An error occurred while fetching the report.")
+
+@bot.tree.command(name="list_reports", description="See which nations have spy reports stored.")
+async def list_reports(interaction: discord.Interaction):
+    await interaction.response.defer(thinking=True)
+
+    try:
+        sheet = get_sheet_s("Nation WC")
+        rows = sheet.get_all_records()
+
+        nation_names = sorted(set(row["Nation"] for row in rows if row.get("Nation")))
+
+        if not nation_names:
+            await interaction.followup.send("❌ No nation reports are currently stored.")
+            return
+
+        embed = discord.Embed(
+            title="🗂️ Stored Spy Reports",
+            description=f"Total Nations: `{len(nation_names)}`",
+            color=discord.Color.green()
+        )
+
+        # Group nation names into chunks to avoid hitting field limits
+        chunk_size = 20
+        for i in range(0, len(nation_names), chunk_size):
+            chunk = nation_names[i:i+chunk_size]
+            embed.add_field(name=f"Nations {i+1}-{i+len(chunk)}", value="\n".join(chunk), inline=False)
+
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        print(f"Error in list_reports: {e}")
+        await interaction.followup.send("❌ An error occurred while retrieving the nation list.")
+
+
 @bot.tree.command(name="raws_audits", description="Audit building and raw usage per nation")
 async def raws_audits(interaction: discord.Interaction, day: int):
     await interaction.response.defer(thinking=True)
