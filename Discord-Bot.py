@@ -2066,10 +2066,10 @@ async def on_message(message):
     # Ignore all bots including yourself
     if message.author.bot:
         return
-
+    
     # Debug print for any message
-    #print(f"Message from {message.author} in guild {message.guild} content: {message.content}")
-
+    # print(f"Message from {message.author} in guild {message.guild} content: {message.content}")
+    
     # Your 1st logic: Respond to wilted rose in target guild excluding ignored users
     TARGET_GUILD_ID = 1186655069530243183
     IGNORED_USER_IDS = {1167879888892608663, 1148678095176474678}
@@ -2081,17 +2081,17 @@ async def on_message(message):
         r"(?P<munitions>[\d,\.]+) munitions, (?P<steel>[\d,\.]+) steel, "
         r"(?P<aluminum>[\d,\.]+) aluminum and (?P<food>[\d,\.]+) food"
     )
-
+    
     match = intel_pattern.search(message.content)
     if match:
         await message.add_reaction("<:traumacat:1383500525189861517>")
-
+    
         nation = match.group("nation")
         resources = {
             key: float(match.group(key).replace(",", ""))
             for key in match.groupdict() if key != "nation"
         }
-
+    
         estimated_loot = sum([
             resources["money"] * 0.1,
             resources["coal"] * 0.2,
@@ -2106,25 +2106,13 @@ async def on_message(message):
             resources["aluminum"] * 0.2,
             resources["food"] * 0.1,
         ])
-
-        embed = discord.Embed(
-            title=f"🕵️ Intel Report: {nation}",
-            description="Your spies report the following stockpile:",
-            color=discord.Color.orange()
-        )
-        for k, v in resources.items():
-            embed.add_field(name=k.capitalize(), value=f"{v:,.2f}", inline=True)
-
-        embed.add_field(name="💰 Estimated Loot", value=f"${estimated_loot:,.2f}", inline=False)
-        embed.set_footer(text=f"Updated {datetime.now().strftime('%B %d, %Y at %I:%M %p')}")
-        await message.channel.send(embed=embed)
-
+    
         # --- SHEET UPDATE ---
         try:
             sheet = get_sheet_s("Nation WC")
             all_records = sheet.get_all_records()
             nation_names = [row["Nation"] for row in all_records if "Nation" in row]
-
+    
             update_row = [
                 nation,
                 f"{resources['money']:.2f}",
@@ -2141,15 +2129,43 @@ async def on_message(message):
                 f"{resources['food']:.2f}",
                 datetime.now().strftime('%B %d, %Y at %I:%M %p')
             ]
-
+    
             if nation in nation_names:
-                row_index = nation_names.index(nation) + 2  # +2 for header + 1-index
+                row_index = nation_names.index(nation) + 2
+                existing_row = sheet.row_values(row_index)
+    
+                # Compare resource values only (skip nation name and date)
+                existing_data = existing_row[1:13]
+                new_data = update_row[1:13]
+    
+                existing_data_fmt = [f"{float(val):.2f}" for val in existing_data]
+                new_data_fmt = [f"{float(val):.2f}" for val in new_data]
+    
+                if existing_data_fmt == new_data_fmt:
+                    await message.channel.send(f"✅ Intel on **{nation}** already reported and unchanged.")
+                    return  # Skip embed and update
+    
+                # Update if changed
                 sheet.update(f"A{row_index}:N{row_index}", [update_row])
             else:
                 sheet.append_row(update_row)
+    
+            # Only send embed if new or updated
+            embed = discord.Embed(
+                title=f"🕵️ Intel Report: {nation}",
+                description="Your spies report the following stockpile:",
+                color=discord.Color.orange()
+            )
+            for k, v in resources.items():
+                embed.add_field(name=k.capitalize(), value=f"{v:,.2f}", inline=True)
+    
+            embed.add_field(name="💰 Estimated Loot", value=f"${estimated_loot:,.2f}", inline=False)
+            embed.set_footer(text=f"Updated {datetime.now().strftime('%B %d, %Y at %I:%M %p')}")
+            await message.channel.send(embed=embed)
+    
         except Exception as e:
             print(f"Sheet update failed: {e}")
-
+    
     # Continue handling commands
     await bot.process_commands(message)
     if message.guild and message.guild.id == TARGET_GUILD_ID:
