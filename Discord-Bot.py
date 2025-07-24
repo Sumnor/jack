@@ -2072,100 +2072,114 @@ async def on_message(message):
     
     # Your 1st logic: Respond to wilted rose in target guild excluding ignored users
     TARGET_GUILD_ID = 1186655069530243183
-    IGNORED_USER_IDS = {1167879888892608663, 1148678095176474678}
-    intel_pattern = re.compile(
-        r"You successfully gathered intelligence about (?P<nation>.+?)\. .*?has "
-        r"\$(?P<money>[\d,\.]+), (?P<coal>[\d,\.]+) coal, (?P<oil>[\d,\.]+) oil, "
-        r"(?P<uranium>[\d,\.]+) uranium, (?P<lead>[\d,\.]+) lead, (?P<iron>[\d,\.]+) iron, "
-        r"(?P<bauxite>[\d,\.]+) bauxite, (?P<gasoline>[\d,\.]+) gasoline, "
-        r"(?P<munitions>[\d,\.]+) munitions, (?P<steel>[\d,\.]+) steel, "
-        r"(?P<aluminum>[\d,\.]+) aluminum and (?P<food>[\d,\.]+) food"
-    )
-    
-    match = intel_pattern.search(message.content)
-    if match:
-        await message.add_reaction("<:traumacat:1383500525189861517>")
-    
-        nation = match.group("nation")
-        resources = {
-            key: float(match.group(key).replace(",", ""))
-            for key in match.groupdict() if key != "nation"
-        }
-    
-        estimated_loot = sum([
-            resources["money"] * 0.1,
-            resources["coal"] * 0.2,
-            resources["oil"] * 0.2,
-            resources["uranium"] * 0.2,
-            resources["lead"] * 0.2,
-            resources["iron"] * 0.2,
-            resources["bauxite"] * 0.2,
-            resources["gasoline"] * 0.2,
-            resources["munitions"] * 0.5,
-            resources["steel"] * 0.2,
-            resources["aluminum"] * 0.2,
-            resources["food"] * 0.1,
-        ])
-    
-        # --- SHEET UPDATE ---
-        try:
-            sheet = get_sheet_s("Nation WC")
-            all_records = sheet.get_all_records()
-            nation_names = [row["Nation"] for row in all_records if "Nation" in row]
-    
-            update_row = [
-                nation,
-                f"{resources['money']:.2f}",
-                f"{resources['coal']:.2f}",
-                f"{resources['oil']:.2f}",
-                f"{resources['uranium']:.2f}",
-                f"{resources['lead']:.2f}",
-                f"{resources['iron']:.2f}",
-                f"{resources['bauxite']:.2f}",
-                f"{resources['gasoline']:.2f}",
-                f"{resources['munitions']:.2f}",
-                f"{resources['steel']:.2f}",
-                f"{resources['aluminum']:.2f}",
-                f"{resources['food']:.2f}",
-                datetime.now().strftime('%B %d, %Y at %I:%M %p')
-            ]
-    
-            if nation in nation_names:
-                row_index = nation_names.index(nation) + 2
-                existing_row = sheet.row_values(row_index)
-    
-                # Compare resource values only (skip nation name and date)
-                existing_data = existing_row[1:13]
-                new_data = update_row[1:13]
-    
-                existing_data_fmt = [f"{float(val):.2f}" for val in existing_data]
-                new_data_fmt = [f"{float(val):.2f}" for val in new_data]
-    
-                if existing_data_fmt == new_data_fmt:
-                    await message.channel.send(f"✅ Intel on **{nation}** already reported and unchanged.")
-                    return  # Skip embed and update
-    
-                # Update if changed
-                sheet.update(f"A{row_index}:N{row_index}", [update_row])
-            else:
-                sheet.append_row(update_row)
-    
-            # Only send embed if new or updated
-            embed = discord.Embed(
-                title=f"🕵️ Intel Report: {nation}",
-                description="Your spies report the following stockpile:",
-                color=discord.Color.orange()
-            )
-            for k, v in resources.items():
-                embed.add_field(name=k.capitalize(), value=f"{v:,.2f}", inline=True)
-    
-            embed.add_field(name="💰 Estimated Loot", value=f"${estimated_loot:,.2f}", inline=False)
-            embed.set_footer(text=f"Updated {datetime.now().strftime('%B %d, %Y at %I:%M %p')}")
-            await message.channel.send(embed=embed)
-    
-        except Exception as e:
-            print(f"Sheet update failed: {e}")
-    
+	IGNORED_USER_IDS = {1167879888892608663, 1148678095176474678}
+
+	intel_pattern = re.compile(
+		r"You successfully gathered intelligence about (?P<nation>.+?)\. .*?has "
+		r"\$(?P<money>[\d,\.]+), (?P<coal>[\d,\.]+) coal, (?P<oil>[\d,\.]+) oil, "
+		r"(?P<uranium>[\d,\.]+) uranium, (?P<lead>[\d,\.]+) lead, (?P<iron>[\d,\.]+) iron, "
+		r"(?P<bauxite>[\d,\.]+) bauxite, (?P<gasoline>[\d,\.]+) gasoline, "
+		r"(?P<munitions>[\d,\.]+) munitions, (?P<steel>[\d,\.]+) steel, "
+		r"(?P<aluminum>[\d,\.]+) aluminum and (?P<food>[\d,\.]+) food"
+	)
+
+	match = intel_pattern.search(message.content)
+	if match:
+		await message.add_reaction("<:traumacat:1383500525189861517>")
+
+		nation = match.group("nation")
+		resources = {
+			key: float(match.group(key).replace(",", ""))
+			for key in match.groupdict() if key != "nation"
+		}
+
+		# --- Get Prices and Calculate Value ---
+		try:
+			prices = get_prices()
+			resource_prices = {
+				item["resource"]: float(item["average_price"])
+				for item in prices["data"]["top_trade_info"]["resources"]
+			}
+
+			total_value = 0.0
+
+			for key, val in resources.items():
+				if key == "money":
+					total_value += val
+				elif key in resource_prices:
+					total_value += val * resource_prices[key]
+
+			estimated_loot = total_value * 0.14
+
+		except Exception as e:
+			print(f"Error getting prices or calculating loot: {e}")
+			estimated_loot = 0.0
+
+		# --- SHEET UPDATE ---
+		try:
+			sheet = get_sheet_s("Nation WC")
+			all_records = sheet.get_all_records()
+			nation_names = [row["Nation"] for row in all_records if "Nation" in row]
+
+			update_row = [
+				nation,
+				f"{resources['money']:.2f}",
+				f"{resources['coal']:.2f}",
+				f"{resources['oil']:.2f}",
+				f"{resources['uranium']:.2f}",
+				f"{resources['lead']:.2f}",
+				f"{resources['iron']:.2f}",
+				f"{resources['bauxite']:.2f}",
+				f"{resources['gasoline']:.2f}",
+				f"{resources['munitions']:.2f}",
+				f"{resources['steel']:.2f}",
+				f"{resources['aluminum']:.2f}",
+				f"{resources['food']:.2f}",
+				datetime.now().strftime('%B %d, %Y at %I:%M %p')
+			]
+
+			if nation in nation_names:
+				row_index = nation_names.index(nation) + 2
+				existing_row = sheet.row_values(row_index)
+				existing_data = existing_row[1:13]
+				new_data = update_row[1:13]
+
+				existing_data_fmt = [f"{float(val):.2f}" for val in existing_data]
+				new_data_fmt = [f"{float(val):.2f}" for val in new_data]
+
+				if existing_data_fmt == new_data_fmt:
+					await message.channel.send(f"✅ Intel on **{nation}** already reported and unchanged.")
+					return
+
+				sheet.update(f"A{row_index}:N{row_index}", [update_row])
+			else:
+				sheet.append_row(update_row)
+
+			# Send embed
+			embed = discord.Embed(
+				title=f"🕵️ Intel Report: {nation}",
+				description="Your spies report the following stockpile:",
+				color=discord.Color.orange()
+			)
+
+			for k, v in resources.items():
+				if k in resource_prices:
+					embed.add_field(
+						name=k.capitalize(),
+						value=f"{v:,.2f} @ {resource_prices[k]:,.2f}",
+						inline=True
+					)
+				else:
+					embed.add_field(name=k.capitalize(), value=f"{v:,.2f}", inline=True)
+
+			embed.add_field(name="💰 Estimated Loot (14%)", value=f"${estimated_loot:,.2f}", inline=False)
+
+			await message.channel.send(embed=embed)
+
+		except Exception as e:
+			print(f"Error in intel handler: {e}")
+			await message.channel.send("❌ Failed to process intel report.")
+
     # Continue handling commands
     await bot.process_commands(message)
     if message.guild and message.guild.id == TARGET_GUILD_ID:
@@ -4308,6 +4322,7 @@ async def see_report(interaction: discord.Interaction, nation: str):
             return
 
         timestamp = match.get("Timestamp", "Unknown time")
+        last_update = match.get("Last update", None)
 
         embed = discord.Embed(
             title=f"🕵️ WC Report: {match['Nation']}",
@@ -4318,7 +4333,7 @@ async def see_report(interaction: discord.Interaction, nation: str):
         total_value = 0.0
 
         for key, value in match.items():
-            if key in ("Nation", "Timestamp"):
+            if key in ("Nation", "Timestamp", "Last update"):
                 continue
 
             try:
@@ -4329,23 +4344,33 @@ async def see_report(interaction: discord.Interaction, nation: str):
 
             # Check if it's a known resource with a price
             if key in resource_prices:
-                total_value += val * resource_prices[key]
-                embed.add_field(name=key.capitalize(), value=f"{val:,.2f} @ {resource_prices[key]:,.2f}", inline=True)
+                resource_value = val * resource_prices[key]
+                total_value += resource_value
+                embed.add_field(
+                    name=key.capitalize(),
+                    value=f"{val:,.2f} @ {resource_prices[key]:,.2f}",
+                    inline=True
+                )
             elif key.lower() == "money":
                 total_value += val
                 embed.add_field(name="Money", value=f"{val:,.2f}", inline=True)
             else:
                 embed.add_field(name=key.capitalize(), value=f"{val:,.2f}", inline=True)
 
-        # Estimated loot (14% of total)
+        # Estimated loot (14% of total value)
         estimated_loot = total_value * 0.14
         embed.add_field(name="💰 Estimated Loot (14%)", value=f"{estimated_loot:,.2f}", inline=False)
+
+        # Add last update in the footer
+        if last_update:
+            embed.set_footer(text=f"Last update: {last_update}")
 
         await interaction.followup.send(embed=embed)
 
     except Exception as e:
         print(f"Error in see_report: {e}")
         await interaction.followup.send("❌ An error occurred while fetching the report.")
+
 
 
 @bot.tree.command(name="list_reports", description="See which nations have spy reports stored.")
