@@ -3459,14 +3459,14 @@ async def member_activity(interaction: discord.Interaction):
                 inactive += 1
                 inactive_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
             elif days_inactive >= 1:
-                if colour.lower() == "black":
+                if colour.lower() == "olive":
                     activish += 1
                     activish_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
                 else:
                     activish_wo_bloc += 1
                     activish_wo_bloc_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
             else:
-                if colour.lower() == "black":
+                if colour.lower() == "olive":
                     active_w_bloc += 1
                     active_w_bloc_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
                 else:
