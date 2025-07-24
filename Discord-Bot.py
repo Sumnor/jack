@@ -2869,7 +2869,48 @@ async def auto_week_summary(interaction: discord.Interaction):
         print(f"Error in /auto_week_summary: {e}")
         await interaction.followup.send("❌ Error generating summary.", ephemeral=True)
 
+def get_prices():
+    totals = {
+        "money": 0,
+        "food": 0,
+        "gasoline": 0,
+        "munitions": 0,
+        "steel": 0,
+        "aluminum": 0,
+        "bauxite": 0,
+        "lead": 0,
+        "iron": 0,
+        "oil": 0,
+        "coal": 0,
+        "uranium": 0,
+        "num_cities": 0,
+    }
 
+    processed_nations = 0
+    failed = 0
+
+    GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
+    prices_query = """
+    {
+      top_trade_info {
+        resources {
+          resource
+          average_price
+        }
+      }
+    }
+    """
+    resource_prices = {}
+    try:
+        response = requests.post(
+            GRAPHQL_URL,
+            json={"query": prices_query},
+            headers={"Content-Type": "application/json"}
+        )
+        data = response.json()
+        return data
+    except Exception as e:
+       return print(f"Error fetching resource prices: {e}")
 
 @bot.tree.command(name="res_in_m_for_a", description="Get total Alliance Members' resources and money")
 @app_commands.describe(
