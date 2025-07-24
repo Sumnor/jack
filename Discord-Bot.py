@@ -4292,6 +4292,13 @@ async def see_report(interaction: discord.Interaction, nation: str):
     try:
         sheet = get_sheet_s("Nation WC")
         rows = sheet.get_all_records()
+        prices = get_prices()
+        
+        # Extract resource prices into a dictionary
+        resource_prices = {
+            item["resource"]: float(item["average_price"])
+            for item in prices["data"]["top_trade_info"]["resources"]
+        }
 
         # Case-insensitive match for nation name
         match = next((row for row in rows if row["Nation"].lower() == nation.lower()), None)
@@ -4300,7 +4307,6 @@ async def see_report(interaction: discord.Interaction, nation: str):
             await interaction.followup.send(f"❌ No report found for `{nation}`.")
             return
 
-        # Extract timestamp (if present)
         timestamp = match.get("Timestamp", "Unknown time")
 
         embed = discord.Embed(
@@ -4309,21 +4315,38 @@ async def see_report(interaction: discord.Interaction, nation: str):
             color=discord.Color.blue()
         )
 
-        # Add all resources
+        total_value = 0.0
+
         for key, value in match.items():
-            if key == "Nation" or key == "Timestamp":
+            if key in ("Nation", "Timestamp"):
                 continue
+
             try:
                 val = float(value.replace(",", "")) if isinstance(value, str) else float(value)
-                embed.add_field(name=key.capitalize(), value=f"{val:,.2f}", inline=True)
             except:
                 embed.add_field(name=key.capitalize(), value=str(value), inline=True)
+                continue
+
+            # Check if it's a known resource with a price
+            if key in resource_prices:
+                total_value += val * resource_prices[key]
+                embed.add_field(name=key.capitalize(), value=f"{val:,.2f} @ {resource_prices[key]:,.2f}", inline=True)
+            elif key.lower() == "money":
+                total_value += val
+                embed.add_field(name="Money", value=f"{val:,.2f}", inline=True)
+            else:
+                embed.add_field(name=key.capitalize(), value=f"{val:,.2f}", inline=True)
+
+        # Estimated loot (14% of total)
+        estimated_loot = total_value * 0.14
+        embed.add_field(name="💰 Estimated Loot (14%)", value=f"{estimated_loot:,.2f}", inline=False)
 
         await interaction.followup.send(embed=embed)
 
     except Exception as e:
         print(f"Error in see_report: {e}")
         await interaction.followup.send("❌ An error occurred while fetching the report.")
+
 
 @bot.tree.command(name="list_reports", description="See which nations have spy reports stored.")
 async def list_reports(interaction: discord.Interaction):
