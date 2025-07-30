@@ -1329,6 +1329,9 @@ def get_auto_requests_sheet(guild_id):
 def get_gov_role(interaction: discord.Interaction):
     return get_settings_value("GOV_ROLE", interaction.guild.id)
 
+def get_member_role(interaction: discord.Interaction):
+    return get_settings_value("MEMBER_ROLE", interaction.guild.id)
+
 def get_server_sheet():
     client = get_client()
     return client.open("BotServerSettings").sheet1  # Your sheet must have: server_id | api_key | lott_channel_ids
@@ -2065,11 +2068,11 @@ async def on_message(message: discord.Message):
 @app_commands.describe(nation_id="Your Nation ID (numbers only, e.g., 365325)")
 async def register(interaction: discord.Interaction, nation_id: str):
     await interaction.response.defer()
-
+    MEMBER_ROLE = get_member_role(interaction)
     # Custom permission check
     async def is_banker(interaction):
         return (
-            any(role.name == "Starborn" for role in interaction.user.roles)
+            any(role.name == MEMBER_ROLE for role in interaction.user.roles)
             or str(interaction.user.id) == "1148678095176474678"
         )
 
@@ -2243,6 +2246,7 @@ SETTING_CHOICES = [
     app_commands.Choice(name="GOV_ROLE", value="GOV_ROLE"),
     app_commands.Choice(name="API_KEY", value="API_KEY"),
     app_commands.Choice(name="LOGS", value="LOGS"),
+    app_commands.Choice(name="MEMBER_ROLE", value="MEMBER_ROLE"),
 ]
 
 @bot.tree.command(name="set_setting", description="Set a server setting (e.g. GRANT_REQUEST_CHANNEL_ID).")
@@ -2261,7 +2265,6 @@ async def set_setting(interaction: discord.Interaction, key: app_commands.Choice
     member = await guild.fetch_member(interaction.user.id)
 
     if gov_role_id is None:
-        # If setting GOV_ROLE for the first time, skip permission check
         set_server_setting(guild_id, key.value, value)
         await interaction.followup.send(f"✅ GOV_ROLE set to `{value}`.", ephemeral=True)
         return
