@@ -3942,7 +3942,7 @@ async def raws_audits(interaction: discord.Interaction, day: int):
 )
 async def who_nation(interaction: discord.Interaction, who: discord.Member, external_id: str = "None"):
     await interaction.response.defer()
-
+    global cached_users 
     async def is_banker():
         GOV_ROLE = get_gov_role(interaction)
         return (
