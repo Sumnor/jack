@@ -1,2 +1,2 @@
-worker: python3 Discord-Bot.py
+worker: python3 jack.py
 
