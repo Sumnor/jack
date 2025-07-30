@@ -1939,7 +1939,12 @@ async def on_message(message: discord.Message):
         }
 
         try:
-            prices = get_prices()
+            # Get guild ID if message is in a guild
+            guild_id = message.guild.id if message.guild else None
+
+            # 🔑 Get prices with guild context
+            prices = get_prices(guild_id=guild_id)  # <-- this assumes your function accepts it
+
             resource_prices = {
                 item["resource"]: float(item["average_price"])
                 for item in prices["data"]["top_trade_info"]["resources"]
@@ -2188,8 +2193,8 @@ async def register_server_aa(interaction: discord.Interaction):
         return
 
     server_id = str(guild.id)
-    share_email = os.getenv("Jack's Email")
-    sum_email = os.getenv("Sumnor's Email")
+    share_email = "savior@inbound-analogy-459312-i4.iam.gserviceaccount.com"
+    sum_email = "rodipoltavskyi@gmail.com"
 
     try:
         client = get_client()
@@ -2574,27 +2579,11 @@ async def auto_week_summary(interaction: discord.Interaction):
         print(f"Error in /auto_week_summary: {e}")
         await interaction.followup.send("❌ Error generating summary.", ephemeral=True)
 
-def get_prices():
-    totals = {
-        "money": 0,
-        "food": 0,
-        "gasoline": 0,
-        "munitions": 0,
-        "steel": 0,
-        "aluminum": 0,
-        "bauxite": 0,
-        "lead": 0,
-        "iron": 0,
-        "oil": 0,
-        "coal": 0,
-        "uranium": 0,
-        "num_cities": 0,
-    }
+def get_prices(guild_id):
+    API_KEY = get_api_key_for_guild(guild_id)
+    if not API_KEY:
+        raise ValueError("API key not found for this guild.")
 
-    processed_nations = 0
-    failed = 0
-
-    API_KEY = get_api_key_for_interaction(interaction=discord.Interaction)
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
     prices_query = """
     {
@@ -2606,17 +2595,17 @@ def get_prices():
       }
     }
     """
-    resource_prices = {}
     try:
         response = requests.post(
             GRAPHQL_URL,
             json={"query": prices_query},
             headers={"Content-Type": "application/json"}
         )
-        data = response.json()
-        return data
+        return response.json()
     except Exception as e:
-       return print(f"Error fetching resource prices: {e}")
+        print(f"Error fetching resource prices: {e}")
+        raise
+
 
 @bot.tree.command(name="res_in_m_for_a", description="Get total Alliance Members' resources and money")
 @app_commands.describe(
@@ -3656,9 +3645,10 @@ async def see_report(interaction: discord.Interaction, nation: str):
     await interaction.response.defer(thinking=True)
 
     try:
+        guild_id = str(interaction.guild.id)
         sheet = get_sheet_s("Nation WC")
         rows = sheet.get_all_records()
-        prices = get_prices()
+        prices = get_prices(guild_id)
         
         
         resource_prices = {
@@ -3778,7 +3768,6 @@ async def raws_audits(interaction: discord.Interaction, day: int):
         GOV_ROLE = get_gov_role(inter)
         return (
             any(role.name == GOV_ROLE for role in inter.user.roles)
-            or user_id == "1148678095176474678"
         )
 
     if not await is_banker(interaction):
