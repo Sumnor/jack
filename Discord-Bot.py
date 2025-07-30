@@ -58,7 +58,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="/", intents=intents)
 bot_key = os.getenv("Key")
-API_KEY = os.getenv("API_KEY")
+#API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
 snapshots_file = "snapshots.json"
@@ -126,8 +126,8 @@ class NationInfoView(discord.ui.View):
         self.pages = []
         self.current_page = 0
 
-    async def fetch_and_group(self, keys):
-        df = graphql_cities(self.nation_id)
+    async def fetch_and_group(self, keys, interaction):
+        df = graphql_cities(self.nation_id, interaction)
         cities = extract_cities_from_df(df)
         if cities is None:
             return None, "Failed to fetch city data."
@@ -144,7 +144,7 @@ class NationInfoView(discord.ui.View):
         return groups, None
 
     async def show_grouped(self, interaction: discord.Interaction, keys, title):
-        groups, err = await self.fetch_and_group(keys)
+        groups, err = await self.fetch_and_group(keys, interaction)
         if err:
             await interaction.response.send_message(err, ephemeral=True)
             return
@@ -196,7 +196,7 @@ class NationInfoView(discord.ui.View):
 
     @discord.ui.button(label="Show Builds", style=discord.ButtonStyle.primary)
     async def builds_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        df = graphql_cities(self.nation_id)
+        df = graphql_cities(self.nation_id, interaction)
         if df is None or df.empty:
             await interaction.response.send_message("❌ Failed to fetch or parse city data.", ephemeral=True)
             return
@@ -243,7 +243,7 @@ class NationInfoView(discord.ui.View):
     async def projects_button(self, interaction: discord.Interaction, button: discord.ui.Button):
     
         nation_id = self.nation_id
-        df = graphql_cities(nation_id)
+        df = graphql_cities(nation_id, interaction)
     
         if df is None or df.empty:
             await interaction.followup.send("❌ Failed to fetch project data.", ephemeral=True)
@@ -281,6 +281,7 @@ class NationInfoView(discord.ui.View):
         nation_id = self.nation_id
     
         try:
+            API_KEY = get_api_key_for_interaction(interaction)
             GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
             query = f"""
             {{
@@ -359,7 +360,7 @@ class NationInfoView(discord.ui.View):
             )
     
             self.clear_items()
-            self.add_item(BackButton(self.original_embed, self))  # ← ensures back returns to original view
+            self.add_item(BackButton(self.original_embed, self))  
             self.add_item(CloseButton())
     
             await interaction.message.edit(embed=embed, view=self)
@@ -373,6 +374,7 @@ class NationInfoView(discord.ui.View):
         nation_id = self.nation_id
     
         try:
+            API_KEY = get_api_key_for_interaction(interaction)
             GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
     
             query = """
@@ -417,7 +419,7 @@ class NationInfoView(discord.ui.View):
             hangar = sum(city.get("hangar", 0) for city in cities)
             drydocks = sum(city.get("drydock", 0) for city in cities)
     
-            military_data = get_military(nation_id)
+            military_data = get_military(nation_id, interaction)
             if military_data is None:
                 await interaction.followup.send("❌ Could not retrieve military data for this nation.", ephemeral=True)
                 return
@@ -484,9 +486,9 @@ class NationInfoView(discord.ui.View):
                 icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
             )
     
-            # Add Back and Close buttons same as your Warchest button does:
+            
             self.clear_items()
-            self.add_item(BackButton(self.original_embed, self))  # assumes you have these button classes
+            self.add_item(BackButton(self.original_embed, self))  
             self.add_item(CloseButton())
     
             await interaction.message.edit(embed=embed, view=self)
@@ -538,60 +540,6 @@ class CloseButton(discord.ui.Button):
         await interaction.message.delete()
         self.view.stop()
 
-BANK_PERMISSION_TYPE = "Nation Deposit to Bank"
-
-class AmountModal(discord.ui.Modal, title="Enter Amount"):
-    amount = discord.ui.TextInput(label="How much?", placeholder="e.g., 50", required=True)
-
-    def __init__(self, on_submit):
-        super().__init__()
-        self.on_submit_callback = on_submit
-
-    async def on_submit(self, interaction: discord.Interaction):
-        await self.on_submit_callback(interaction, self.amount.value)
-
-class MessageView(View):
-    def __init__(self, description_text):
-        super().__init__()
-        self.description_text = description_text
-
-    @discord.ui.button(label="Generate Message", style=discord.ButtonStyle.green, custom_id="gm_message_button")
-    async def copy_message_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Define the modal
-        class AmountModal(discord.ui.Modal, title="Select Warchest Percentage"):
-            amount = discord.ui.TextInput(
-                label="Warchest Percentage",
-                placeholder="50% or 100%",
-                required=True,
-                max_length=4
-            )
-
-            def __init__(self, on_submit):
-                super().__init__()
-                self.on_submit_callback = on_submit
-
-            async def on_submit(self, interaction: discord.Interaction):
-                await self.on_submit_callback(interaction, self.amount.value)
-
-        # Define what to do with the result
-        async def handle_submit(interaction: discord.Interaction, how_much: str):
-            await interaction.response.defer()
-            if how_much == "100%":
-                what = f"Use the `/request_warchest` command in <#1338510585595428895> and request a `100% warchest`."
-            elif how_much == "50%":
-                what = f"Use the `/request_warchest` command in <#1338510585595428895> and request a `50% warchest`. You don't really need a 100% warchest atm"
-            else:
-                what = f"Invalid percentage provided: `{how_much}`"
-
-            await interaction.followup.send(
-                f"You are missing the following:\n"
-                f"{self.description_text}\n\n"
-                f"{what}"
-            )
-
-        # Show modal
-        await interaction.response.send_modal(AmountModal(on_submit=handle_submit))
-
 from discord.ui import View, button
 from discord import ButtonStyle
 
@@ -616,7 +564,7 @@ class MMRView(View):
                 "Your MMR is already valid! No need to fix it."
             )
         else:
-            # Peace MMR depends on city count
+            
             peace_mmr = "0/5/5/1" if self.num_cities <= 15 else "0/3/5/1"
             war_mmr = "5/5/5/3"
             await interaction.response.send_message(
@@ -721,7 +669,7 @@ class BlueGuy(discord.ui.View):
             notes = self.data.get("note", "None")
             note = f"Note: {notes}"
 
-        # Start embed description
+        
         description_lines = [f"**Nation:** {nation_name} (`{nation_id}`)", "**Request:**"]
         if materials:
             for name, amount in materials.items():
@@ -732,11 +680,11 @@ class BlueGuy(discord.ui.View):
         description_lines.append(f"\n**Requested by:** <@{presser}>")
         embed.description = "\n".join(description_lines)
 
-        # Reason field
+        
         embed.add_field(name="Reason", value=reason, inline=False)
         embed.add_field(name="Note", value=note, inline=False)
 
-        # Footer
+        
         image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
         embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
 
@@ -758,7 +706,7 @@ class GrantView(View):
             try:
                 await interaction.response.send_message("❌ You need the 'Banker' role to approve grant requests.", ephemeral=True)
             except discord.NotFound:
-                pass  # interaction might have expired
+                pass  
             return
 
         try:
@@ -781,7 +729,7 @@ class GrantView(View):
             try:
                 await interaction.followup.send(f"✅ Grant request has been approved and sent! {user_mention}", ephemeral=False)
             except discord.NotFound:
-                # Fallback if followup webhook is expired
+                
                 await interaction.channel.send(f"✅ Grant request has been approved and sent! {user_mention}")
 
         except Exception as e:
@@ -892,7 +840,7 @@ class RawsAuditView(discord.ui.View):
     def __init__(self, output, audits):
         super().__init__(timeout=None)
         self.output = output
-        self.audits = audits  # Expects each entry to include a "color" key
+        self.audits = audits  
 
     @discord.ui.button(label="Request Yellow", style=discord.ButtonStyle.primary, custom_id="request_yellow")
     async def request_yellow(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -910,14 +858,10 @@ class RawsAuditView(discord.ui.View):
         await interaction.response.defer(ephemeral=True)
 
         user_id = interaction.user.id
+        guild_id = interaction.guild.id
         bot = interaction.client
 
-        guild = bot.get_guild(1186655069530243183)
-        if not guild:
-            await interaction.followup.send("❌ Target guild not found.")
-            return
-
-        channel = guild.get_channel(1338510585595428895)
+        channel = bot.get_channel(get_grant_channel(guild_id))
         if not channel:
             await interaction.followup.send("❌ Target channel not found.")
             return
@@ -936,7 +880,7 @@ class RawsAuditView(discord.ui.View):
             ]
         
             if not relevant_lines:
-                continue  # No missing resources of the requested color in this nation, skip
+                continue  
 
             row = next((r for r in rows if str(r.get("NationID", "")).strip() == str(nation_id)), None)
             if not row:
@@ -962,44 +906,15 @@ class RawsAuditView(discord.ui.View):
             await channel.send(embed=embed, view=GrantView())
 
         await interaction.followup.send(f"✅ Processed {color_emoji} requests.")
-
-def get_military_o(nation_id):
-    session = requests.Session()
-    url = f"https://politicsandwar.com/nation/id={nation_id}"
-    response = session.get(url)
-    soup = BeautifulSoup(response.text, 'html.parser')
-
-    def extract_stat(label_text):
-        label = soup.find(string=lambda s: s and label_text in s)
-        if not label or not label.parent:
-            return "❌ Not Found"
-        td = label.parent.find_next_sibling("td")
-        if not td:
-            return "❌ Missing Data"
-        return "".join(t for t in td.find_all(string=True, recursive=False)).strip()
-
-    def get_first_value(value):
-        return value.split()[0]
-
-    nation_name = extract_stat("Nation Name:")
-    nation_leader = extract_stat("Leader Name:")
-    nation_rank = extract_stat("Nation Rank:")
-    nation_score = extract_stat("Nation Score:")
-    war_policy = extract_stat("War Policy:")
-    soldiers = get_first_value(extract_stat("Soldiers:"))
-    tanks = get_first_value(extract_stat("Tanks:"))
-    aircraft = get_first_value(extract_stat("Aircraft:"))
-    ships = get_first_value(extract_stat("Ships:"))
-    spies = get_first_value(extract_stat("Spies:"))
-    missiles = get_first_value(extract_stat("Missiles:"))
-    nuclear = get_first_value(extract_stat("Nuclear Weapons:"))
-
-    return nation_name, nation_leader, nation_rank, nation_score, war_policy, soldiers, tanks, aircraft, ships, spies, missiles, nuclear
     
-def graphql_cities(nation_id):
+def graphql_cities(nation_id, interaction=None, guild_id=None):
+    if not guild_id:
+        API_KEY = get_api_key_for_interaction(interaction)
+    if not interaction:
+        API_KEY = get_api_key_for_guild(guild_id)
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
 
-    # Add project fields separately from cities
+    
     project_fields = "\n".join(PROJECT_KEYS)
 
     query = f"""
@@ -1075,7 +990,11 @@ def graphql_cities(nation_id):
         print(f"Parsing Error: {e}")
         return None
 
-def graphql_request(nation_id):
+def graphql_request(nation_id, interaction=None, guild_id=None):
+    if not guild_id:
+        API_KEY = get_api_key_for_interaction(interaction)
+    if not interaction:
+        API_KEY = get_api_key_for_guild(guild_id)
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
 
     query = f"""
@@ -1153,6 +1072,60 @@ def graphql_request(nation_id):
         print(f"Parsing Error: {e}")
         return None
 
+def get_settings_value(key: str, server_id: int) -> Optional[str]:
+    sheet = get_settings_sheet()  # Make sure this returns the BotServerSettings sheet
+    records = sheet.get_all_records()
+
+    for row in records:
+        if str(row["server_id"]) == str(server_id) and row["key"] == key:
+            return row["value"]
+    return None
+
+def get_settings_sheet():
+    client = get_client()
+    sheet = client.open("BotServerSettings")
+    try:
+        return sheet.worksheet("Settings")
+    except:
+        return sheet.add_worksheet(title="Settings", rows="1000", cols="3")
+
+# --- Core Logic ---
+def set_server_setting(server_id, key, value):
+    sheet = get_settings_sheet()
+    records = sheet.get_all_records()
+    server_id = str(server_id)
+    key = key.strip().upper()
+    row_idx = None
+
+    for i, row in enumerate(records):
+        if str(row["server_id"]) == server_id and row["key"].strip().upper() == key:
+            row_idx = i + 2
+            break
+
+    if row_idx:
+        sheet.update_cell(row_idx, 3, str(value))
+    else:
+        sheet.append_row([server_id, key, value])
+
+def get_server_setting(server_id, key):
+    sheet = get_settings_sheet()
+    server_id = str(server_id)
+    key = key.strip().upper()
+    records = sheet.get_all_records()
+    for row in records:
+        if str(row["server_id"]) == server_id and row["key"].strip().upper() == key:
+            return row["value"]
+    return None
+
+def list_server_settings(server_id):
+    sheet = get_settings_sheet()
+    server_id = str(server_id)
+    return [
+        (row["key"], row["value"])
+        for row in sheet.get_all_records()
+        if str(row["server_id"]) == server_id
+    ]
+
 def extract_cities_from_df(df):
     if df is None or df.empty:
         return None
@@ -1163,8 +1136,11 @@ def extract_cities_from_df(df):
         print(f"Error extracting cities from df: {e}")
         return None
 
-def get_resources(nation_id):
-    df = graphql_request(nation_id)
+def get_resources(nation_id, interaction=None, guild_id=None):
+    if not guild_id:
+        df = graphql_request(nation_id, interaction, None)
+    if not interaction:
+        df = graphql_request(nation_id, None, guild_id)
     if df is not None:
         try:
             row = df[df["id"].astype(str) == str(nation_id)].iloc[0]
@@ -1188,8 +1164,8 @@ def get_resources(nation_id):
         except IndexError:
             return None
 
-def get_general_data(nation_id):
-    df = graphql_request(nation_id)
+def get_general_data(nation_id, interaction):
+    df = graphql_request(nation_id, interaction)
     if df is not None:
         try:
             row = df[df["id"].astype(str) == str(nation_id)].iloc[0]
@@ -1207,8 +1183,8 @@ def get_general_data(nation_id):
         except IndexError:
             return None
 
-def get_military(nation_id):
-    df = graphql_request(nation_id)
+def get_military(nation_id, interaction):
+    df = graphql_request(nation_id, interaction)
     if df is not None:
         try:
             row = df[df["id"].astype(str) == str(nation_id)].iloc[0]
@@ -1269,7 +1245,7 @@ def calculation(name, a, b, policy, war_type):
     }
 
 
-# Load environment variables earl
+
 
 import os
 import json
@@ -1279,7 +1255,7 @@ import datetime
 import asyncio
 import traceback
 
-# --- Google Sheets Credentials and Client Setup ---
+
 
 def get_credentials():
     creds_str = os.environ.get("GOOGLE_CREDENTIALS")
@@ -1297,71 +1273,111 @@ def get_client():
     client = gspread.authorize(creds)
     return client
 
-# --- Sheet Access Functions ---
 
-def get_registration_sheet():
+
+def get_registration_sheet(guild_id):
     client = get_client()
-    return client.open("Registrations").sheet1
+    sheet_name = f"{guild_id}_Registrations"
+    print(f"🔍 Looking for sheet: '{sheet_name}'")
+    
+    try:
+        # Try to open the guild-specific sheet
+        spreadsheet = client.open(sheet_name)
+        sheet = spreadsheet.sheet1
+        print(f"✅ Found sheet: '{sheet_name}' (worksheet title: '{sheet.title}')")
+        
+        # Check if sheet is empty or has minimal data
+        records = sheet.get_all_records()
+        if len(records) <= 1:
+            print(f"⚠️ Guild sheet only has {len(records)} records. Consider running migration.")
+            # Uncomment the next line to auto-migrate:
+            # migrate_data_to_guild_sheet(guild_id)
+        
+        return sheet
+    except gspread.SpreadsheetNotFound:
+        print(f"❌ Sheet '{sheet_name}' not found. Creating it...")
+        try:
+            # Create new guild-specific sheet
+            spreadsheet = client.create(sheet_name)
+            sheet = spreadsheet.sheet1
+            sheet.update('A1:C1', [['DiscordUsername', 'DiscordID', 'NationID']])
+            print(f"✅ Created new sheet: '{sheet_name}'")
+            
+            # Auto-migrate data from main sheet
+            print(f"🔄 Auto-migrating data from main 'Registrations' sheet...")
+            migrate_data_to_guild_sheet(guild_id)
+            
+            return sheet
+        except Exception as create_error:
+            print(f"❌ Failed to create sheet '{sheet_name}': {create_error}")
+            raise
+    except Exception as e:
+        print(f"❌ Unexpected error opening sheet '{sheet_name}': {e}")
+        raise
 
 def get_dm_sheet():
     client = get_client()
     return client.open("DmsSentByGov").sheet1
 
-def get_alliance_sheet():
+def get_alliance_sheet(guild_id):
     client = get_client()
-    return client.open("AllianceNet").sheet1
+    return client.open(f"{guild_id}_AllianceNet").sheet1
 
-def get_conflict_sheet():
+def get_auto_requests_sheet(guild_id):
     client = get_client()
-    return client.open("AllianceConflict").sheet1  # was incorrectly "Alliance Conflicts"
+    return client.open(f"{guild_id}_AutoRequests").sheet1  
 
-def get_conflict_data_sheet():
+
+def get_gov_role(interaction: discord.Interaction):
+    return get_settings_value("GOV_ROLE", interaction.guild.id)
+
+def get_server_sheet():
     client = get_client()
-    return client.open("ConflictData").sheet1
+    return client.open("BotServerSettings").sheet1  # Your sheet must have: server_id | api_key | lott_channel_ids
 
-def get_auto_requests_sheet():
-    client = get_client()
-    return client.open("AutoRequests").sheet1  # or .worksheet("SheetName") if needed
-# --- Data Saving Functions ---
+# --- Sheet Access Logic ---
+def save_server_settings(server_id, api_key=None, lott_ids=None):
+    sheet = get_server_sheet()
+    server_id = str(server_id)
+    records = sheet.get_all_records()
+    row_idx = None
 
-from datetime import datetime
+    for i, row in enumerate(records):
+        if str(row["server_id"]) == server_id:
+            row_idx = i + 2
+            break
 
+    if row_idx:
+        if api_key is not None:
+            sheet.update_cell(row_idx, 2, api_key)
+        if lott_ids is not None:
+            sheet.update_cell(row_idx, 3, ",".join(lott_ids))
+    else:
+        sheet.append_row([server_id, api_key or "", ",".join(lott_ids) if lott_ids else ""])
 
+def get_server_settings(server_id):
+    sheet = get_server_sheet()
+    server_id = str(server_id)
+    records = sheet.get_all_records()
+    for row in records:
+        if str(row["server_id"]) == server_id:
+            return {
+                "api_key": row["api_key"],
+                "lott_channel_ids": row["lott_channel_ids"].split(",") if row["lott_channel_ids"] else []
+            }
+    return {}
 
-def save_to_alliance_net(data_row):
+def save_to_alliance_net(data_row, guild_id):
     try:
-        sheet = get_alliance_sheet()
+        sheet = get_alliance_sheet(guild_id)
         sheet.append_row(data_row)
         print("✅ Data saved to Alliance Net")
     except Exception as e:
         print(f"❌ Failed to save to Alliance Net: {e}")
 
-def save_auto_request(user_id, nation_id, nation_name, resources, time_period):
-    sheet = get_auto_requests_sheet()
-    values = [
-        user_id,
-        nation_id,
-        nation_name,
-        str(resources.get("Uranium", 0)),
-        str(resources.get("Coal", 0)),
-        str(resources.get("Oil", 0)),
-        str(resources.get("Bauxite", 0)),
-        str(resources.get("Lead", 0)),
-        str(resources.get("Iron", 0)),
-        str(resources.get("Steel", 0)),
-        str(resources.get("Aluminum", 0)),
-        str(resources.get("Gasoline", 0)),
-        str(resources.get("Money", 0)),
-        str(resources.get("Food", 0)),
-        str(resources.get("Munitions", 0)),
-        str(time_period),
-        "",  # LastRequested
-    ]
-    sheet.append_row(values)
-
 def save_dm_to_sheet(sender_name, recipient_name, message):
     sheet = get_dm_sheet()
-    headers = sheet.row_values(1)  # Assumes headers are in the first row
+    headers = sheet.row_values(1)  
     data = {
         "Timestamp": datetime.now(timezone.utc).isoformat(),
         "Sender": sender_name,
@@ -1369,602 +1385,467 @@ def save_dm_to_sheet(sender_name, recipient_name, message):
         "Message": message
     }
 
-    # Create the row in the correct order according to headers
+    
     row = [data.get(header, "") for header in headers]
     sheet.append_row(row)
 
-def save_conflict_row(data_row):
-    try:
-        sheet = get_conflict_data_sheet()
-        sheet.append_row(data_row)
-        print("✅ Conflict data saved")
-    except Exception as e:
-        print(f"❌ Failed to save conflict data: {e}")
-
-def update_conflict_row(row_number, col_number, value):
-    try:
-        sheet = get_conflict_sheet()
-        sheet.update_cell(row_number, col_number, value)
-        print(f"✅ Conflict row {row_number} updated at column {col_number} with value: {value}")
-    except Exception as e:
-        print(f"❌ Failed to update conflict data: {e}")
-        raise
-
-def log_to_alliance_conflict(name, start, end=None, closed="False", enemy_ids="", message=""):
-    try:
-        sheet = get_conflict_sheet()
-        records = sheet.get_all_values()
-        for i, row in enumerate(records[1:], start=2):  # Skip header
-            if row[0].strip().lower() == name.lower():
-                if end:
-                    sheet.update_cell(i, 3, end)
-                # Optionally update other columns if needed
-                return
-        sheet.append_row([name, start, end or "", closed, enemy_ids, message])
-        print(f"✅ Logged new conflict '{name}' to Alliance Conflict")
-    except Exception as e:
-        print(f"❌ Failed to log to Alliance Conflict: {e}")
-        print(traceback.format_exc())
-
-
-# --- Caching and Loading Sheet Data ---
-
 cached_users = {}
-cached_registrations = []
+cached_registrations = {}
 cached_conflicts = []
 cached_conflict_data = []
 
-def load_registration_data():
+def load_registration_data(guild_id):
     global cached_users, cached_registrations
+
+    guild_id = str(guild_id)
+
     try:
-        sheet = get_registration_sheet()
-        print(f"Sheet object: {sheet}")
-        print(f"Sheet title: {sheet.title}")
+        sheet = get_registration_sheet(guild_id)
+        print(f"📄 Sheet object: {sheet}")
+        print(f"📘 Sheet title: {sheet.title}")
+
         records = sheet.get_all_records()
-        print(f"Records fetched: {len(records)}")
-        cached_registrations = records
-        cached_users = {
-            str(record['DiscordID']): {
-                'DiscordUsername': str(record['DiscordUsername']).strip().lower(),
-                'NationID': str(record['NationID']).strip()
-            }
-            for record in records
-        }
-        print(f"✅ Loaded {len(cached_users)} users from registration sheet.")
-    except Exception as e:
-        print(f"❌ Failed to load registration sheet data: {e}")
-        print(traceback.format_exc())
+        print(f"📥 Records fetched: {len(records)}")
 
-def load_conflict_data():
-    global cached_conflict_data
-    try:
-        sheet = get_conflict_data_sheet()
-        rows = sheet.get_all_values()
-        print(f"Raw header row: {rows[0]}")
-        print(f"Number of rows: {len(rows)}")
-        print(f"First 3 rows:\n{rows[:3]}")
+        user_map = {}
 
+        for record in records:
+            discord_id = str(record.get('DiscordID', '')).strip()
+            discord_username = str(record.get('DiscordUsername', '')).strip().lower()
+            nation_id = str(record.get('NationID', '')).strip()
 
-        if not rows:
-            print("❌ Sheet is empty.")
-            return None
+            if discord_id and discord_username and nation_id:
+                user_map[discord_id] = {
+                    'DiscordUsername': discord_username,
+                    'NationID': nation_id
+                }
 
-        expected_header = [
-            "Conflict Name", "War Start Date", "War End Date", "War ID",
-            "Attacker Nation Name", "Defender Nation Name", "Result",
-            "Money Gained", "Money Lost"
-        ]
+        # Store guild-specific data instead of overwriting global
+        if guild_id not in cached_users:
+            cached_users[guild_id] = {}
+        if guild_id not in cached_registrations:
+            cached_registrations[guild_id] = {}
+            
+        cached_users[guild_id] = user_map
+        cached_registrations[guild_id] = records
 
-        actual_header = rows[0][:len(expected_header)]
-
-        # Check for empty or duplicate headers
-        if "" in actual_header:
-            print(f"❌ Empty column name(s) in header: {actual_header}")
-            return None
-        if len(set(actual_header)) != len(actual_header):
-            print(f"❌ Duplicate column names in header: {actual_header}")
-            return None
-
-        if actual_header != expected_header:
-            print(f"❌ Header mismatch.\nExpected: {expected_header}\nActual:   {actual_header}")
-            return None
-
-        valid_rows = []
-        for i, row in enumerate(rows[1:], start=2):
-            if len(row) < len(expected_header):
-                print(f"⚠️ Skipping row {i}: too short ({len(row)} columns)")
-                continue
-            if not row[3].isdigit():
-                print(f"⚠️ Skipping row {i}: war ID is not numeric ({row[3]})")
-                continue
-            valid_rows.append(dict(zip(expected_header, row[:len(expected_header)])))
-
-        cached_conflict_data = valid_rows
-        print(f"✅ Loaded {len(valid_rows)} valid conflict data records.")
-        return sheet
+        print(f"✅ Loaded {len(user_map)} users from registration sheet for guild {guild_id}.")
 
     except Exception as e:
-        print(f"❌ Exception while loading conflict data: {e}")
+        print(f"❌ Failed to load registration sheet data for guild {guild_id}: {e}")
+        import traceback
         print(traceback.format_exc())
-        return None
 
-def load_conflicts_data():
-    global cached_conflicts
-    try:
-        sheet = get_conflict_sheet()
-        raw_data = sheet.get_all_records()
-        # Strip whitespace from keys
-        cached_conflicts = [{k.strip(): v for k, v in row.items()} for row in raw_data]
-        if cached_conflicts:
-            print(f"Headers: {list(cached_conflicts[0].keys())}")
-            print(f"Sample conflict row: {cached_conflicts[0]}")
-        print(f"✅ Loaded {len(cached_conflicts)} conflicts from sheet.")
-        return sheet
-    except Exception as e:
-        print(f"❌ Failed to load conflicts sheet data: {e}")
-        print(traceback.format_exc())
-        return None
-
-
-# --- Daily Refresh Task ---
 from datetime import datetime, timezone
-async def daily_refresh_loop():
+async def daily_refresh_loop(guild_id):
     while True:
         now = datetime.now(timezone.utc)
         next_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         wait_seconds = (next_midnight - now).total_seconds()
         await asyncio.sleep(wait_seconds)
         print("🔄 Refreshing all cached sheet data at UTC midnight...")
-        load_registration_data()
-        load_conflicts_data()
-        load_conflict_data()
+        load_registration_data(guild_id)
 
-# === Helper to find latest open conflict ===
-def get_latest_open_conflict():
-    conflicts = load_conflicts_data()
-    for i, conflict in enumerate(reversed(conflicts), 1):
-        if not conflict.get("Closed", False):
-            return conflict, len(conflicts) - i + 2
-    return None, None
 
-def get_sheet():
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(get_credentials(), scope)
-    client = gspread.authorize(creds)
-    return client.open("Registrations").sheet1
-
-def load_sheet_data():
-    global cached_users, cached_sheet_data
+def load_sheet_data(guild_id):
+    """Simplified function that just calls load_registration_data"""
+    guild_id = str(guild_id)
     try:
-        load_registration_data()
-        load_conflicts_data()
-        load_conflict_data()
-        bot.loop.create_task(daily_refresh_loop())
-        sheet = get_sheet()
-        print(f"Sheet object: {sheet}")
-        print(f"Sheet title: {sheet.title}")
-        records = sheet.get_all_records()
-        print(f"Records fetched: {len(records)}")
-        cached_sheet_data = records
-        cached_users = {
-            str(record['DiscordID']): {
-                'DiscordUsername': str(record['DiscordUsername']).strip().lower(),
-                'NationID': str(record['NationID']).strip()
-            }
-            for record in records
-        }
-        print(f"✅ Loaded {len(cached_users)} users from sheet.")
+        load_registration_data(guild_id)
+        # Only create the daily refresh loop once
+        if not hasattr(bot, '_refresh_loops'):
+            bot._refresh_loops = set()
+        if guild_id not in bot._refresh_loops:
+            bot.loop.create_task(daily_refresh_loop(guild_id))
+            bot._refresh_loops.add(guild_id)
     except Exception as e:
-        print(f"❌ Failed to load sheet data: {e}")
+        print(f"❌ Failed to load sheet data for guild {guild_id}: {e}")
+        import traceback
         print(traceback.format_exc())
+
+def migrate_data_to_guild_sheet(guild_id):
+    client = get_client()
+    
+    try:
+        # Open the main registrations sheet
+        main_sheet = client.open("Registrations").sheet1
+        main_records = main_sheet.get_all_records()
+        print(f"📋 Found {len(main_records)} records in main 'Registrations' sheet")
+        
+        # Get or create guild-specific sheet
+        guild_sheet = get_registration_sheet(guild_id)
+        
+        # Clear existing data and add headers
+        guild_sheet.clear()
+        guild_sheet.update('A1:C1', [['DiscordUsername', 'DiscordID', 'NationID']])
+        
+        # Copy all data
+        if main_records:
+            data_to_copy = []
+            for record in main_records:
+                data_to_copy.append([
+                    record.get('DiscordUsername', ''),
+                    record.get('DiscordID', ''),
+                    record.get('NationID', '')
+                ])
+            
+            guild_sheet.update(f'A2:C{len(data_to_copy)+1}', data_to_copy)
+            print(f"✅ Migrated {len(data_to_copy)} records to guild {guild_id} sheet")
+        
+    except Exception as e:
+        print(f"❌ Migration failed: {e}")
+
+def get_grant_channel(guild_id):
+    try:
+        sheet = get_settings_sheet()
+        rows = sheet.get_all_records()
+
+        for row in rows:
+            if str(row.get("server_id")) == str(guild_id) and row.get("key") == "GRANTS_CHANNEL":
+                value = row.get("value")
+                return str(value).strip() if value is not None else None
+
+        print(f"⚠️ GRANTS_CHANNEL not found for guild {guild_id}")
+        return None
+
+    except Exception as e:
+        print(f"❌ Error fetching grant channel for guild {guild_id}: {e}")
+        return None
 
 @tasks.loop(hours=1)
 async def process_auto_requests():
-    GRANT_REQUEST_CHANNEL_ID = "1338510585595428895"
     REASON_FOR_GRANT = "Resources for Production (Auto)"
-
+    
     try:
-        sheet = get_auto_requests_sheet()
-        all_rows = await asyncio.to_thread(sheet.get_all_values)
-        if not all_rows or len(all_rows) < 2:
+        guilds = bot.guilds
+        
+        if not guilds:
+            print("No guilds found")
             return
-
-        # Filter out empty columns from header
-        header = [h.strip() for h in all_rows[0] if h.strip()]
-        if len(header) != len(set(header)):
-            raise ValueError(f"The header row contains duplicates or blanks: {header}")
-
-        col_index = {col: idx for idx, col in enumerate(all_rows[0])}
-        rows = all_rows[1:]
-
-        guild = bot.get_guild(1186655069530243183)
-        channel = guild.get_channel(int(GRANT_REQUEST_CHANNEL_ID)) if guild else None
-        if channel is None:
-            print("Grant request channel not found!")
-            return
-
+        
         now = datetime.now(timezone.utc)
-
-        for i, row in enumerate(rows, start=2):
+        
+        for guild in guilds:
             try:
-                nation_id = row[col_index.get("NationID", -1)].strip() if col_index.get("NationID", -1) != -1 else ""
-                if not nation_id:
-                    print(f"Skipping row {i} due to empty NationID")
+                print(f"Processing guild: {guild.name} ({guild.id})")
+                
+                channel_id = get_grant_channel(guild.id)
+                if not channel_id:
+                    print(f"No grant channel configured for guild: {guild.name} ({guild.id})")
                     continue
-
-                # Get nation name
-                nation_info_df = graphql_request(nation_id)
-                nation_name = nation_info_df.loc[0, "nation_name"] if nation_info_df is not None and not nation_info_df.empty else "Unknown"
-
-                discord_id = row[col_index["DiscordID"]].strip()
-                time_period_days = int(float(row[col_index["TimePeriod"]].strip() or "1"))
-
-                last_requested_str = row[col_index["LastRequested"]].strip()
-                last_requested = (
-                    datetime.strptime(last_requested_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-                    if last_requested_str else datetime.min.replace(tzinfo=timezone.utc)
-                )
-
-                if now - last_requested < timedelta(days=time_period_days):
+                
+                channel = guild.get_channel(int(channel_id))
+                if channel is None:
                     continue
-
-                requested_resources = {}
-                for res in ["Coal", "Oil", "Bauxite", "Lead", "Iron"]:
-                    val_str = row[col_index[res]].strip()
-                    amount = parse_amount(val_str)
-                    if amount > 0:
-                        requested_resources[res] = amount
-
-                if not requested_resources:
+                
+                sheet = get_auto_requests_sheet(guild.id)
+                if not sheet:
                     continue
-
-                description_text = "\n".join([f"{resource}: {amount:,}".replace(",", ".") for resource, amount in requested_resources.items()])
-
-                embed = discord.Embed(
-                    title="💰 Grant Request",
-                    color=discord.Color.gold(),
-                    description=(
-                        f"**Nation:** {nation_name} (`{nation_id}`)\n"
-                        f"**Requested by:** <@{discord_id}>\n"
-                        f"**Request:**\n{description_text}\n"
-                        f"**Reason:** {REASON_FOR_GRANT}\n"
-                    )
-                )
-                image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-                embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
-
-                await channel.send(embed=embed, view=GrantView())
-
-                # Update timestamp
-                await asyncio.to_thread(sheet.update_cell, i, col_index["LastRequested"] + 1, now.strftime("%Y-%m-%d %H:%M:%S"))
-
-            except Exception as inner_ex:
-                print(f"Error processing row {i}: {inner_ex}")
-
+                
+                all_rows = await asyncio.to_thread(sheet.get_all_values)
+                if not all_rows or len(all_rows) < 2:
+                    continue
+                
+                header = [h.strip() for h in all_rows[0] if h.strip()]
+                if len(header) != len(set(header)):
+                    raise ValueError(f"Guild {guild.name} sheet header row contains duplicates or blanks: {header}")
+                
+                col_index = {col: idx for idx, col in enumerate(all_rows[0])}
+                rows = all_rows[1:]
+                
+                processed_count = 0
+                
+                for i, row in enumerate(rows, start=2):
+                    try:
+                        nation_id = row[col_index.get("NationID", -1)] if col_index.get("NationID", -1) != -1 else ""
+                        if not nation_id:
+                            print(f"Guild {guild.name}, row {i}: Skipping due to empty NationID")
+                            continue
+                        
+                        nation_info_df = graphql_request(nation_id, interaction=discord.Interaction)
+                        nation_name = nation_info_df.loc[0, "nation_name"] if nation_info_df is not None and not nation_info_df.empty else "Unknown"
+                        
+                        discord_id = row[col_index["DiscordID"]]
+                        time_period_days = int(float(row[col_index["TimePeriod"]].strip() or "1"))
+                        
+                        last_requested_str = row[col_index["LastRequested"]].strip()
+                        last_requested = (
+                            datetime.strptime(last_requested_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                            if last_requested_str else datetime.min.replace(tzinfo=timezone.utc)
+                        )
+                        
+                        if now - last_requested < timedelta(days=time_period_days):
+                            continue
+                        
+                        requested_resources = {}
+                        for res in ["Coal", "Oil", "Bauxite", "Lead", "Iron"]:
+                            val_str = row[col_index[res]].strip()
+                            amount = parse_amount(val_str)
+                            if amount > 0:
+                                requested_resources[res] = amount
+                        
+                        if not requested_resources:
+                            continue
+                        
+                        description_text = "\n".join([f"{resource}: {amount:,}".replace(",", ".") for resource, amount in requested_resources.items()])
+                        
+                        embed = discord.Embed(
+                            title="💰 Grant Request",
+                            color=discord.Color.gold(),
+                            description=(
+                                f"**Nation:** {nation_name} (`{nation_id}`)\n"
+                                f"**Requested by:** <@{discord_id}>\n"
+                                f"**Request:**\n{description_text}\n"
+                                f"**Reason:** {REASON_FOR_GRANT}\n"
+                            )
+                        )
+                        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+                        embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
+                        
+                        await channel.send(embed=embed, view=GrantView())
+                        
+                        await asyncio.to_thread(sheet.update_cell, i, col_index["LastRequested"] + 1, now.strftime("%Y-%m-%d %H:%M:%S"))
+                        processed_count += 1
+                        
+                        await asyncio.sleep(0.5)
+                        
+                    except Exception as inner_ex:
+                        print(f"Error processing guild {guild.name}, row {i}: {inner_ex}")
+                
+                print(f"Processed {processed_count} requests from guild: {guild.name}")
+                
+            except Exception as guild_ex:
+                print(f"Error processing guild {guild.name}: {guild_ex}")
+    
     except Exception as ex:
         print(f"Error in process_auto_requests task: {ex}")
-
-import asyncio
-
-@tasks.loop(hours=1)
-async def hourly_war_check():
-    print(f"⏰ Running hourly war check at {datetime.utcnow().strftime('%H:%M:%S')} UTC...")
-    await perform_war_check_logic()
-
-@hourly_war_check.before_loop
-async def before_hourly_check():
-    now = datetime.utcnow()
-    next_hour = (now + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
-    wait_seconds = (next_hour - now).total_seconds()
-    print(f"⏳ Waiting {int(wait_seconds)}s until next full hour...")
-    await asyncio.sleep(wait_seconds)
-
-async def perform_war_check_logic():
-    try:
-        load_conflicts_data()
-        active_conflicts = [
-            c for c in cached_conflicts
-            if str(c.get("Closed", "")).strip().lower() != "true"
-            and c.get("Name")
-            and c.get("EnemyIDs")
-        ]
-
-        if not active_conflicts:
-            print("⏳ No active conflicts. Skipping check.")
-            return
-
-        conflict = active_conflicts[0]
-        conflict_name = conflict.get("Name")
-        conflict_start_date = conflict.get("Start") or conflict.get("StartDate")
-        if not conflict_start_date:
-            print(f"⚠️ Conflict '{conflict_name}' has no start date. Skipping.")
-            return
-
-        try:
-            enemy_ids = [int(id.strip()) for id in str(conflict.get("EnemyIDs")).split(",") if id.strip().isdigit()]
-        except Exception as e:
-            print(f"❌ Failed to parse enemy IDs: {e}")
-            return
-
-        if not enemy_ids:
-            print(f"⚠️ No valid enemy alliance IDs set for conflict '{conflict_name}'")
-            return
-
-        GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
-        headers = {"Content-Type": "application/json"}
-        query = """
-        query AllianceWars($id: [Int], $limit: Int) {
-          alliances(id: $id) {
-            data {
-              id
-              name
-              wars(limit: $limit) {
-                id
-                date
-                end_date
-                winner_id
-                attacker {
-                  id
-                  nation_name
-                  alliance_id
-                  wars {
-                    id
-                    attacks { money_stolen }
-                  }
-                }
-                defender {
-                  id
-                  nation_name
-                  alliance_id
-                  wars {
-                    id
-                    attacks { money_stolen }
-                  }
-                }
-              }
-            }
-          }
-        }
-        """
-        variables = {"id": [10259], "limit": 500}
-        try:
-            response = requests.post(GRAPHQL_URL, json={"query": query, "variables": variables}, headers=headers)
-            response.raise_for_status()
-            result = response.json()
-        except Exception as e:
-            print(f"❌ API request failed: {e}")
-            return
-
-        alliances_data = result.get("data", {}).get("alliances", {}).get("data", [])
-        if not alliances_data:
-            print("❌ No data returned from API.")
-            return
-
-        sheet = get_conflict_data_sheet()
-        existing_rows = sheet.get_all_values()
-        existing_war_ids = set(str(row[3]) for row in existing_rows[1:] if len(row) > 3 and row[3])
-
-        all_new_wars = []
-
-        for alliance in alliances_data:
-            for war in alliance.get("wars", []):
-                war_id = str(war.get("id"))
-                end_date = war.get("end_date")
-                start_date = war.get("date", "")[:10]
-
-                # Skip if active or already logged
-                if not end_date or war_id in existing_war_ids:
-                    continue
-
-                if start_date != conflict_start_date:
-                    continue
-
-                war_end = end_date[:10]
-                attacker_data = war.get("attacker", {})
-                defender_data = war.get("defender", {})
-
-                if not attacker_data or not defender_data:
-                    continue
-
-                attacker = attacker_data.get("nation_name")
-                defender = defender_data.get("nation_name")
-                if not attacker or not defender:
-                    continue
-
-                winner_id = war.get("winner_id")
-                result_str = (
-                    "Attacker" if winner_id == attacker_data.get("id") else
-                    "Defender" if winner_id == defender_data.get("id") else
-                    "Draw"
-                )
-
-                att_money = sum((a.get("money_stolen") or 0) for w in attacker_data.get("wars", []) for a in w.get("attacks", []))
-                def_money = sum((a.get("money_stolen") or 0) for w in defender_data.get("wars", []) for a in w.get("attacks", []))
-
-                money_gained = att_money if attacker_data.get("alliance_id") == 10259 else def_money
-                money_lost = def_money if attacker_data.get("alliance_id") == 10259 else att_money
-
-                row = [
-                    conflict_name,
-                    start_date,
-                    war_end,
-                    war_id,
-                    attacker,
-                    defender,
-                    result_str,
-                    f"{money_gained:.2f}",
-                    f"{money_lost:.2f}"
-                ]
-
-                if len(row) == 9 and all(row):
-                    all_new_wars.append(row)
-
-        # Append in batches
-        batch_size = 30
-        total = len(all_new_wars)
-        for i in range(0, total, batch_size):
-            batch = all_new_wars[i:i+batch_size]
-            try:
-                sheet.append_rows(batch)
-                print(f"📥 Logged {len(batch)} wars [{i + 1}-{i + len(batch)} of {total}] for conflict '{conflict_name}'.")
-            except Exception as e:
-                print(f"❌ Failed to append batch: {e}")
-            if i + batch_size < total:
-                print("⏳ Waiting 60 seconds before next batch...")
-                await asyncio.sleep(70)
-
-    except Exception as e:
-        print(f"❌ Error in hourly war check: {e}")
-
-
-
+    
 @tasks.loop(hours=1)
 async def hourly_snapshot():
     now = datetime.now(timezone.utc)
     current_hour = now.replace(minute=0, second=0, microsecond=0)
 
-    # Check sheet for last saved timestamp
-    try:
-        sheet = get_alliance_sheet()
-        rows = sheet.get_all_records()
-        if not rows:
-            print("⚠️ No entries in sheet; proceeding with snapshot.")
-        else:
-            # Assume last row is most recent
-            last_time_str = rows[-1].get("TimeT", "")
-            last_time = datetime.fromisoformat(last_time_str)
+    guild_ids = {str(guild.id) for guild in bot.guilds}
 
-            if last_time.replace(minute=0, second=0, microsecond=0) == current_hour:
-                print("⏭ Already saved snapshot this hour (based on sheet). Skipping.")
-                return
-    except Exception as e:
-        print(f"⚠️ Failed to check sheet for last snapshot: {e}")
-
-    try:
-        totals = {res: 0 for res in [
-            "money", "food", "gasoline", "munitions", "steel", "aluminum",
-            "bauxite", "lead", "iron", "oil", "uranium", "coal", "num_cities"
-        ]}
-        processed_nations = 0
-        failed = 0
-
-        # Get market prices
-        GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
-        prices_query = """
-        {
-          top_trade_info {
-            resources {
-              resource
-              average_price
-            }
-          }
-        }
-        """
+    for guild_id in guild_ids.copy():  
         try:
-            resp = requests.post(GRAPHQL_URL, json={"query": prices_query}, headers={"Content-Type": "application/json"})
-            resp.raise_for_status()
-            prices = {item["resource"]: float(item["average_price"]) for item in resp.json()["data"]["top_trade_info"]["resources"]}
-            print("✅ Resource prices fetched.")
+            alliance_sheet = get_alliance_sheet(guild_id)
+            rows = alliance_sheet.get_all_records()
+            if rows:
+                last_time_str = rows[-1].get("TimeT", "")
+                last_time = datetime.fromisoformat(last_time_str)
+                last_time_hour = last_time.replace(minute=0, second=0, microsecond=0)
+                if last_time_hour == current_hour:
+                    print(f"⏭ Already saved snapshot this hour for guild {guild_id} (last snapshot time: {last_time_hour})")
+                    guild_ids.remove(guild_id)
+            else:
+                print(f"⚠️ No entries in alliance sheet for guild {guild_id}; proceeding with snapshot.")
         except Exception as e:
-            print(f"❌ Error fetching prices: {e}")
-            prices = {}
+            print(f"❌ Failed to check alliance sheet for guild {guild_id}: {e}")
 
-        seen_ids = set()
+    if not guild_ids:
+        print("⚠️ No guilds require snapshots this hour. Exiting.")
+        return
 
-        for user_id, user_data in cached_users.items():
-            nation_id = str(user_data.get("NationID", "")).strip()
-            if not nation_id or nation_id in seen_ids:
-                failed += 1
+    try:
+        settings_sheet = get_settings_sheet()
+        settings_rows = settings_sheet.get_all_records()
+    except Exception as e:
+        print(f"❌ Failed to get settings sheet: {e}")
+        return
+
+    guild_api_keys = {}
+    for row in settings_rows:
+        server_id = str(row.get("server_id")).strip()
+        key_name = row.get("key", "").strip()
+        value = row.get("value", "")
+        if isinstance(value, str):
+            value = value.strip()
+        if key_name == "API_KEY" and server_id in guild_ids and value:
+            guild_api_keys[server_id] = value
+
+    if not guild_api_keys:
+        print("⚠️ No API_KEYs found for current guilds. Skipping snapshot.")
+        return
+
+    for guild_id, api_key in guild_api_keys.items():
+
+        try:
+            if guild_id not in cached_users:
+                load_sheet_data(guild_id)
+
+            guild_users = cached_users.get(guild_id, {})
+            print(f"👥 Found {len(guild_users)} registered users in guild {guild_id}")
+
+            if not guild_users:
+                print(f"⚠️ No registered users found for guild {guild_id}. Skipping.")
                 continue
 
-            seen_ids.add(nation_id)
+            totals = {
+                "money": 0, "food": 0, "gasoline": 0, "munitions": 0, "steel": 0,
+                "aluminum": 0, "bauxite": 0, "lead": 0, "iron": 0,
+                "oil": 0, "uranium": 0, "coal": 0, "num_cities": 0
+            }
+            processed_nations = 0
+            failed = 0
+
+            GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={api_key}"
+            prices_query = """
+            {
+              top_trade_info {
+                resources {
+                  resource
+                  average_price
+                }
+              }
+            }
+            """
+            try:
+                resp = requests.post(GRAPHQL_URL, json={"query": prices_query}, headers={"Content-Type": "application/json"})
+                resp.raise_for_status()
+                prices = {item["resource"]: float(item["average_price"]) for item in resp.json()["data"]["top_trade_info"]["resources"]}
+            except Exception as e:
+                print(f"❌ Error fetching prices for guild {guild_id}: {e}")
+                prices = {}
+
+            seen_ids = set()
+
+            for user_id, user_data in guild_users.items():
+                nation_id = str(user_data.get("NationID", "")).strip()
+                username = user_data.get("DiscordUsername", "unknown")
+
+                if not nation_id:
+                    print(f"⚠️ No Nation ID for user {username} ({user_id}) in guild {guild_id}")
+                    failed += 1
+                    continue
+
+                if nation_id in seen_ids:
+                    print(f"⚠️ Duplicate Nation ID {nation_id} for user {username} in guild {guild_id}")
+                    failed += 1
+                    continue
+
+                seen_ids.add(nation_id)
+
+                try:
+                    resources = get_resources(nation_id, None, guild_id)
+                    (nation_name, num_cities, food, money, gasoline, munitions, steel,
+                     aluminum, bauxite, lead, iron, oil, coal, uranium) = resources
+
+                    totals["money"] += money
+                    totals["food"] += food
+                    totals["gasoline"] += gasoline
+                    totals["munitions"] += munitions
+                    totals["steel"] += steel
+                    totals["aluminum"] += aluminum
+                    totals["bauxite"] += bauxite
+                    totals["lead"] += lead
+                    totals["iron"] += iron
+                    totals["oil"] += oil
+                    totals["coal"] += coal
+                    totals["uranium"] += uranium
+                    totals["num_cities"] += num_cities
+                    processed_nations += 1
+
+                    await asyncio.sleep(5)
+                except Exception as e:
+                    failed += 1
+                    print(f"❌ Failed for nation {nation_id} ({username}) in guild {guild_id}: {e}")
+                    continue
+
+            resource_values = {}
+            total_wealth = totals["money"]
+
+            for resource, amount in totals.items():
+                if resource in ["money", "num_cities"]:
+                    continue
+                price = prices.get(resource, 0)
+                value = amount * price
+                resource_values[resource] = value
+                total_wealth += value
+
+            timestamp = current_hour.isoformat()
+            money_snapshots.append({"time": timestamp, "total": total_wealth})
+
+            save_row = [timestamp, total_wealth, totals["money"]]
+            ordered_resources = [
+                "food", "gasoline", "munitions", "steel", "aluminum",
+                "bauxite", "lead", "iron", "oil", "coal", "uranium"
+            ]
+            for res in ordered_resources:
+                save_row.append(resource_values.get(res, 0))
 
             try:
-                resources = get_resources(nation_id)
-                (nation_name, num_cities, food, money, gasoline, munitions, steel,
-                 aluminum, bauxite, lead, iron, oil, coal, uranium) = resources
-
-                totals["money"] += money
-                totals["food"] += food
-                totals["gasoline"] += gasoline
-                totals["munitions"] += munitions
-                totals["steel"] += steel
-                totals["aluminum"] += aluminum
-                totals["bauxite"] += bauxite
-                totals["lead"] += lead
-                totals["iron"] += iron
-                totals["oil"] += oil
-                totals["coal"] += coal
-                totals["uranium"] += uranium
-                totals["num_cities"] += num_cities
-                processed_nations += 1
-
-                await asyncio.sleep(5)
+                save_to_alliance_net(save_row, guild_id=guild_id)
+                print(f"💾 Snapshot saved at {timestamp} for guild {guild_id}: ${total_wealth:,.0f} (processed {processed_nations} nations, {failed} failed)")
             except Exception as e:
-                failed += 1
-                print(f"❌ Failed for nation {nation_id}: {e}")
-                continue
+                print(f"❌ Failed to save snapshot for guild {guild_id}: {e}")
 
-        resource_values = {}
-        total_wealth = totals["money"]
-
-        for resource, amount in totals.items():
-            if resource in ["money", "num_cities"]:
-                continue
-            price = prices.get(resource, 0)
-            value = amount * price
-            resource_values[resource] = value
-            total_wealth += value
-
-        timestamp = current_hour.isoformat()
-        money_snapshots.append({"time": timestamp, "total": total_wealth})
-
-        save_row = [timestamp, total_wealth, totals["money"]]
-        ordered_resources = [
-            "food", "gasoline", "munitions", "steel", "aluminum",
-            "bauxite", "lead", "iron", "oil", "coal", "uranium"
-        ]
-        for res in ordered_resources:
-            save_row.append(resource_values.get(res, 0))
-
-        try:
-            save_to_alliance_net(save_row)
-            print(f"💾 Snapshot saved at {timestamp}: ${total_wealth:,.0f}")
         except Exception as e:
-            print(f"❌ Failed to save snapshot: {e}")
+            print(f"❌ Error processing guild {guild_id}: {e}")
+
+def get_warn_channel(guild_id):
+    try:
+        sheet = get_settings_sheet()
+        rows = sheet.get_all_records()
+
+        for row in rows:
+            if str(row.get("server_id")) == str(guild_id) and row.get("key") == "WARN_CHANNEL":
+                value = row.get("value")
+                return str(value).strip() if value is not None else None
+
+        print(f"⚠️ WARN_CHANNEL not found for guild {guild_id}")
+        return None
+
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"❌ Error fetching warn channel for guild {guild_id}: {e}")
+        return None
 
 @tasks.loop(hours=2)
 async def check_api_loop():
-    nation_id = "680627"  # Replace with a valid nation ID
-    score = get_nation_score(nation_id)
-    EG_ID = 1338510585595428895
+    nation_id = "680627"
 
-    if score is None:
-        channel = bot.get_channel(EG_ID)
-        message1 = (
-            f"# Important #\n"
-            f"The PnW API is currently offline so commands which use it are aswell. Those inculde:\n"
-            f"- All `/request_...` commands\n"
-            f"- `/nation_info`\n"
-            f"- The Lotto Commands\n"
-            f"You will be notified when the API is back online. Thanks for the understanding ||<@&1192368632622219305>||"
-        )
-        message2 = (
-            f"# Good News #\n"
-            f"The API is back online, and so are the commands\n"
-            f"We thank you for your patience, have a cookie 🍪 ||<@&1192368632622219305>||"
-        )
-        await channel.send(message1)
-        for _ in range(12):  # 24 * 5 mins = 2 hours
-            await asyncio.sleep(300)  # 5 minutes
+    for guild in bot.guilds:
+        try:
+            channel_id = get_warn_channel(guild.id)
+            if not channel_id:
+                print(f"⚠️ No WARN_CHANNEL configured for guild: {guild.name} ({guild.id})")
+                continue
+
+            channel = guild.get_channel(int(channel_id))
+            if channel is None:
+                print(f"⚠️ WARN_CHANNEL ID {channel_id} not found in guild {guild.name}")
+                continue
+
             score = get_nation_score(nation_id)
-            if score is not None:
-                await channel.send(message2)
-                return
+
+            if score is None:
+                message1 = (
+                    f"# ❗ Important ❗\n"
+                    f"The PnW API is currently **offline**, so commands which rely on it are unavailable:\n"
+                    f"- All `/request_...` commands\n"
+                    f"- `/nation_info`\n"
+                    f"You will be notified when the API is back online. Thank you for your understanding. ||<@&1192368632622219305>||"
+                )
+                await channel.send(message1)
+
+                for _ in range(12):  # 12 * 5min = 1 hour of checking
+                    await asyncio.sleep(300)
+                    score = get_nation_score(nation_id)
+                    if score is not None:
+                        message2 = (
+                            f"# ✅ Good News ✅\n"
+                            f"The API is back online! 🎉\n"
+                            f"You may now use all bot commands again. Thank you for your patience 🍪 ||<@&1192368632622219305>||"
+                        )
+                        await channel.send(message2)
+                        break
+
+        except Exception as e:
+            print(f"❌ Error processing guild {guild.name}: {e}")
+
 
 def get_nation_score(nation_id: str) -> float | None:
+    API_KEY = get_api_key_for_interaction(interaction=discord.Interaction)
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
     query = """
     query ($id: [Int!]) {
@@ -1995,80 +1876,49 @@ async def before_hourly():
     print("Waiting for bot to be ready before starting hourly snapshots...")
     await bot.wait_until_ready()
 
+def get_api_key_for_interaction(interaction: discord.Interaction) -> str:
+    return get_settings_value("API_KEY", interaction.guild.id)
+
+def get_api_key_for_guild(guild_id: int) -> str | None:
+    try:
+        sheet = get_settings_sheet()
+        rows = sheet.get_all_records()
+
+        for row in rows:
+            if str(row.get("server_id")) == str(guild_id) and row.get("key") == "API_KEY":
+                return row.get("value").strip()
+
+        print(f"⚠️ API_KEY not found for guild {guild_id}")
+        return None
+
+    except Exception as e:
+        print(f"❌ Error fetching API key for guild {guild_id}: {e}")
+        return None
+
+
 @bot.event
 async def on_ready():
-    bot.add_view(GrantView())   # Register persistent view
+    bot.add_view(GrantView())  
+    for guild in bot.guilds:
+        load_sheet_data(guild.id)
+        load_registration_data(guild.id)
     bot.add_view(BlueGuy()) 
-    load_sheet_data()
-    load_registration_data()
-    check_reminders.start()
     print("Starting hourly snapshot task...")
     if not hourly_snapshot.is_running():
         hourly_snapshot.start()
     if not process_auto_requests.is_running():
         process_auto_requests.start()
-    if not check_api_loop.is_running():
-        check_api_loop.start()
-    if not hasattr(bot, "war_check_started"):  # Prevent multiple starts if on_ready fires again
-        bot.war_check_started = True
-        bot.loop.create_task(hourly_war_check())
-        print("✅ hourly_war_check task started.")
+    '''if not check_api_loop.is_running():
+        check_api_loop.start()'''
     await bot.tree.sync()
     print(f"✅ Logged in as {bot.user}")
 
-import asyncio
-from discord.ext import tasks
-from datetime import datetime, timedelta
-import random
-
-REMINDER_CHANNEL_ID = 1384922560902463519  # your target channel
-
-@tasks.loop(hours=24)
-async def check_reminders():
-    await bot.wait_until_ready()
-    now = datetime.utcnow()
-    if not (4 <= now.hour < 6):
-        return  # only run between 4–6 AM UTC
-
-    sheet = get_bank_sheet()
-    records = sheet.get_all_records()
-    channel = bot.get_channel(REMINDER_CHANNEL_ID)
-    if not channel:
-        return
-
-    for row in records:
-        user_id = row["owner"]
-        loan_date = row.get("loan_date")
-        deposit_date = row.get("deposit_date")
-
-        msg = None
-        if loan_date:
-            date = datetime.strptime(loan_date, "%Y-%m-%d")
-            if now - date >= timedelta(days=7):
-                msg = f"🔔 <@{user_id}> has an outstanding loan over 7 days old."
-
-        if deposit_date:
-            date = datetime.strptime(deposit_date, "%Y-%m-%d")
-            if now - date >= timedelta(days=7):
-                if msg:
-                    msg += "\n"
-                else:
-                    msg = ""
-                msg += f"🔔 <@{user_id}>'s safekeep balance has been held over 7 days."
-
-        if msg:
-            await asyncio.sleep(random.uniform(1, 3))  # prevent ratelimiting
-            await channel.send(msg)
-
-
 @bot.event
-async def on_message(message):
+async def on_message(message: discord.Message):
     if message.author.bot:
         return
 
-    TARGET_GUILD_ID = 1186655069530243183
-    IGNORED_USER_IDS = {1167879888892608663, 1148678095176474678}
-
+    # ── INTEL PARSING ──────────────────────────────────────────────
     intel_pattern = re.compile(
         r"You successfully gathered intelligence about (?P<nation>.+?)\. .*?has "
         r"\$(?P<money>[\d,\.]+), (?P<coal>[\d,\.]+) coal, (?P<oil>[\d,\.]+) oil, "
@@ -2095,13 +1945,10 @@ async def on_message(message):
                 for item in prices["data"]["top_trade_info"]["resources"]
             }
 
-            total_value = 0.0
-            for key, val in resources.items():
-                if key == "money":
-                    total_value += val
-                elif key in resource_prices:
-                    total_value += val * resource_prices[key]
-
+            total_value = sum(
+                val * resource_prices.get(key, 1) if key != "money" else val
+                for key, val in resources.items()
+            )
             estimated_loot = total_value * 0.14
 
         except Exception as e:
@@ -2136,10 +1983,7 @@ async def on_message(message):
                 existing_data = existing_row[1:13]
                 new_data = update_row[1:13]
 
-                existing_data_fmt = [f"{float(val):.2f}" for val in existing_data]
-                new_data_fmt = [f"{float(val):.2f}" for val in new_data]
-
-                if existing_data_fmt == new_data_fmt:
+                if all(f"{float(e):.2f}" == f"{float(n):.2f}" for e, n in zip(existing_data, new_data)):
                     await message.channel.send(f"✅ Intel on **{nation}** already reported and unchanged.")
                     await bot.process_commands(message)
                     return
@@ -2156,11 +2000,7 @@ async def on_message(message):
 
             for k, v in resources.items():
                 if k in resource_prices:
-                    embed.add_field(
-                        name=k.capitalize(),
-                        value=f"{v:,.2f} @ {resource_prices[k]:,.2f}",
-                        inline=True
-                    )
+                    embed.add_field(name=k.capitalize(), value=f"{v:,.2f} @ {resource_prices[k]:,.2f}", inline=True)
                 else:
                     embed.add_field(name=k.capitalize(), value=f"{v:,.2f}", inline=True)
 
@@ -2172,136 +2012,8 @@ async def on_message(message):
             print(f"Error in intel handler: {e}")
             await message.channel.send("❌ Failed to process intel report.")
 
-    await bot.process_commands(message)
-    if message.guild and message.guild.id == TARGET_GUILD_ID:
-        if message.author.id in IGNORED_USER_IDS:
-            if "money" in message.content.lower():
-                try:
-                    reply = await message.reply(
-                        "By copper’s clink and silver’s ring,\n"
-                        "By debts unpaid and ledgers’ sting,\n"
-                        "Barring, keeper of the fiscal flame,\n"
-                        "I call thee now, in coin’s own name.\n"
-                        "From vaults unseen and whispers charring,\n"
-                        "Rise from the depths—I summon thee, <@722094493343416392>!"
-                    )
-                    await asyncio.sleep(10)
-                    await reply.delete()
-                except discord.Forbidden:
-                    print("No permission to reply in this channel")
-                except Exception as e:
-                    print(f"Error replying: {e}")
-
-            elif "Nuke" in message.content:
-                try:
-                    reply = await message.reply(
-                        "From fires forged in honor’s name,\n"
-                        "A force unleashed without a blame,\n"
-                        "With steady hand and courage quick,\n"
-                        "I summon forth the valiant <@1059576506684289034>."
-                    )
-                    await asyncio.sleep(10)
-                    await reply.delete()
-                except discord.Forbidden:
-                    print("No permission to reply in this channel")
-                except Exception as e:
-                    print(f"Error replying: {e}")
-    
-            elif "tax evasion" in message.content.lower():
-                try:
-                    reply = await message.reply(
-                        "By loophole's path and audit's dread,\n"
-                        "By offshore books and papers shed,\n"
-                        "O Barring, ghost of gains concealed,\n"
-                        "Whose wealth in shadows lies unrevealed,\n"
-                        "Where ledgers burn and truths are scarring,\n"
-                        "Come forth, unseen—I summon thee, <@722094493343416392>!"
-                    )
-                    await asyncio.sleep(10)
-                    await reply.delete()
-                except discord.Forbidden:
-                    print("No permission to reply in this channel")
-                except Exception as e:
-                    print(f"Error replying: {e}")
-            return
-
-        if "🥀" in message.content:
-            #print("🥀 detected, replying...")
-            try:
-                await message.reply("🥀")
-                #print("Reply sent successfully")
-            except discord.Forbidden:
-                print("No permission to reply in this channel")
-            except Exception as e:
-                print(f"Error replying: {e}")
-        elif "🌻" in message.content:
-            try:
-                await message.reply("https://tenor.com/LPuCUdzFpS.gif")
-            except discord.Forbidden:
-                print("No permission to reply in this channel")
-            except Exception as e:
-                print(f"Error replying: {e}")
-        elif ":honest_reaction:" in message.content:
-            try: 
-                await message.reply("https://tenor.com/bMYJ6.gif")
-            except discord.Forbidden:
-                print("No permission to reply in this channel")
-            except Exception as e:
-                print(f"Error replying: {e}")
-        elif "money" in message.content.lower():
-            try:
-                reply = await message.reply(
-                    "By copper’s clink and silver’s ring,\n"
-                    "By debts unpaid and ledgers’ sting,\n"
-                    "Barring, keeper of the fiscal flame,\n"
-                    "I call thee now, in coin’s own name.\n"
-                    "From vaults unseen and whispers charring,\n"
-                    "Rise from the depths—I summon thee, <@722094493343416392>!"
-                )
-                await asyncio.sleep(10)
-                await reply.delete()
-            except discord.Forbidden:
-                print("No permission to reply in this channel")
-            except Exception as e:
-                print(f"Error replying: {e}")
-
-        elif "Nuke" in message.content:
-            try:
-                reply = await message.reply(
-                    "From fires forged in honor’s name,\n"
-                    "A force unleashed without a blame,\n"
-                    "With steady hand and courage quick,\n"
-                    "I summon forth the valiant <@1059576506684289034>."
-                )
-                await asyncio.sleep(10)
-                await reply.delete()
-            except discord.Forbidden:
-                print("No permission to reply in this channel")
-            except Exception as e:
-                print(f"Error replying: {e}")
-
-        elif "tax evasion" in message.content.lower():
-            try:
-                reply = await message.reply(
-                    "By loophole's path and audit's dread,\n"
-                    "By offshore books and papers shed,\n"
-                    "O Barring, ghost of gains concealed,\n"
-                    "Whose wealth in shadows lies unrevealed,\n"
-                    "Where ledgers burn and truths are scarring,\n"
-                    "Come forth, unseen—I summon thee, <@722094493343416392>!"
-                )
-                await asyncio.sleep(10)
-                await reply.delete()
-            except discord.Forbidden:
-                print("No permission to reply in this channel")
-            except Exception as e:
-                print(f"Error replying: {e}")
-
-
-            
-
-    # Your 2nd logic: Handle direct messages to the bot
-    if message.guild is None:  # DM channel
+    # ── DM LOGGING ─────────────────────────────────────────────────
+    if message.guild is None:
         default_reply = "Thanks for your message! We'll get back to you soon."
 
         last_bot_msg = None
@@ -2311,24 +2023,39 @@ async def on_message(message):
                 break
 
         if last_bot_msg != default_reply:
-            log_channel_id = 1262301979242401822
-            log_channel = bot.get_channel(log_channel_id)
-            if log_channel:
-                embed = discord.Embed(
-                    title="New DM received",
-                    description=(
-                        f"**From:** {message.author} (`{message.author.id}`)\n"
-                        f"**User message:**\n{message.content}\n\n"
-                        f"**Last bot message to user:**\n{last_bot_msg or 'None'}"
-                    ),
-                    color=discord.Color.blue()
-                )
-                await log_channel.send(embed=embed)
+            try:
+                # Load LOGS channel from BotServerSettings
+                settings_sheet = get_sheet_s("BotServerSettings")
+                all_settings = settings_sheet.get_all_records()
+
+                # Find first LOGS row for any server (since it's DM)
+                logs_channel_id = None
+                for row in all_settings:
+                    if row["key"] == "LOGS":
+                        logs_channel_id = int(row["value"])
+                        break
+
+                if logs_channel_id:
+                    log_channel = bot.get_channel(logs_channel_id)
+                    if log_channel:
+                        embed = discord.Embed(
+                            title="📩 New DM Received",
+                            description=(
+                                f"**From:** {message.author} (`{message.author.id}`)\n"
+                                f"**User message:**\n{message.content}\n\n"
+                                f"**Last bot message to user:**\n{last_bot_msg or 'None'}"
+                            ),
+                            color=discord.Color.blue()
+                        )
+                        await log_channel.send(embed=embed)
+
+            except Exception as e:
+                print(f"Failed to log DM: {e}")
 
         await message.channel.send(default_reply)
 
-    # Make sure commands still work
     await bot.process_commands(message)
+
 
 
 @bot.tree.command(name="register", description="Register your Nation ID")
@@ -2336,9 +2063,10 @@ async def on_message(message):
 async def register(interaction: discord.Interaction, nation_id: str):
     await interaction.response.defer()
 
+    # Custom permission check
     async def is_banker(interaction):
         return (
-        any(role.name == "Starborn" for role in interaction.user.roles)
+            any(role.name == "Starborn" for role in interaction.user.roles)
             or str(interaction.user.id) == "1148678095176474678"
         )
 
@@ -2350,14 +2078,19 @@ async def register(interaction: discord.Interaction, nation_id: str):
         await interaction.followup.send("❌ Please enter only the Nation ID number, not a link.")
         return
 
+    # Check nation existence and discord username
     url = f"https://politicsandwar.com/nation/id={nation_id}"
-    session = requests.Session()
-    response = session.get(url)
-    soup = BeautifulSoup(response.text, 'html.parser')
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+    except Exception:
+        await interaction.followup.send("❌ Failed to fetch nation data. Try again later.")
+        return
 
+    soup = BeautifulSoup(response.text, 'html.parser')
     discord_label = soup.find(string="Discord Username:")
     if not discord_label:
-        await interaction.followup.send("❌ Invalid Nation ID or the nation has no Discord username listed.")
+        await interaction.followup.send("❌ Invalid Nation ID or no Discord username listed.")
         return
 
     try:
@@ -2369,7 +2102,13 @@ async def register(interaction: discord.Interaction, nation_id: str):
     user_discord_username = interaction.user.name.strip().lower()
     user_id = str(interaction.user.id)
     nation_id_str = str(nation_id).strip()
+    guild_id = str(interaction.guild.id)
 
+    # FORCE reload current guild data to clear any stale cache
+    print(f"🔄 Force reloading data for guild {guild_id}")
+    load_sheet_data(guild_id)
+
+    # Sumnor bypasses username check
     if user_discord_username != "sumnor":
         if nation_discord_username != user_discord_username:
             await interaction.followup.send(
@@ -2377,252 +2116,208 @@ async def register(interaction: discord.Interaction, nation_id: str):
             )
             return
 
-    global cached_users
+    # Check for duplicates in cached users for THIS SPECIFIC GUILD
+    users_in_guild = cached_users.get(guild_id, {})
+    print(f"🔍 Checking duplicates in guild {guild_id}")
+    print(f"📊 Current users in guild cache: {len(users_in_guild)}")
+    print(f"👤 User ID: {user_id}, Username: {user_discord_username}, Nation: {nation_id_str}")
 
-    for uid, data in cached_users.items():
-        if user_discord_username != "sumnor":
+    # Debug: Show what's in the cache
+    for uid, data in users_in_guild.items():
+        print(f"  - Cached: ID={uid}, Username={data.get('DiscordUsername')}, Nation={data.get('NationID')}")
+
+    for uid, data in users_in_guild.items():
+        if user_discord_username != "sumnor":  # Sumnor can always register
             if uid == user_id:
-                await interaction.followup.send("❌ This Discord ID is already registered.")
+                await interaction.followup.send(f"❌ This Discord ID ({user_id}) is already registered in this server.")
                 return
-            if data['DiscordUsername'] == user_discord_username:
-                await interaction.followup.send("❌ This Discord username is already registered.")
+            if data.get('DiscordUsername', '').lower() == user_discord_username:
+                await interaction.followup.send(f"❌ This Discord username ({user_discord_username}) is already registered in this server.")
                 return
-            if data['NationID'] == nation_id_str:
-                await interaction.followup.send("❌ This Nation ID is already registered.")
+            if data.get('NationID') == nation_id_str:
+                await interaction.followup.send(f"❌ This Nation ID ({nation_id_str}) is already registered in this server.")
                 return
 
+    # Save to correct guild-specific sheet
     try:
-        sheet = get_sheet()
+        sheet = get_registration_sheet(guild_id)
         sheet.append_row([interaction.user.name, user_id, nation_id])
+        print(f"📝 Added registration for {interaction.user.name} (ID: {user_id}) in guild {guild_id}")
     except Exception as e:
         await interaction.followup.send(f"❌ Failed to write registration: {e}")
         return
 
-    load_sheet_data()
-    await interaction.followup.send("✅ You're registered successfully!")
-
-
-@bot.tree.command(name="mmr_audit", description="Audits the MMR of the Member and gives suggestions")
-@app_commands.describe(who="The Discord Member you wish to audit")
-async def mmr_audit(interaction: discord.Interaction, who: discord.Member):
+    # Reload cached data after update for this specific guild
     try:
-        await interaction.response.defer()
-        user_id = str(interaction.user.id)
+        load_sheet_data(guild_id)
+        print(f"✅ Reloaded cache after registration")
+    except Exception as e:
+        print(f"⚠️ Failed to reload cached sheet data for guild {guild_id}: {e}")
+
+    await interaction.followup.send("✅ You're registered successfully in this server!")
+
+# Add a debug command to clear cache manually
+@bot.tree.command(name="clear_cache", description="Clear registration cache (Admin only)")
+async def clear_cache(interaction: discord.Interaction):
+    await interaction.response.defer()
+    if not (interaction.user.guild_permissions.administrator or str(interaction.user.id) == "1148678095176474678"):
+        await interaction.followup.send("❌ You need admin permissions to clear cache.", ephemeral=True)
+        return
+
+    guild_id = str(interaction.guild.id)
+    global cached_users, cached_registrations
     
-        global cached_users  # the dict version
-        
-        user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
-        
-        if not user_data:
-            await interaction.followup.send("❌ You are not registered. Use `/register` first.")
-            return
-        
-        own_id = str(user_data.get("NationID", "")).strip()
+    # Clear guild-specific cache
+    if guild_id in cached_users:
+        del cached_users[guild_id]
+    if guild_id in cached_registrations:
+        del cached_registrations[guild_id]
+    
+    # Force reload
+    load_sheet_data(guild_id)
+    
+    await interaction.followup.send(f"✅ Cache cleared and reloaded for this server!", ephemeral=True)
 
-        if not own_id:
-                await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
-                return
-        target_username = who.name.lower()
+@bot.tree.command(name="register_server_aa", description="Register this server and create Google Sheets")
+#@app_commands.checks.has_permissions(administrator=True)
+async def register_server_aa(interaction: discord.Interaction):
+    await interaction.response.defer()
+    guild = interaction.guild
+    if guild is None:
+        await interaction.followup.send("This command can only be used in a guild.", ephemeral=True)
+        return
 
-        target_discord_id = None
-        for discord_id, info in cached_users.items():
-            if info['DiscordUsername'].lower() == target_username:
-                target_discord_id = discord_id
-                break
+    server_id = str(guild.id)
+    share_email = os.getenv("Jack's Email")
+    sum_email = os.getenv("Sumnor's Email")
 
-        if target_discord_id is None:
-            await interaction.followup.send(
-                f"❌ Could not find Nation ID for {who.mention}. "
-                "They must be registered in the Google Sheet with their Discord username."
-            )
-            return
+    try:
+        client = get_client()
 
-        async def is_banker(interaction):
-            return (
-                any(role.name == "Government member" for role in interaction.user.roles)
-                or str(interaction.user.id) == "1148678095176474678"
-            )
+        intra_title = f"{server_id}_Registrations"
+        intra_headers = ["DiscordUsername", "DiscordID", "NationID", "Lotto Dates", "LotteryNumbers"]
+        intra_spreadsheet = client.create(intra_title)
+        intra_ws = intra_spreadsheet.get_worksheet(0)
+        intra_ws.update_title("Registrations")
+        intra_ws.append_row(intra_headers)
+        intra_spreadsheet.share(share_email, perm_type="user", role="writer")
+        intra_spreadsheet.share(sum_email, perm_type="user", role="writer")
 
-        if not await is_banker(interaction):
-            await interaction.followup.send("❌ You don't have the rights to perform this action.")
-            return
+        alliance_title = f"{server_id}_AllianceNet"
+        alliance_headers = [
+            "TimeT", "TotalMoney", "Money", "Food", "Gasoline", "Munitions",
+            "Steel", "Aluminum", "Bauxite", "Lead", "Iron", "Oil", "Coal", "Uranium"
+        ]
+        alliance_spreadsheet = client.create(alliance_title)
+        alliance_ws = alliance_spreadsheet.get_worksheet(0)
+        alliance_ws.update_title("Snapshot")
+        alliance_ws.append_row(alliance_headers)
+        alliance_spreadsheet.share(share_email, perm_type="user", role="writer")
+        alliance_spreadsheet.share(sum_email, perm_type="user", role="writer")
 
-        nation_id = int(cached_users[target_discord_id]["NationID"])
-        GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
+        auto_title = f"{server_id}_AutoRequests"
+        auto_headers = ["DiscordID", "NationID", "Coal", "Oil", "Bauxite", "Lead", "Iron", "TimePeriod", "LastRequested"]
+        auto_spreadsheet = client.create(auto_title)
+        auto_ws = auto_spreadsheet.get_worksheet(0)
+        auto_ws.update_title("Requests")
+        auto_ws.append_row(auto_headers)
+        auto_spreadsheet.share(share_email, perm_type="user", role="writer")
+        auto_spreadsheet.share(sum_email, perm_type="user", role="writer")
 
-        query = """
-        query GetNationData($id: [Int]) {
-        nations(id: $id) {
-            data {
-            num_cities
-            cities {
-                name
-                barracks
-                factory
-                hangar
-                drydock
-            }
-            }
-        }
-        }
-        """
-
-        variables = {"id": [nation_id]}
-
-        response = requests.post(
-            GRAPHQL_URL,
-            json={"query": query, "variables": variables},
-            headers={"Content-Type": "application/json"}
+        await interaction.followup.send(
+            f"✅ Created registration sheets for server **{guild.name}**:\n"
+            f"- `{intra_title}`\n"
+            f"- `{alliance_title}`\n"
+            f"- `{auto_title}`"
         )
-
-        if response.status_code != 200:
-            print(f"Request failed: {response.status_code}")
-            # handle error here or return
-
-        json_data = response.json()
-        if "errors" in json_data:
-            print("API returned errors:", json_data["errors"])
-            # handle error here or return
-
-        nation_list = json_data.get("data", {}).get("nations", {}).get("data", [])
-        if not nation_list:
-            print("No nation data found")
-            # handle no data case here
-            return
-
-        nation_data = nation_list[0]
-
-        nation_name = nation_data.get("nation_name", "Unknown Nation")
-        num_cities = nation_data.get("num_cities", 0)
-        cities = nation_data.get("cities", [])
-
-        barracks = sum(city.get("barracks", 0) for city in cities)
-        factory = sum(city.get("factory", 0) for city in cities)
-        hangar = sum(city.get("hangar", 0) for city in cities)
-        drydocks = sum(city.get("drydock", 0) for city in cities)
-
-        military_data = get_military(nation_id)
-        if military_data is None:
-            await interaction.followup.send("❌ Could not retrieve military data for this nation.")
-            return
-        (
-            nation_name,
-            leader_name,
-            score,
-            warpolicy,
-            soldiers,
-            tanks,
-            aircraft,
-            ships,
-            spies,
-            missiles,
-            nukes,
-        ) = military_data
-
-        valid_mmrs = (
-            [[0, 5, 5, 1], [5, 5, 5, 3]] if num_cities < 16 else [[0, 3, 5, 1], [5, 5, 5, 3]]
-        )
-
-        from collections import Counter
-
-        def distribute_structures(total, parts):
-            if parts == 0:
-                return []
-            base = total // parts
-            extras = total % parts
-            return [base + (1 if i < extras else 0) for i in range(parts)]
-
-        b_list = distribute_structures(barracks, num_cities)
-        f_list = distribute_structures(factory, num_cities)
-        h_list = distribute_structures(hangar, num_cities)
-        d_list = distribute_structures(drydocks, num_cities)
-
-        city_mmrs = list(zip(b_list, f_list, h_list, d_list))
-        mmr_counts = Counter(city_mmrs)
-
-        # Validate: all city MMRs must be in valid options
-        is_valid = all([b, f, h, d] in valid_mmrs for (b, f, h, d) in city_mmrs)
-
-        grouped_mmr_string = "\n".join(
-            f"{count} Cities: {b}/{f}/{h}/{d}" for (b, f, h, d), count in sorted(mmr_counts.items(), reverse=True)
-        )
-
-        hrr = who.display_name
-        if hrr in ["Barring(Economics Minister)", "MasterAced"]:
-            whom = "~:heart: My Pookie :heart:~"
-        elif hrr in ["IA Minister Speckgard", "Speckgard"]:
-            whom = "Gooner"
-        else:
-            whom = who.display_name
-
-        valid_options = "\n".join(f"{m[0]}/{m[1]}/{m[2]}/{m[3]}" for m in valid_mmrs)
-        embed = discord.Embed(
-            title=f"MMR Audit for {whom}",
-            color=discord.Color.green() if is_valid else discord.Color.red(),
-        )
-        embed.add_field(name="Cities", value=str(num_cities), inline=False)
-        embed.add_field(name="Grouped City MMRs", value=grouped_mmr_string, inline=False)
-        embed.add_field(name="Soldiers", value=f"{soldiers}/{barracks*3000} (Missing {barracks*3000-soldiers} Soldiers)", inline=False)
-        embed.add_field(name="Tanks", value=f"{tanks}/{factory*250} (Missing {factory*250-tanks} Tanks)", inline=False)
-        embed.add_field(name="Aircrafts", value=f"{aircraft}/{hangar*15} (Missing {hangar*15-aircraft} Aircrafts)", inline=False)
-        embed.add_field(name="Ships", value=f"{ships}/{drydocks*5} (Missing {drydocks*5-ships} Ships)", inline=False)
-        embed.add_field(
-            name="Status",
-            value="✅ Valid MMR" if is_valid else "❌ Invalid MMR",
-            inline=False,
-        )
-        if not is_valid:
-            embed.add_field(name="Valid Options", value=valid_options, inline=False)
-  # you need to define message_text below or adjust as needed
-
-        # Prepare a plain text message for the view's description_text or send separately
-        message_text = (
-            f"**Cities:** {num_cities}\n"
-            f"**Grouped City MMRs:**\n{grouped_mmr_string}\n"
-            f"**Soldiers:** {soldiers}/{barracks*3000}\n"
-            f"**Status:** {'✅ Valid MMR' if is_valid else '❌ Invalid MMR'}\n"
-        )
-        if not is_valid:
-            message_text += f"**Valid Options:**\n{valid_options}\n"
-        view = MMRView(
-            is_valid=is_valid,
-            soldiers=soldiers,
-            barracks=barracks,
-            factory=factory,
-            tanks=tanks,
-            aircraft=aircraft,
-            ships=ships,
-            drydocks=drydocks,
-            hangars=hangar,
-            num_cities=num_cities
-        )
-        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-        embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
-        await interaction.followup.send(embed=embed, view=view)
 
     except Exception as e:
-        await interaction.followup.send(f"❌ An unexpected error occurred: {e}")
-        
+        await interaction.followup.send(f"❌ Failed to create sheets: {e}", ephemeral=True)
 
-    
-    
+SETTING_CHOICES = [
+    app_commands.Choice(name="GRANT_REQUEST_CHANNEL_ID", value="GRANT_REQUEST_CHANNEL_ID"),
+    app_commands.Choice(name="WARN_CHANNEL", value="WARN_CHANNEL"),
+    app_commands.Choice(name="GOV_ROLE", value="GOV_ROLE"),
+    app_commands.Choice(name="API_KEY", value="API_KEY"),
+]
+
+@bot.tree.command(name="set_setting", description="Set a server setting (e.g. GRANT_REQUEST_CHANNEL_ID).")
+@app_commands.describe(key="The setting key", value="The value to store")
+@app_commands.choices(key=SETTING_CHOICES)
+async def set_setting(interaction: discord.Interaction, key: app_commands.Choice[str], value: str):
+    await interaction.response.defer(ephemeral=True)
+
+    guild = interaction.guild
+    guild_id = interaction.guild_id
+    if guild is None or guild_id is None:
+        await interaction.followup.send("❌ This command can only be used in a server.", ephemeral=True)
+        return
+
+    gov_role_id = get_gov_role(interaction)  # Implemented elsewhere
+    member = await guild.fetch_member(interaction.user.id)
+
+    if gov_role_id is None:
+        # If setting GOV_ROLE for the first time, skip permission check
+        set_server_setting(guild_id, key.value, value)
+        await interaction.followup.send(f"✅ GOV_ROLE set to `{value}`.", ephemeral=True)
+        return
+
+    if not any(role.name == gov_role_id for role in member.roles):
+        await interaction.followup.send("❌ You do not have permission to use this command. Only members with the GOV_ROLE can set settings.", ephemeral=True)
+        return
+
+    try:
+        set_server_setting(guild_id, key.value, value)
+        await interaction.followup.send(f"✅ `{key.value}` set to `{value}`.", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to set setting: {e}", ephemeral=True)
+
+@bot.tree.command(name="get_setting", description="Get a server setting.")
+@app_commands.describe(key="The setting key to retrieve")
+async def get_setting(interaction: discord.Interaction, key: str):
+    await interaction.response.defer()
+    if key.lower() == "api key":
+        return await interaction.followup.send("❌ To get the API Key please contact <@1148678095176474678>")
+    server_id = interaction.guild_id
+    value = get_server_setting(server_id, key)
+    if value is not None:
+        await interaction.followup.send(f"🔍 `{key}`: `{value}`", ephemeral=True)
+    else:
+        await interaction.followup.send(f"❌ `{key}` not found for this server.", ephemeral=True)
+
+@bot.tree.command(name="list_settings", description="List all settings for this server.")
+async def list_settings(interaction: discord.Interaction):
+    await interaction.response.defer()
+    server_id = interaction.guild_id
+    settings = list_server_settings(server_id)
+    if not settings:
+        await interaction.followup.send("No settings found for this server.", ephemeral=True)
+    else:
+        msg = "\n".join(f"- `{k}` = `{v}`" for k, v in settings)
+        await interaction.followup.send(f"🔧 Settings:\n{msg}", ephemeral=True)
 
 @bot.tree.command(name="res_details_for_alliance", description="Get each Alliance Member's resources and money individually")
 async def res_details_for_alliance(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
+    guild_id = str(interaction.guild.id)
 
-    sheet = get_registration_sheet()
+    sheet = get_registration_sheet(guild_id)
     rows = sheet.get_all_records()
     user_id = str(interaction.user.id)
     
-    # Find the user's data directly from the rows
+    
     user_data = next(
         (r for r in rows if str(r.get("DiscordID", "")).strip() == user_id),
         None
     )
     
+    user_id = str(interaction.user.id)
+
+    user_data = cached_users.get(guild_id, {}).get(user_id)
     if not user_data:
-        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        await interaction.followup.send(
+            "❌ You are not registered. Please register first.", ephemeral=True
+        )
         return
     
     own_id = str(user_data.get("NationID", "")).strip()
@@ -2632,9 +2327,10 @@ async def res_details_for_alliance(interaction: discord.Interaction):
         return
     
     async def is_banker(interaction):
+        GOV_ROLE = get_gov_role(interaction)
+        print(GOV_ROLE)
         return (
-            any(role.name == "Government member" for role in interaction.user.roles)
-            or user_id == "1148678095176474678"
+            any(role.name == GOV_ROLE for role in interaction.user.roles)
         )
     
     if not await is_banker(interaction):
@@ -2643,6 +2339,8 @@ async def res_details_for_alliance(interaction: discord.Interaction):
     
     lines = []
     processed_nations = 0
+    processed = []
+    failed_nations = []
     failed = 0
     
     totals = {
@@ -2666,7 +2364,7 @@ async def res_details_for_alliance(interaction: discord.Interaction):
         row_user_id = str(row.get("DiscordID", "")).strip()
 
         try:
-            result = get_resources(nation_id)
+            result = get_resources(nation_id, interaction)
             if len(result) != 14:
                 raise ValueError("Invalid result length from get_resources")
 
@@ -2701,9 +2399,10 @@ async def res_details_for_alliance(interaction: discord.Interaction):
             totals["uranium"] += uranium
             totals["num_cities"] += num_cities
             processed_nations += 1
+            processed.append(nation_id)
 
             lines.append(
-                f"{nation_name} (ID: {own_id}): Cities={num_cities}, Money=${money:,}, "
+                f"{nation_name} (ID: {nation_id}): Cities={num_cities}, Money=${money:,}, "
                 f"Food={food:,}, Gasoline={gasoline:,}, Munitions={munitions:,}, "
                 f"Steel={steel:,}, Aluminum={aluminum:,}, Bauxite={bauxite:,}, "
                 f"Lead={lead:,}, Iron={iron:,}, Oil={oil:,}, Coal={coal:,}, Uranium={uranium:,}"
@@ -2711,12 +2410,13 @@ async def res_details_for_alliance(interaction: discord.Interaction):
             batch_count += 1
 
             if batch_count == 30:
-                await asyncio.sleep(32)
-                batch_count = 0# to respect rate limits
+                await asyncio.sleep(35)
+                batch_count = 0
 
         except Exception as e:
-            print(f"Failed processing nation {own_id}: {e}")
+            print(f"Failed processing nation {nation_id}: {e}")
             failed += 1
+            failed_nations.append(nation_id)
             continue
 
     total_resources_line = (
@@ -2741,7 +2441,7 @@ async def res_details_for_alliance(interaction: discord.Interaction):
 
     embed = discord.Embed(
         title="Alliance Members' Resources and Money (Detailed)",
-        description=f"Nations counted: **{processed_nations}**\nFailed to retrieve data for: **{failed}**",
+        description=f"Nations counted: **{processed_nations}**\nFailed to retrieve data for: **{failed}**\n**FAILED: {failed_nations}\n**SUCCESS: {processed}",
         colour=discord.Colour.dark_magenta()
     )
 
@@ -2771,7 +2471,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.ticker import FuncFormatter
 import io
-import pandas as pd  # We'll use pandas for daily aggregation
+import pandas as pd  
 import requests
 '''
 from selenium import webdriver
@@ -2783,8 +2483,8 @@ async def check_site(interaction: discord.Interaction):
     await interaction.response.defer()
 
     options = Options()
-    options.add_argument("--headless")  # Optional: run in headless mode
-    options.add_argument("user-agent=Mozilla/5.0")  # Helps avoid bot detection
+    options.add_argument("--headless")  
+    options.add_argument("user-agent=Mozilla/5.0")  
     driver = webdriver.Chrome(options=options)
 
     results = []
@@ -2825,7 +2525,7 @@ async def check_site(interaction: discord.Interaction):
 async def auto_week_summary(interaction: discord.Interaction):
     await interaction.response.defer()
     try:
-        sheet = get_auto_requests_sheet()
+        sheet = get_auto_requests_sheet(interaction.guild.id)
         all_rows = await asyncio.to_thread(sheet.get_all_values)
 
         if not all_rows or len(all_rows) < 2:
@@ -2839,7 +2539,7 @@ async def auto_week_summary(interaction: discord.Interaction):
         total_week = {res: 0 for res in ["Coal", "Oil", "Bauxite", "Lead", "Iron"]}
 
         for row in rows:
-            if not any(row):  # skip empty rows
+            if not any(row):  
                 continue
             try:
                 time_period = float(row[col_index["TimePeriod"]]) if row[col_index["TimePeriod"]] else 1
@@ -2850,7 +2550,7 @@ async def auto_week_summary(interaction: discord.Interaction):
                     val_str = row[col_index[res]].strip()
                     amount = float(val_str) if val_str else 0
                     per_day = amount / time_period
-                    total_week[res] += per_day * 5  # Weekly total
+                    total_week[res] += per_day * 5  
             except Exception as row_ex:
                 print(f"Skipping row due to error: {row_ex}")
                 continue
@@ -2894,6 +2594,7 @@ def get_prices():
     processed_nations = 0
     failed = 0
 
+    API_KEY = get_api_key_for_interaction(interaction=discord.Interaction)
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
     prices_query = """
     {
@@ -2941,12 +2642,16 @@ async def res_in_m_for_a(
     global money_snapshots
     user_id = str(interaction.user.id)
     
-    global cached_users  # the dict version
+    global cached_users  
     
-    user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
-    
+    guild_id = str(interaction.guild.id)
+    user_id = str(interaction.user.id)
+
+    user_data = cached_users.get(guild_id, {}).get(user_id)
     if not user_data:
-        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        await interaction.followup.send(
+            "❌ You are not registered. Please register first.", ephemeral=True
+        )
         return
     
     own_id = str(user_data.get("NationID", "")).strip()
@@ -2956,9 +2661,9 @@ async def res_in_m_for_a(
             return
     
     async def is_banker(interaction):
+        GOV_ROLE = get_gov_role(interaction)
         return (
-        any(role.name == "Government member" for role in interaction.user.roles)
-            or str(interaction.user.id) == "1148678095176474678"
+            any(role.name == GOV_ROLE for role in interaction.user.roles)
         )
 
     if not await is_banker(interaction):
@@ -2983,7 +2688,7 @@ async def res_in_m_for_a(
 
     processed_nations = 0
     failed = 0
-
+    API_KEY = get_api_key_for_interaction(interaction)
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
     prices_query = """
     {
@@ -3008,7 +2713,7 @@ async def res_in_m_for_a(
     except Exception as e:
         print(f"Error fetching resource prices: {e}")
 
-    sheet = get_registration_sheet()
+    sheet = get_registration_sheet(guild_id)
     rows = sheet.get_all_records()
     batch_count = 0
 
@@ -3017,7 +2722,7 @@ async def res_in_m_for_a(
         user_id = str(row.get("DiscordID", "")).strip()
 
         try:
-            result = get_resources(nation_id)
+            result = get_resources(nation_id, interaction)
             if len(result) != 14:
                 raise ValueError("Invalid result length from get_resources")
 
@@ -3095,13 +2800,13 @@ async def res_in_m_for_a(
     )
 
     try:
-        sheet = get_alliance_sheet()
+        sheet = get_alliance_sheet(guild_id)
         rows = sheet.get_all_records()
 
         df = pd.DataFrame(rows)
         df.columns = [col.strip() for col in df.columns]
 
-        # Parse datetime
+        
         df["TimeT"] = pd.to_datetime(df["TimeT"], errors='coerce', utc=True)
         df = df.dropna(subset=["TimeT"])
 
@@ -3126,7 +2831,7 @@ async def res_in_m_for_a(
         }
         resource_cols = [col for col in resource_cols if col in df.columns]
 
-        # Clean and convert resources
+        
         for col in resource_cols:
             df[col] = (
                 df[col]
@@ -3138,7 +2843,7 @@ async def res_in_m_for_a(
                 .astype(float)
             )
 
-        # Clean TotalMoney and set Total
+        
         df["TotalMoney"] = (
             df["TotalMoney"]
             .astype(str)
@@ -3150,7 +2855,7 @@ async def res_in_m_for_a(
         )
         df["Total"] = df["TotalMoney"]
 
-        # Resample by time
+        
         df = df.sort_values("TimeT").set_index("TimeT")
 
         if mode and mode.value.lower() == "days":
@@ -3168,7 +2873,7 @@ async def res_in_m_for_a(
         await interaction.followup.send(embed=embed)
         return
 
-    # === Plotting ===
+    
     try:
         value_scale = scale.value if scale else "millions"
         divisor = {"billions": 1e9, "millions": 1e6}.get(value_scale, 1)
@@ -3220,214 +2925,6 @@ async def res_in_m_for_a(
         print(f"Failed to generate or send graph: {e}")
         await interaction.followup.send(embed=embed)
 
-
-
-            
-
-@bot.tree.command(name="start_conflict", description="Start a new conflict.")
-@app_commands.describe(
-    conflict_name="Name of the new conflict",
-    message_to_members="Message to the members",
-    enemy_alliance_ids="Comma-separated list of enemy alliance IDs"
-)
-async def start_conflict(interaction: discord.Interaction, conflict_name: str, message_to_members: str = None, enemy_alliance_ids: str = None):
-    await interaction.response.defer()
-    load_conflict_data()
-
-    if any(str(c.get("Name", "")).lower() == conflict_name.lower() for c in cached_conflicts):
-        await interaction.followup.send(f"❌ Conflict '{conflict_name}' already exists.")
-        return
-
-    enemy_ids = [int(id.strip()) for id in enemy_alliance_ids.split(",") if id.strip().isdigit()] if enemy_alliance_ids else []
-    declaring_alliance_id = 10259
-    today = date.today().isoformat()
-
-    GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
-    headers = {"Content-Type": "application/json"}
-
-    query = """
-    query($id: [Int], $limit: Int) {
-        alliances(id: $id) {
-            data {
-                id
-                name
-                wars(limit: $limit, orderBy: [{ column: DATE, order: DESC }]) {
-                    id
-                    date
-                    end_date
-                    winner_id
-                    attacker {
-                        id
-                        nation_name
-                        alliance_id
-                        wars {
-                            id
-                            attacks { money_stolen }
-                        }
-                    }
-                    defender {
-                        id
-                        nation_name
-                        alliance_id
-                        wars {
-                            id
-                            attacks { money_stolen }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    """
-
-    variables = {"id": [declaring_alliance_id], "limit": 50}
-
-    try:
-        response = requests.post(GRAPHQL_URL, json={"query": query, "variables": variables}, headers=headers)
-        response.raise_for_status()
-        result = response.json()
-    except requests.RequestException as e:
-        await interaction.followup.send(f"❌ Error fetching wars: {e}")
-        return
-
-    if "errors" in result:
-        await interaction.followup.send(f"API error: {result['errors']}")
-        return
-
-    sheet = get_conflict_data_sheet()
-    existing_war_ids = set(str(row[3]) for row in sheet.get_all_values()[1:] if row[3])
-
-    alliances = result.get("data", {}).get("alliances", {}).get("data", [])
-    if not alliances:
-        await interaction.followup.send("❌ No alliance data found.")
-        return
-
-    new_wars = []
-    for alliance in alliances:
-        for war in alliance.get("wars", []):
-            war_id = str(war.get("id"))
-            war_date = war.get("date", "")[:10]
-            war_end = war.get("end_date", "")
-            if war_id in existing_war_ids:
-                continue
-
-            if not war_end:
-                continue  # skip active wars
-
-            if war_date != today:
-                continue  # skip wars not started today
-
-            attacker = war["attacker"]
-            defender = war["defender"]
-            result_str = (
-                "Attacker" if war.get("winner_id") == attacker.get("id") else
-                "Defender" if war.get("winner_id") == defender.get("id") else
-                "Draw"
-            )
-
-            att_money = sum((a.get("money_stolen") or 0) for w in attacker.get("wars", []) for a in w.get("attacks", []))
-            def_money = sum((a.get("money_stolen") or 0) for w in defender.get("wars", []) for a in w.get("attacks", []))
-
-            money_gained = att_money
-            money_lost = def_money
-
-            new_wars.append([
-                conflict_name, war_date, war_end[:10], war_id,
-                attacker.get("nation_name", ""), defender.get("nation_name", ""),
-                result_str, str(money_gained), str(money_lost)
-            ])
-
-    if new_wars:
-        sheet.append_rows(new_wars)
-
-    log_to_alliance_conflict(conflict_name, today, enemy_ids=",".join(map(str, enemy_ids)), message=message_to_members or "")
-
-    await interaction.followup.send(f"✅ Conflict '{conflict_name}' started. Wars logged from today: {len(new_wars)}")
-
-
-@bot.tree.command(name="add_to_conflict", description="Add enemy alliances to an existing conflict.")
-@app_commands.describe(
-    conflict_name="Name of the existing conflict",
-    enemy_alliance_ids="Comma-separated list of additional enemy alliance IDs"
-)
-async def add_to_conflict(interaction: discord.Interaction, conflict_name: str, enemy_alliance_ids: str):
-    await interaction.response.defer()
-
-    # Correctly load conflicts, not conflict_data
-    load_conflicts_data()  # This loads cached_conflicts
-
-    row_idx = None
-    conflict = None
-
-    for i, c in enumerate(cached_conflicts):
-        if c.get("Name", "").lower() == conflict_name.lower() and c.get("Closed", "").lower() != "true":
-            conflict = c
-            row_idx = i + 2  # +2 for 1-based index and header row
-            break
-
-    if not conflict:
-        await interaction.followup.send(f"❌ Open conflict '{conflict_name}' not found.")
-        return
-
-    existing_ids = str(conflict.get("EnemyIDs", ""))
-    existing_id_set = set(map(int, filter(str.isdigit, existing_ids.split(",")))) if existing_ids else set()
-    new_ids = set(map(int, filter(str.isdigit, enemy_alliance_ids.split(","))))
-    updated_ids = existing_id_set.union(new_ids)
-    updated_ids_str = ",".join(map(str, sorted(updated_ids)))
-
-    sheet = get_conflict_sheet()
-    headers = sheet.row_values(1)
-    try:
-        enemy_col_idx = headers.index("EnemyIDs") + 1  # Convert to 1-based index
-    except ValueError:
-        await interaction.followup.send("❌ Could not find 'EnemyIDs' column.")
-        return
-
-    # Update the sheet cell with new enemy IDs
-    try:
-        update_conflict_row(row_idx, enemy_col_idx, updated_ids_str)
-    except Exception as e:
-        await interaction.followup.send(f"❌ Failed to update conflict row: {e}")
-        return
-
-    await interaction.followup.send(f"✅ Added enemy alliances {list(new_ids)} to conflict '{conflict_name}'.")
-
-
-
-@bot.tree.command(name="end_conflict", description="Mark an existing conflict as ended.")
-@app_commands.describe(
-    conflict_name="Name of the conflict to end"
-)
-async def end_conflict(interaction: discord.Interaction, conflict_name: str):
-    await interaction.response.defer()
-    from datetime import datetime, timezone
-    end_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-
-    try:
-        sheet = get_conflict_sheet()
-        records = sheet.get_all_values()
-        found = False
-        for i, row in enumerate(records[1:], start=2):
-            if row[0].strip().lower() == conflict_name.lower():
-                sheet.update_cell(i, 3, end_date)  # End Date
-                sheet.update_cell(i, 4, "True")    # Closed
-                found = True
-                break
-
-        if not found:
-            await interaction.followup.send(f"❌ Conflict '{conflict_name}' not found.")
-            return
-
-        try:
-            log_to_alliance_conflict(conflict_name, None, end_date)
-        except Exception as log_err:
-            print(f"⚠️ Logging error in Alliance Conflict sheet: {log_err}")
-
-        await interaction.followup.send(f"✅ Conflict '{conflict_name}' marked as ended on {end_date}.")
-    except Exception as e:
-        print(f"❌ Failed to end conflict '{conflict_name}': {e}")
-        await interaction.followup.send(f"❌ Failed to end conflict '{conflict_name}'. Check logs for details.")
-
 @bot.tree.command(name="member_activity", description="Shows the activity of our members")
 async def member_activity(interaction: discord.Interaction):
     await interaction.response.defer()
@@ -3435,10 +2932,17 @@ async def member_activity(interaction: discord.Interaction):
 
     global cached_users
 
-    user_data = cached_users.get(user_id)
+    guild_id = str(interaction.guild.id)
+    user_data = cached_users.get(guild_id, {}).get(str(interaction.user.id))
 
+    guild_id = str(interaction.guild.id)
+    user_id = str(interaction.user.id)
+
+    user_data = cached_users.get(guild_id, {}).get(user_id)
     if not user_data:
-        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        await interaction.followup.send(
+            "❌ You are not registered. Please register first.", ephemeral=True
+        )
         return
 
     own_id = str(user_data.get("NationID", "")).strip()
@@ -3448,9 +2952,9 @@ async def member_activity(interaction: discord.Interaction):
         return
 
     async def is_banker(interaction):
+        GOV_ROLE = get_gov_role(interaction)
         return (
-            any(role.name == "Government member" for role in interaction.user.roles)
-            or str(interaction.user.id) == "1148678095176474678"
+            any(role.name == GOV_ROLE for role in interaction.user.roles)
         )
 
     if not await is_banker(interaction):
@@ -3480,11 +2984,11 @@ async def member_activity(interaction: discord.Interaction):
 
     for own_id in nation_ids:
         try:
-            military_data = get_military(own_id)
+            military_data = get_military(own_id, interaction)
             nation_name = military_data[0]
             nation_leader = military_data[1]
             score = military_data[2]
-            result = get_general_data(own_id)
+            result = get_general_data(own_id, interaction)
             if result is None or len(result) < 7:
                 print(f"Missing data for nation {own_id}")
                 continue
@@ -3529,7 +3033,7 @@ async def member_activity(interaction: discord.Interaction):
         await interaction.followup.send("⚠️ No activity data available to generate chart.")
         return
 
-    # Create pie chart
+    
     fig, ax = plt.subplots(figsize=(8, 4), subplot_kw=dict(aspect="equal"))
 
     labels = [
@@ -3621,12 +3125,20 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
     import discord
     user_id = str(interaction.user.id)
     
-    global cached_users  # the dict version
+    global cached_users  
     
-    user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
+    guild_id = str(interaction.guild.id)
+    user_data = cached_users.get(guild_id, {}).get(str(interaction.user.id))
+
     
+    guild_id = str(interaction.guild.id)
+    user_id = str(interaction.user.id)
+
+    user_data = cached_users.get(guild_id, {}).get(user_id)
     if not user_data:
-        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        await interaction.followup.send(
+            "❌ You are not registered. Please register first.", ephemeral=True
+        )
         return
     
     own_id = str(user_data.get("NationID", "")).strip()
@@ -3634,7 +3146,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
     if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
             return
-    
+    API_KEY = get_api_key_for_interaction(interaction)
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
 
     query = """
@@ -3722,7 +3234,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
         def_name = defender.get("nation_name", "Unknown")
         nation_id_str = str(nation_id)
 
-        # Determine war outcome
+        
         if winner_id == nation_id_str:
             outcome_val = 1
             outcome = "Win"
@@ -3747,7 +3259,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
 
         all_log += line + "\n"
 
-    # Create combined outcome + money graph
+    
     indices = list(range(1, len(war_results) + 1))
     looted_millions = [m / 1_000_000 for m in money_per_war]
 
@@ -3763,7 +3275,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
     ax2.set_yticks([-1, 0, 1])
     ax2.set_yticklabels(["Loss", "Draw", "Win"])
 
-    # Add horizontal lines for outcome clarity
+    
     ax2.axhline(y=1, color="green", linestyle="--", linewidth=1, label="Win")
     ax2.axhline(y=0, color="gray", linestyle="--", linewidth=1, label="Draw")
     ax2.axhline(y=-1, color="red", linestyle="--", linewidth=1, label="Loss")
@@ -3793,13 +3305,13 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
     )
     image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
     embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
-    # Send text summary
+    
     await interaction.followup.send(embed=embed, file=discord.File(txt_buffer, filename=f"nation_{nation_id}_wars_summary.txt"))
 
 
-# Here's the updated and complete code as requested:
-# ✅ Integrated conflict-based graph plotting with proper headers and plotting logic
-# ✅ Conflict name handling, graph title with last update, and graph generation for saved sheet data
+
+
+
 
 from datetime import datetime, date
 from collections import defaultdict
@@ -3817,18 +3329,24 @@ import matplotlib.dates as mdates
 @app_commands.describe(
     alliance_id="Alliance ID",
     war_count="Number of recent wars to display (default 30)",
-    money_more_detail="Set to true to show detailed money and outcome graphs (default false)",
-    conflict_name="Optional conflict name to get saved war stats and summary graph"
+    money_more_detail="Set to true to show detailed money and outcome graphs (default false)"
 )
-async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int, war_count: int = 30, money_more_detail: bool = False, conflict_name: str = None):
+async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int, war_count: int = 30, money_more_detail: bool = False):
     await interaction.response.defer()
     
     user_id = str(interaction.user.id)
     global cached_users
-    user_data = cached_users.get(user_id)
+    guild_id = str(interaction.guild.id)
+    user_data = cached_users.get(guild_id, {}).get(str(interaction.user.id))
     
+    guild_id = str(interaction.guild.id)
+    user_id = str(interaction.user.id)
+
+    user_data = cached_users.get(guild_id, {}).get(user_id)
     if not user_data:
-        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        await interaction.followup.send(
+            "❌ You are not registered. Please register first.", ephemeral=True
+        )
         return
     
     own_id = str(user_data.get("NationID", "")).strip()
@@ -3836,84 +3354,7 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
         await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
         return
 
-    if conflict_name:
-        # ✅ If conflict specified, show graph for saved conflict data
-        try:
-            sheet = get_conflict_data_sheet()
-            all_rows = sheet.get_all_records()
-        except Exception as e:
-            await interaction.followup.send("❌ Failed to load conflict data.")
-            return
-
-        # Filter relevant rows
-        # Filter relevant rows
-        relevant_rows = [
-        row for row in all_rows
-        if str(row.get("Conflict Name", "")).lower() == conflict_name.lower()
-    ]
-    
-        relevant_rows = relevant_rows[:war_count]  # Limit to requested count
-        if not relevant_rows:
-            await interaction.followup.send(f"❌ No saved wars found for conflict '{conflict_name}'.")
-            return
-
-        war_dates = []
-        money_looted = []
-        outcomes = []
-
-        for row in relevant_rows:
-            try:
-                war_date = row.get("War Start Date") or row.get("War Date") or ""
-                dt = datetime.strptime(war_date[:10], "%Y-%m-%d").date()
-                war_dates.append(dt)
-
-                # Looted money
-                att_loot = float(row.get("Total Money Stolen (Attacker)", 0) or 0)
-                def_loot = float(row.get("Total Money Stolen (Defender)", 0) or 0)
-                money_looted.append(att_loot + def_loot)
-
-                # Outcome logic
-                outcome = row.get("Outcome", "").lower()
-                if outcome == "attacker win":
-                    outcomes.append(1)
-                elif outcome == "defender win":
-                    outcomes.append(-1)
-                else:
-                    outcomes.append(0)
-            except Exception as e:
-                print(f"⛔ Skipping bad conflict row: {e}")
-
-        if not war_dates:
-            await interaction.followup.send("❌ No valid data to graph.")
-            return
-
-        fig, ax1 = plt.subplots(figsize=(10, 5))
-
-        ax1.bar(war_dates, money_looted, width=0.8, color="red", label="Money Looted")
-        ax1.set_ylabel("Total Money Looted ($)")
-        ax1.xaxis.set_major_formatter(DateFormatter("%Y-%m-%d"))
-        ax1.xaxis.set_major_locator(mdates.DayLocator(interval=max(1, len(war_dates) // 10)))
-
-        ax2 = ax1.twinx()
-        ax2.plot(war_dates, outcomes, color="blue", marker="o", label="Outcome")
-        ax2.set_ylabel("Outcome")
-        ax2.set_yticks([-1, 0, 1])
-        ax2.set_yticklabels(["Defender Win", "Draw", "Attacker Win"])
-
-        plt.title(f"{conflict_name} - War Losses & Loot (Last update {datetime.now().strftime('%Y-%m-%d')})")
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-
-        buf = BytesIO()
-        plt.savefig(buf, format="png")
-        buf.seek(0)
-        plt.close(fig)
-
-        await interaction.followup.send(file=discord.File(buf, filename=f"{conflict_name}_summary.png"))
-        return
-
-    # ✅ CONTINUES WITH DEFAULT ALLIANCE WAR FETCHING IF NO CONFLICT NAME PROVIDED
-
+    API_KEY = get_api_key_for_interaction(interaction)
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
     orderBy = [{"column": "ID", "order": "DESC"}]
 
@@ -3963,85 +3404,7 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
         await interaction.followup.send("No alliance data found.")
         return
     alliance = alliances_data[0]
-    wars = alliance.get("wars", [])[:war_count]  # ✅ Apply war_count limit
-
-    # ⚙️ Save matching conflict data to sheet
-    if cached_conflicts:
-        try:
-            sheet = get_conflict_data_sheet()
-            all_saved_conflict_rows = sheet.get_all_records() or []
-        except Exception as e:
-            all_saved_conflict_rows = []
-            print(f"⚠️ Failed to load existing conflict rows: {e}")
-
-        existing_ids_set = set(str(row.get("War ID")) for row in all_saved_conflict_rows if row.get("War ID"))
-
-        for conflict in cached_conflicts:
-            try:
-                start = datetime.strptime(conflict.get("Start"), "%Y-%m-%d").date()
-                end_str = conflict.get("End")
-                end = datetime.strptime(end_str, "%Y-%m-%d").date() if end_str else date.today()
-            except Exception as e:
-                continue
-
-            for war in wars:
-                war_id = str(war.get("id"))
-                if war_id in existing_ids_set:
-                    continue
-
-                war_date_str = war.get("date", "")[:10]
-                try:
-                    war_date = datetime.strptime(war_date_str, "%Y-%m-%d").date()
-                except Exception:
-                    continue
-
-                if start <= war_date <= end:
-                    try:
-                        attacker = war.get("attacker", {})
-                        defender = war.get("defender", {})
-                        winner_id = str(war.get("winner_id", ""))
-                        attacker_id = str(attacker.get("id", ""))
-                        defender_id = str(defender.get("id", ""))
-
-                        if winner_id == attacker_id:
-                            outcome = "Attacker Win"
-                        elif winner_id == defender_id:
-                            outcome = "Defender Win"
-                        else:
-                            outcome = "Draw"
-
-                        att_loot = war.get("att_money_looted", 0) or 0
-                        def_loot = war.get("def_money_looted", 0) or 0
-
-                        sheet.append_row([
-                            conflict.get("Name", "Unknown"),
-                            attacker.get("nation_name", "Unknown"),
-                            defender.get("nation_name", "Unknown"),
-                            war_id,
-                            war.get("war_type", ""),
-                            war.get("reason", ""),
-                            war.get("date", ""),
-                            war.get("end_date", ""),
-                            attacker.get("alliance_id", ""),
-                            defender.get("alliance_id", ""),
-                            war.get("att_infra_destroyed", 0),
-                            war.get("def_infra_destroyed", 0),
-                            war.get("att_soldiers_lost", 0),
-                            war.get("def_soldiers_lost", 0),
-                            att_loot,
-                            def_loot,
-                            outcome
-                        ])
-                        existing_ids_set.add(war_id)
-                        break
-                    except Exception as e:
-                        print(f"❌ Failed to save conflict war: {e}")
-
-    # ✅ Now back to your existing plotting logic for live wars
-    # ✅ OMITTED FOR SPACE — reuse your existing plotting code below from your message
-
-
-
+    wars = alliance.get("wars", [])[:war_count]  
 
     def chunks(lst, n):
         for i in range(0, len(lst), n):
@@ -4051,11 +3414,11 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
     money_by_day = defaultdict(float)
     outcome_by_day = defaultdict(list)
 
-    # Calculate money_looted as attacker loot + defender loot (total looted)
-    # If needed change later, now using attacker loot as money_looted
+    
+    
 
-    # Prepare outcomes and money per day
-    # Inside your war processing loop:
+    
+    
     for idx, war in enumerate(wars):
         attacker = war.get("attacker") or {}
         defender = war.get("defender") or {}
@@ -4091,12 +3454,12 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
         try:
             from dateutil import parser
             war_dt = parser.isoparse(war_datetime_raw)
-            war_date = war_dt.date().isoformat()  # 'YYYY-MM-DD'
+            war_date = war_dt.date().isoformat()  
         except Exception as e:
             print(f"⛔ Failed to parse war date: {war_datetime_raw} | Error: {e}")
             continue
 
-        # ✅ Store values here
+        
         money_by_day[war_date] += money_looted
         outcome_by_day[war_date].append(y_val)
 
@@ -4105,24 +3468,24 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
             f"Outcome: {outcome} | Looted: {money_looted:,}\n"
         )
 
-    # ✅ Move graph prep after the loop
-# After all wars processed
+    
+
     if money_more_detail:
     
-        # Use all unique war dates from the wars list to ensure correct x-axis
+        
         war_dates_all = sorted(set(
             datetime.strptime(war.get("date")[:10], "%Y-%m-%d").date()
             for war in wars if war.get("date")
         ))
     
-        # Ensure mapping date strings to match keys in dictionaries
+        
         values = [money_by_day[d.strftime("%Y-%m-%d")] for d in war_dates_all]
         outcome_avgs = [
             sum(outcome_by_day[d.strftime("%Y-%m-%d")]) / len(outcome_by_day[d.strftime("%Y-%m-%d")])
             for d in war_dates_all
         ]
     
-        # ✅ Money Looted Bar Graph
+        
         fig_money, ax_money = plt.subplots(figsize=(10, 5))
         ax_money.bar(war_dates_all, values, color="red")
         ax_money.set_title(f"{alliance['name']} - Money Looted Per Day")
@@ -4138,7 +3501,7 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
         plt.close(fig_money)
         await interaction.followup.send(file=discord.File(buf_money, filename="money_detail_graph.png"))
     
-        # ✅ Outcome Average Line Graph
+        
         fig_outcome, ax_outcome = plt.subplots(figsize=(10, 5))
         ax_outcome.plot(war_dates_all, outcome_avgs, color="blue", marker="o")
         ax_outcome.set_title(f"{alliance['name']} - Average Outcome Per Day")
@@ -4167,7 +3530,7 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
 
     else:
         WARS_PER_GRAPH = 30
-        # money_more_detail == False: generate combined graphs in chunks of WARS_PER_GRAPH
+        
         for batch_index, war_batch in enumerate(chunks(wars, WARS_PER_GRAPH), start=1):
             war_results = []
             money_per_war = []
@@ -4199,20 +3562,20 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
                     y_val = 0
 
                 war_results.append(y_val)
-                money_per_war.append(money_looted / 1_000_000)  # millions
+                money_per_war.append(money_looted / 1_000_000)  
 
             indices = list(range(1, len(war_results) + 1))
 
             fig, ax1 = plt.subplots(figsize=(9, 5))
             bar_width = 0.6
 
-            # Money looted bars (red), centered
+            
             ax1.bar(indices, money_per_war, width=bar_width, color="red", label="Money Looted (M)", align='center', zorder=2)
             ax1.set_ylabel("Money Looted ($M)")
             ax1.set_xlabel("War Number")
             ax1.set_xticks(indices)
 
-            # Outcome line plot (blue)
+            
             ax2 = ax1.twinx()
             ax2.plot(indices, war_results, color="blue", linestyle="-", marker="o", label="Outcome", zorder=1)
             ax2.set_ylabel("Outcome")
@@ -4222,7 +3585,7 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
 
             ax1.set_xlim(0.5, len(indices) + 0.5)
 
-            # Legends outside the plot area
+            
             ax1.legend(loc="upper center", bbox_to_anchor=(0.5, -0.15), ncol=1)
             ax2.legend(loc="upper center", bbox_to_anchor=(0.5, -0.25), ncol=1)
 
@@ -4244,12 +3607,10 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
             embed.set_image(url=f"attachment://war_graph_batch{batch_index}.png")
             await interaction.followup.send(embed=embed, file=file)
 
-    # Always send full war summary txt file at end
+    
     log_file = BytesIO(all_log.encode("utf-8"))
     log_file.seek(0)
     await interaction.followup.send(file=discord.File(log_file, filename=f"war_summary_{alliance_id}.txt"))
-
-
 
 
 
@@ -4299,13 +3660,13 @@ async def see_report(interaction: discord.Interaction, nation: str):
         rows = sheet.get_all_records()
         prices = get_prices()
         
-        # Extract resource prices into a dictionary
+        
         resource_prices = {
             item["resource"]: float(item["average_price"])
             for item in prices["data"]["top_trade_info"]["resources"]
         }
 
-        # Case-insensitive match for nation name
+        
         match = next((row for row in rows if row["Nation"].lower() == nation.lower()), None)
 
         if not match:
@@ -4333,7 +3694,7 @@ async def see_report(interaction: discord.Interaction, nation: str):
                 embed.add_field(name=key.capitalize(), value=str(value), inline=True)
                 continue
 
-            # Check if it's a known resource with a price
+            
             if key in resource_prices:
                 resource_value = val * resource_prices[key]
                 total_value += resource_value
@@ -4348,11 +3709,11 @@ async def see_report(interaction: discord.Interaction, nation: str):
             else:
                 embed.add_field(name=key.capitalize(), value=f"{val:,.2f}", inline=True)
 
-        # Estimated loot (14% of total value)
+        
         estimated_loot = total_value * 0.14
         embed.add_field(name="💰 Estimated Loot (14%)", value=f"{estimated_loot:,.2f}", inline=False)
 
-        # Add last update in the footer
+        
         if last_update:
             embed.set_footer(text=f"Last update: {last_update}")
 
@@ -4361,8 +3722,6 @@ async def see_report(interaction: discord.Interaction, nation: str):
     except Exception as e:
         print(f"Error in see_report: {e}")
         await interaction.followup.send("❌ An error occurred while fetching the report.")
-
-
 
 @bot.tree.command(name="list_reports", description="See which nations have spy reports stored.")
 async def list_reports(interaction: discord.Interaction):
@@ -4384,7 +3743,7 @@ async def list_reports(interaction: discord.Interaction):
             color=discord.Color.green()
         )
 
-        # Group nation names into chunks to avoid hitting field limits
+        
         chunk_size = 20
         for i in range(0, len(nation_names), chunk_size):
             chunk = nation_names[i:i+chunk_size]
@@ -4405,13 +3764,20 @@ async def raws_audits(interaction: discord.Interaction, day: int):
     user_id = str(interaction.user.id)
 
     user_data = next((r for r in rows if str(r.get("DiscordID", "")).strip() == user_id), None)
+    guild_id = str(interaction.guild.id)
+    user_id = str(interaction.user.id)
+
+    user_data = cached_users.get(guild_id, {}).get(user_id)
     if not user_data:
-        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        await interaction.followup.send(
+            "❌ You are not registered. Please register first.", ephemeral=True
+        )
         return
 
     async def is_banker(inter):
+        GOV_ROLE = get_gov_role(inter)
         return (
-            any(role.name == "Government member" for role in inter.user.roles)
+            any(role.name == GOV_ROLE for role in inter.user.roles)
             or user_id == "1148678095176474678"
         )
 
@@ -4480,7 +3846,7 @@ async def raws_audits(interaction: discord.Interaction, day: int):
             for s in suffitient:
                 suffitient[s] += int(city.get(s, 0))
         
-        res = get_resources(nation_id)
+        res = get_resources(nation_id, interaction)
         if not res:
             output.write(f"❌ Nation ID {nation_id} - Resource data not found.\n\n")
             continue
@@ -4581,134 +3947,6 @@ async def raws_audits(interaction: discord.Interaction, day: int):
     discord_file = discord.File(fp=output, filename="raws_audit.txt")
     await interaction.followup.send("✅ Audit complete.", file=discord_file, view=RawsAuditView(output=output.getvalue(), audits=audits_by_nation))
 
-
-@bot.tree.command(name="battle_sim", description="simulate a battle")
-async def simulation(interaction: discord.Interaction, nation_id: str, war_type: str):
-    await interaction.response.defer()
-    user_id = str(interaction.user.id)
-    global cached_users  # the dict version
-    
-    user_data = cached_users.get(user_id)  # user_id as int, no need to cast to string if keys are ints
-    
-    if not user_data:
-        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
-        return
-    
-    own_id = str(user_data.get("NationID", "")).strip()
-
-    if not own_id:
-            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
-            return
-    try:
-        try:
-            opponent = get_military(nation_id)
-            me = get_military(own_id)
-        except ValueError:
-            await interaction.followup.send("❌ Failed to retrieve nation data via API.")
-            return
-
-        (
-            nation_name, nation_leader, nation_score, war_policy,
-            soldiers, tanks, aircraft, ships, spies, missiles, nuclear
-        ) = opponent
-
-        (
-            me_name, me_leader, me_score, me_policy,
-            me_soldiers, me_tanks, me_aircraft, me_ships, me_spies, me_missiles, me_nukes
-        ) = me
-
-        # Convert and calculate
-        def safe_int(x):
-            if isinstance(x, str):
-                return int(x.replace(",", ""))
-            return int(x)
-        
-        soldiers_int = safe_int(soldiers)
-        tanks_int = safe_int(tanks)
-        aircraft_int = safe_int(aircraft)
-        ships_int = safe_int(ships)
-        missiles_int = safe_int(missiles)
-        nuclear_int = safe_int(nuclear)
-
-        me_soldiers_int = safe_int(me_soldiers)
-        me_tanks_int = safe_int(me_tanks)
-        me_aircraft_int = safe_int(me_aircraft)
-        me_ships_int = safe_int(me_ships)
-        me_missiles_int = safe_int(me_missiles)
-        me_nukes_int = safe_int(me_nukes)
-
-
-        me_ground = me_soldiers_int + me_tanks_int
-        enemy_ground = soldiers_int + tanks_int
-
-        per_ground = calculation('tanks', me_ground, enemy_ground, me_policy, war_type)
-        per_air = calculation('aircraft', me_aircraft_int, aircraft_int, me_policy, war_type)
-        per_naval = calculation('ships', me_ships_int, ships_int, me_policy, war_type)
-        per_missiles = calculation('missiles', me_missiles_int, missiles_int, me_policy, war_type)
-        per_nuclear = calculation('nuclear', me_nukes_int, nuclear_int, me_policy, war_type)
-
-        percent = round((
-            per_ground["success_chance"] +
-            per_air["success_chance"] +
-            per_naval["success_chance"] +
-            per_missiles["success_chance"] +
-            per_nuclear["success_chance"]
-        ) / 5, 2)
-
-        total_loss = (
-            per_ground["loss_value"] +
-            per_air["loss_value"] +
-            per_naval["loss_value"] +
-            per_missiles["loss_value"] +
-            per_nuclear["loss_value"]
-        )
-
-        total_win = (
-            per_ground['win_value'] +
-            per_air['win_value'] + 
-            per_naval['win_value'] +
-            per_missiles['win_value'] +
-            per_nuclear['win_value']
-        )
-
-        msg = (
-            f"> **Score:** {me_score} vs {nation_score}\n"
-            f"> **War Policy:** {me_policy} vs {war_policy}\n\n"
-
-            f"**🪖 Ground Battle (Soldiers + Tanks)**\n"
-            f"> {me_ground} vs {enemy_ground} | 🎯Success Chance: {per_ground['success_chance']}% | 💥Damage Dealt: ${per_ground['win_value']} | 💸Damage Received: ${per_ground['loss_value']}\n"
-
-            f"**✈️ Airstrike (Aircraft)**\n"
-            f"> {me_aircraft_int} vs {aircraft_int} | 🎯Success Chance: {per_air['success_chance']}% | 💥Damage Dealt: ${per_air['win_value']} | 💸Damage Received: ${per_air['loss_value']}\n"
-
-            f"**🚢 Naval Attack (Ships)**\n"
-            f"> {me_ships_int} vs {ships_int} | 🎯Success Chance: {per_naval['success_chance']}% | 💥Damage Dealt: ${per_naval['win_value']} | 💸Damage Received: ${per_naval['loss_value']}\n"
-
-            f"**🧨 Missiles**\n"
-            f"> {me_missiles_int} vs {missiles_int} | 🎯Success Chance: {per_missiles['success_chance']}% | 💥Damage Dealt: ${per_missiles['win_value']} | 💸Damage Received: ${per_missiles['loss_value']}\n"
-
-            f"**☢️ Nuclear Weapons**\n"
-            f"> {me_nukes_int} vs {nuclear_int} | 🎯Success Chance: {per_nuclear['success_chance']}% | 💥Damage Dealt: ${per_nuclear['win_value']} | 💸Damage Received: ${per_nuclear['loss_value']}\n"
-
-            f"\n🏆 ***Average Victory Chance: {percent}%***"
-            f"\n💥 ***Total Damage Dealt: ${total_win}***"
-            f"\n💸 ***Total Damage Received: ${total_loss}***"
-
-        )
-
-        embed = discord.Embed(
-            title= f"🪖 **{me_name} (led by {me_leader}) vs {nation_name} (led by {nation_leader})**",
-            color=discord.Color.dark_embed(),
-            description=(msg)
-        )
-        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-        embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
-        await interaction.followup.send(embed=embed)
-
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error: {e}")
-
-
 @bot.tree.command(name="nation_info", description="Info on the chosen Nation")
 @app_commands.describe(
     who="The Discord member to query",
@@ -4718,26 +3956,26 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member, exte
     await interaction.response.defer()
 
     async def is_banker():
+        GOV_ROLE = get_gov_role(interaction)
         return (
-            any(role.name == "Government member" for role in interaction.user.roles)
-            or interaction.user.id == 1148678095176474678
+            any(role.name == GOV_ROLE for role in interaction.user.roles)
         )
 
     user_id = str(interaction.user.id)
     own_id = None
 
-    # 🔹 If external_id is given, override own_id and skip lookup
+    
     if external_id != "None":
         own_id = external_id.strip()
 
     else:
-        # 🔹 If querying someone else, enforce role check
+        
         if interaction.user.id != who.id:
             if not await is_banker():
-                await interaction.followup.send("❌ You don't have the rights, lil bro.")
+                await interaction.followup.send("❌ You don't have the rights")
                 return
 
-        # 🔹 Look up the NationID from cached_users
+        
         for discord_id, info in cached_users.items():
             if str(who.id) == discord_id:
                 own_id = info.get("NationID")
@@ -4747,11 +3985,11 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member, exte
             await interaction.followup.send(f"❌ Could not find Nation ID for {who.mention}. They must be registered.")
             return
 
-    # Assuming you have get_military, get_resources, get_general_data functions working
+    
     try:
-        nation_name, nation_leader, nation_score, war_policy, soldiers, tanks, aircraft, ships, spies, missiles, nuclear = get_military(own_id)
-        nation_name, num_cities, food, money, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, uranium = get_resources(own_id)
-        gen_data = get_general_data(own_id)
+        nation_name, nation_leader, nation_score, war_policy, soldiers, tanks, aircraft, ships, spies, missiles, nuclear = get_military(own_id, interaction)
+        nation_name, num_cities, food, money, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, uranium = get_resources(own_id, interaction)
+        gen_data = get_general_data(own_id, interaction)
 
         if not gen_data:
             await interaction.followup.send("❌ Failed to fetch general data.")
@@ -4769,7 +4007,7 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member, exte
             turns_since_last_project
         ) = gen_data
 
-        # Format last activity time as you had it
+        
         try:
             from datetime import datetime, timezone
             activity_dt = datetime.fromisoformat(activity)
@@ -4845,29 +4083,29 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member, exte
 
 
 reasons_for_grant = [
-    #app_commands.Choice(name="Warchest", value="warchest"),
-    #app_commands.Choice(name="Rebuilding Stage 1", value="rebuilding_stage_1"),
-   # app_commands.Choice(name="Rebuilding Stage 2", value="rebuilding_stage_2"),
-    #app_commands.Choice(name="Rebuilding Stage 3", value="rebuilding_stage_3"),
-    #app_commands.Choice(name="Rebuilding Stage 4", value="rebuilding_stage_4"),
-    #app_commands.Choice(name="Project", value="project"),
+    
+    
+   
+    
+    
+    
     app_commands.Choice(name="Uranium and Food", value="Uranium and Food"),
     app_commands.Choice(name="Resources for Production", value="Resources for Production"),
 ]
 
 RESOURCE_ABBR = {
-    'g': '-g',  # Gasoline
-    'm': '-m',  # Munition
-    'a': '-a',  # Aluminium
-    's': '-s',  # Steel
-    'f': '-f',  # Food
-    'u': '-u',  # Uranium
-    'l': '-l',  # Lead
-    'b': '-b',  # Bauxite
-    'o': '-o',  # Oil
-    'c': '-c',  # Coal
-    'i': '-i',  # Iron
-    '$': '-$',  # Money
+    'g': '-g',  
+    'm': '-m',  
+    'a': '-a',  
+    's': '-s',  
+    'f': '-f',  
+    'u': '-u',  
+    'l': '-l',  
+    'b': '-b',  
+    'o': '-o',  
+    'c': '-c',  
+    'i': '-i',  
+    '$': '-$',  
 }
 
 @bot.tree.command(
@@ -4902,7 +4140,8 @@ async def auto_resources_for_prod_req(
         )
         return
 
-    user_data = cached_users.get(user_id)
+    guild_id = str(interaction.guild.id)
+    user_data = cached_users.get(guild_id, {}).get(user_id)
     if not user_data:
         await interaction.followup.send(
             "❌ You are not registered. Please register first.", ephemeral=True
@@ -4915,14 +4154,20 @@ async def auto_resources_for_prod_req(
             "❌ Could not find your Nation ID in the registration data.", ephemeral=True
         )
         return
-    if time_period <  "1":
+
+    try:
+        time_period_int = int(time_period.strip())
+        if time_period_int < 1:
+            raise ValueError
+    except ValueError:
         await interaction.followup.send(
-            "❌  The minimum is 1 day, no less", ephemeral=True
+            "❌ The minimum allowed time period is 1 day.", ephemeral=True
         )
         return
 
-    sheet = get_auto_requests_sheet()
-    all_rows = sheet.get_all_values()
+    sheet = get_auto_requests_sheet(guild_id)
+    all_rows = await asyncio.to_thread(sheet.get_all_values)
+
     if not all_rows or len(all_rows) < 1:
         await interaction.followup.send(
             "❌ AutoRequests sheet is empty or not found.", ephemeral=True
@@ -4958,22 +4203,22 @@ async def auto_resources_for_prod_req(
         "Bauxite": parse_amount(bauxite),
         "Lead": parse_amount(lead),
         "Iron": parse_amount(iron),
-        "TimePeriod": time_period.strip(),
+        "TimePeriod": str(time_period_int),
     }
 
     rows = all_rows[1:]
     user_row_index = None
     for idx, row in enumerate(rows, start=2):
-        if len(row) > col_index["DiscordID"] and row[col_index["DiscordID"]] == user_id:
+        if len(row) > col_index.get("DiscordID", -1) and row[col_index["DiscordID"]] == user_id:
             user_row_index = idx
             break
 
     if user_row_index:
         for key, val in data_to_store.items():
             if key in col_index:
-                sheet.update_cell(user_row_index, col_index[key] + 1, val)
-        # Set LastRequested to now
-        sheet.update_cell(user_row_index, col_index["LastRequested"] + 1, now_str)
+                await asyncio.to_thread(sheet.update_cell, user_row_index, col_index[key] + 1, val)
+        if "LastRequested" in col_index:
+            await asyncio.to_thread(sheet.update_cell, user_row_index, col_index["LastRequested"] + 1, now_str)
         await interaction.followup.send(
             "✅ Your auto-request has been updated successfully.", ephemeral=True
         )
@@ -4984,7 +4229,7 @@ async def auto_resources_for_prod_req(
                 new_row.append(now_str)
             else:
                 new_row.append(data_to_store.get(col, ""))
-        sheet.append_row(new_row)
+        await asyncio.to_thread(sheet.append_row, new_row)
         await interaction.followup.send(
             "✅ Your auto-request has been added successfully.", ephemeral=True
         )
@@ -4994,7 +4239,7 @@ async def disable_auto_request(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
 
     user_id = str(interaction.user.id)
-    sheet = get_auto_requests_sheet()
+    sheet = get_auto_requests_sheet(interaction.guild.id)
     all_rows = sheet.get_all_values()
 
     if not all_rows or len(all_rows) < 2:
@@ -5013,7 +4258,7 @@ async def disable_auto_request(interaction: discord.Interaction):
         return
 
     deleted = False
-    for i, row in enumerate(rows, start=2):  # start=2 for correct sheet row index
+    for i, row in enumerate(rows, start=2):  
         if row[discord_idx] != user_id:
             continue
 
@@ -5023,7 +4268,7 @@ async def disable_auto_request(interaction: discord.Interaction):
                 deleted = True
                 break
         except ValueError:
-            continue  # Skip malformed rows
+            continue  
 
     if deleted:
         await interaction.followup.send("✅ Your auto-request for raw resources has been disabled.", ephemeral=True)
@@ -5079,7 +4324,7 @@ async def request_for_ing(
             await interaction.followup.send("❌ Nation ID must be a number.", ephemeral=True)
             return
 
-        nation_data = get_military(nation_id)
+        nation_data = get_military(nation_id, interaction)
         if not nation_data:
             await interaction.followup.send("❌ Could not retrieve nation data.", ephemeral=True)
             return
@@ -5153,7 +4398,7 @@ async def request_for_ing(
     munitions="Amount of munitions requested",
     note="A Note"
 )
-#@app_commands.choices(reason=reasons_for_grant)
+
 async def request_grant(
     interaction: discord.Interaction,
     reason: str,
@@ -5176,7 +4421,8 @@ async def request_grant(
 
     try:
         global cached_users
-        user_data = cached_users.get(user_id)
+        guild_id = str(interaction.guild.id)
+        user_data = cached_users.get(guild_id, {}).get(str(interaction.user.id))
 
         if not user_data:
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
@@ -5187,12 +4433,12 @@ async def request_grant(
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.", ephemeral=True)
             return
 
-        nation_data = get_military(own_id)
+        nation_data = get_military(own_id, interaction)
         nation_name = nation_data[0]
         if reason.title() in ["Warchest", "WC", "Wc"]:
             await interaction.followup.send("❌ Don't use `/request_grant`, use `/request_warchest`", ephemeral=True)
             return
-        # Parse input values
+        
         raw_inputs = {
             "Uranium": uranium,
             "Coal": coal,
@@ -5276,7 +4522,7 @@ def parse_duration(duration):
 
     return hours * 3600 + minutes * 60 + seconds
 
-# --- Bot Command ---
+
 @bot.tree.command(name="warn_maint", description="Notify users of bot maintenance (Dev only)")
 async def warn_maint(interaction: discord.Interaction, time: str):
     await interaction.response.defer()
@@ -5287,10 +4533,10 @@ async def warn_maint(interaction: discord.Interaction, time: str):
         return
 
     try:
-        # YouTube API Config
+        
         CHANNEL_ID = "UC_ID-A3YnSQXCwyIcCs9QFw"
 
-        # Fetch latest 50 videos
+        
         search_url = 'https://www.googleapis.com/youtube/v3/search'
         search_params = {
             'part': 'snippet',
@@ -5303,7 +4549,7 @@ async def warn_maint(interaction: discord.Interaction, time: str):
         search_response = requests.get(search_url, params=search_params)
         video_ids = [item['id']['videoId'] for item in search_response.json().get('items', []) if item['id'].get('videoId')]
 
-        # Get video durations
+        
         videos_url = 'https://www.googleapis.com/youtube/v3/videos'
         videos_params = {
             'part': 'contentDetails',
@@ -5317,10 +4563,10 @@ async def warn_maint(interaction: discord.Interaction, time: str):
             if parse_duration(item['contentDetails']['duration']) <= 60
         ]
 
-        # Pick a random Short
+        
         chosen_vid = random.choice(shorts) if shorts else "https://www.youtube.com"
 
-        # Send maintenance message
+        
         msg = (
             f"⚠️ **Bot Maintenance Notice** ⚠️\n\n"
             f"🔧 The bot will be undergoing maintenance **until {time} (UTC +2)**.\n"
@@ -5358,13 +4604,18 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
     commandscalled["_global"] += 1
     user_id = str(interaction.user.id)
     
-    global cached_users  # the dict version
+    global cached_users  
     
-    user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
-    
+    guild_id = str(interaction.guild.id)
+    user_id = str(interaction.user.id)
+
+    user_data = cached_users.get(guild_id, {}).get(user_id)
     if not user_data:
-        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        await interaction.followup.send(
+            "❌ You are not registered. Please register first.", ephemeral=True
+        )
         return
+        
     
     own_id = str(user_data.get("NationID", "")).strip()
 
@@ -5374,7 +4625,7 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
 
 
     try:
-        # === API Call ===
+        API_KEY = get_api_key_for_interaction(interaction)
         GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
         query = f"""
         {{
@@ -5411,7 +4662,7 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
             await interaction.followup.send("❌ Nation not found. Please try again.")
             return
 
-        # Normalize the data
+        
         nation = nation_data[0]
         nation_name = nation["nation_name"]
         cities = nation["num_cities"]
@@ -5429,7 +4680,7 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
 
         city = int(cities)
 
-        # Adjust per-city requirements if 50% is selected
+        
         percent_value = percent.value.strip().lower()
         if percent_value in ["50", "50%"]:
             nr_a = 325
@@ -5442,13 +4693,13 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
             nr_a_m = 1000000
             nr_a_u = 40
 
-        # Calculate total required
+        
         nr_a_minus = city * nr_a
         nr_a_f_minus = city * nr_a_f
         nr_a_u_minus = city * nr_a_u
         money_needed = city * nr_a_m
 
-        # Calculate deficits
+        
         money_n = 0
         gas_n = 0
         mun_n = 0
@@ -5588,12 +4839,16 @@ async def help(interaction: discord.Interaction):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
     
-    global cached_users  # the dict version
+    global cached_users  
     
-    user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
-    
+    guild_id = str(interaction.guild.id)
+    user_id = str(interaction.user.id)
+
+    user_data = cached_users.get(guild_id, {}).get(user_id)
     if not user_data:
-        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        await interaction.followup.send(
+            "❌ You are not registered. Please register first.", ephemeral=True
+        )
         return
     
     own_id = str(user_data.get("NationID", "")).strip()
@@ -5752,9 +5007,9 @@ async def help(interaction: discord.Interaction):
     image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
     norm_mssg.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
     async def is_high_power(interaction):
+        GOV_ROLE = get_gov_role(interaction)
         return (
-            any(role.name == "Government member" for role in interaction.user.roles)
-            or str(interaction.user.id) == "1148678095176474678"
+            any(role.name == GOV_ROLE for role in interaction.user.roles)
         )
     
     if not await is_high_power(interaction):
@@ -5770,9 +5025,10 @@ async def request_city(interaction: discord.Interaction, current_cities: int, ta
     user_id = str(interaction.user.id)
     commandscalled[user_id] = commandscalled.get(user_id, 0) + 1
     try:
-        global cached_users  # the dict version
+        global cached_users  
         
-        user_data = cached_users.get(user_id)  # user_id as int, no need to cast to string if keys are ints
+        guild_id = str(interaction.guild.id)
+        user_data = cached_users.get(guild_id, {}).get(str(interaction.user.id))  
         
         if not user_data:
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
@@ -5790,14 +5046,14 @@ async def request_city(interaction: discord.Interaction, current_cities: int, ta
         await interaction.followup.send("❌ Current cities must be greater than 0.")
         return        
 
-    datta = get_resources(own_id)
+    datta = get_resources(own_id, interaction)
     nation_name = datta[0]
     total_cost = 0
     cost_details = []
-    top20Average = 41.47  # This is static, you can change this
+    top20Average = 41.47  
 
     def compute_city_cost(cityToBuy: int, top20Average: float) -> float:
-        # Static costs for cities 2–10
+        
         static_costs = {
             2: 400_000,
             3: 900_000,
@@ -5831,22 +5087,22 @@ async def request_city(interaction: discord.Interaction, current_cities: int, ta
         For city numbers 30, 40, 50, etc.
         """
         if city_number < 30:
-            return 1_000_000  # Round to nearest 1 million for cities 17 to 29
+            return 1_000_000  
         elif city_number < 60:
-            return 5_000_000  # Round to nearest 5 million for cities 30 to 59
+            return 5_000_000  
         elif city_number < 100:
-            return 11_000_000  # Round to nearest 11 million for cities 60 to 99
+            return 11_000_000  
         else:
-            return 20_000_000  # Round to nearest 20 million for cities 100+
+            return 20_000_000  
 
     for i in range(current_cities + 1, target_cities + 1):
         cost = compute_city_cost(i, top20Average)
         user_id = interaction.user.id
 
-        # Apply the rounding logic based on the new rounding criteria
+        
         rounding_multiple = get_rounding_multiple(i)
         
-        # Apply rounding to the nearest multiple depending on the city number
+        
         if i >= 30:
             cost = round_up_to_nearest(cost, rounding_multiple)
 
@@ -5875,7 +5131,8 @@ async def request_city(interaction: discord.Interaction, current_cities: int, ta
         
                     )
 
-def get_city_data(nation_id: str) -> list[dict]:
+def get_city_data(nation_id: str, interaction) -> list[dict]:
+    API_KEY = get_api_key_for_interaction(interaction)
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
 
     query = f"""
@@ -5977,11 +5234,12 @@ async def infra_upgrade_cost(
         await interaction.followup.send("❌ Target infrastructure above 2000 is not supported.(*** Personal Contribution by `@patrickrickrickpatrick` ***)")
         return
 
-    # 🔹 Validate registration
+    
     try:
-        global cached_users  # the dict version
+        global cached_users  
         
-        user_data = cached_users.get(user_id)  # user_id as int, no need to cast to string if keys are ints
+        guild_id = str(interaction.guild.id)
+        user_data = cached_users.get(guild_id, {}).get(str(interaction.user.id))  
         
         if not user_data:
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
@@ -5995,13 +5253,13 @@ async def infra_upgrade_cost(
         await interaction.followup.send(f"❌ Failed to access your data: {e}")
         return
 
-    # 🔹 Retrieve city data
-    city_data = get_city_data(own_id)
+    
+    city_data = get_city_data(own_id, interaction)
     if not city_data:
         await interaction.followup.send("❌ Could not retrieve city data for your nation.")
         return
 
-    nation_data = get_resources(own_id)
+    nation_data = get_resources(own_id, interaction)
     nation_name = nation_data[0]
     nation_id = own_id
     if city_name:
@@ -6041,7 +5299,7 @@ async def infra_upgrade_cost(
         )
         return
 
-    # 🔹 Auto calculate for all cities
+    
     if auto_calculate:
         total_cost = 0
         description_lines = []
@@ -6083,7 +5341,7 @@ async def infra_upgrade_cost(
         )
         return
 
-    # 🔹 Manual input fallback
+    
     if current_infra is None:
         current_infra = 0
     if city_amount is None:
@@ -6240,19 +5498,20 @@ def get_materials(project_name):
     for category, projects in project_costs.items():
         if project_name in projects:
             return projects[project_name]
-    return None  # Project not found
+    return None  
 
 @bot.tree.command(name="request_project", description="Fetch resources for a project")
-#@app_commands.choices(project_name=aller_names)
+
 @app_commands.describe(project_name="Name of the project", tech_advancement="Is Technological Advancement active?")
 async def request_project(interaction: Interaction, project_name: str, tech_advancement: bool = False, note: str = "None"):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
 
     try:
-        global cached_users  # the dict version
+        global cached_users  
         
-        user_data = cached_users.get(user_id)  # user_id as int, no need to cast to string if keys are ints
+        guild_id = str(interaction.guild.id)
+        user_data = cached_users.get(guild_id, {}).get(str(interaction.user.id))  
         
         if not user_data:
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
@@ -6268,7 +5527,7 @@ async def request_project(interaction: Interaction, project_name: str, tech_adva
         await interaction.followup.send(f"❌ Failed to access your data: {e}")
         return
 
-    nation_data = get_resources(own_id)
+    nation_data = get_resources(own_id, interaction)
     nation_name = nation_data[0] if nation_data else "?"
     mats = get_materials(project_name)
 
@@ -6287,7 +5546,7 @@ async def request_project(interaction: Interaction, project_name: str, tech_adva
             f"**Request:**\n" +
             "\n".join([f"{mat}: {amount:,.0f}" for mat, amount in mats.items()]) +
             f"\n\n**Requested by:** {interaction.user.mention}\n"
-            f"**Reason:**\nBuild project: {project_name.title()}"
+            f"**Reason:**\nBuild project: {project_name.title()}\n"
             f"**Note:** {note}\n" 
         )
         user_id = interaction.user.id
@@ -6308,12 +5567,16 @@ async def dm_user(interaction: discord.Interaction, user: discord.User, message:
     await interaction.response.defer(ephemeral=True)
     user_id = str(interaction.user.id)
     
-    global cached_users  # the dict version
+    global cached_users  
     
-    user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
-    
+    guild_id = str(interaction.guild.id)
+    user_id = str(interaction.user.id)
+
+    user_data = cached_users.get(guild_id, {}).get(user_id)
     if not user_data:
-        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        await interaction.followup.send(
+            "❌ You are not registered. Please register first.", ephemeral=True
+        )
         return
     
     own_id = str(user_data.get("NationID", "")).strip()
@@ -6322,9 +5585,9 @@ async def dm_user(interaction: discord.Interaction, user: discord.User, message:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
             return
     async def is_banker(interaction):
+        GOV_ROLE = get_gov_role(interaction)
         return (
-        any(role.name == "Government member" for role in interaction.user.roles)
-            or str(interaction.user.id) == "1148678095176474678"
+            any(role.name == GOV_ROLE for role in interaction.user.roles)
         )
 
     if not await is_banker(interaction):
@@ -6335,7 +5598,7 @@ async def dm_user(interaction: discord.Interaction, user: discord.User, message:
         await user.send(better_msg)
         await interaction.followup.send(f"✅ Sent DM to {user.mention}")
 
-        # Save to Google Sheet
+        
         save_dm_to_sheet(interaction.user.name, user.name, better_msg)
 
     except discord.Forbidden:
@@ -6354,12 +5617,16 @@ async def send_message_to_channels(interaction: discord.Interaction, channel_ids
     await interaction.response.defer()
     user_id = str(interaction.user.id)
     
-    global cached_users  # the dict version
+    global cached_users  
     
-    user_data = cached_users.get(user_id)   # user_id as int, no need to cast to string if keys are ints
-    
+    guild_id = str(interaction.guild.id)
+    user_id = str(interaction.user.id)
+
+    user_data = cached_users.get(guild_id, {}).get(user_id)
     if not user_data:
-        await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+        await interaction.followup.send(
+            "❌ You are not registered. Please register first.", ephemeral=True
+        )
         return
     
     own_id = str(user_data.get("NationID", "")).strip()
@@ -6367,14 +5634,14 @@ async def send_message_to_channels(interaction: discord.Interaction, channel_ids
     if not own_id:
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
             return
-    # Clean and split channel IDs
+    
     channel_ids_list = [cid.strip().replace("<#", "").replace(">", "") for cid in channel_ids.split()]
 
-    # Permission check function
+    
     async def is_banker(interaction):
+        GOV_ROLE = get_gov_role(interaction)
         return (
-            any(role.name == "Government member" for role in interaction.user.roles)
-            or str(interaction.user.id) == "1148678095176474678"
+            any(role.name == GOV_ROLE for role in interaction.user.roles)
         )
 
     if not await is_banker(interaction):
@@ -6403,528 +5670,10 @@ async def send_message_to_channels(interaction: discord.Interaction, channel_ids
         f"❌ Failed for **{failed_count}** channel(s)."
     )
 
-LOTTO_NATION_ID = 649719
-POOL_CHANNEL_ID = 1391760708307386438
-POOL_MESSAGE_ID = 1391879312831025193
-YOUR_GUILD_ID = 1186655069530243183
-YOUR_CHANNEL_ID = 1391760708307386438
-GOV_ROLE = "Government member"
-REGISTRY_SHEET = "Registrations"
-ENTRIES_SHEET = "LottoEntries"
-# --- Configuration ---
 def get_sheet_s(sheet_name: str):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_dict(get_credentials(), scope)
     client = gspread.authorize(creds)
     return client.open(sheet_name).sheet1
-
-def get_column_index(sheet, col_name):
-    header = sheet.row_values(1)
-    return header.index(col_name) + 1
-
-def update_cell(sheet, row: int, col: int, value):
-    sheet.update_cell(row, col, value)
-
-# ---------- Lotto Sheet Helpers ----------
-
-def get_lotto_entries():
-    sheet = get_sheet_s("LottoEntries")
-    rows = sheet.get_all_records()
-    if not rows:
-        header = ["WinningNumbers", "Pot", "GovCut", "IACut", "FutPot", "1Correct", "2Correct", "3Correct", "4Correct", "5Correct", "6Correct"]
-        sheet.append_row(header)
-        return sheet, {k: "" for k in header}
-    return sheet, rows[0]
-
-def get_current_pot():
-    sheet, _ = get_lotto_entries()
-    pot_cell = sheet.cell(2, 2).value
-    return int(pot_cell) if pot_cell and pot_cell.isdigit() else 0
-
-def update_pot(new_amount: int):
-    sheet, _ = get_lotto_entries()
-    sheet.update_cell(2, 2, str(new_amount))
-
-def set_winning_numbers(numbers: list[int]):
-    sheet, _ = get_lotto_entries()
-    update_cell(sheet, 2, 1, ",".join(map(str, numbers)))
-    clear_lotto_winners()
-
-def get_winning_numbers() -> list[int]:
-    sheet, _ = get_lotto_entries()
-    raw = sheet.cell(2, 1).value
-    return list(map(int, raw.replace(" ", "").split(","))) if raw else []
-
-def update_lotto_winners(count: int, discord_id: str):
-    sheet, row = get_lotto_entries()
-    col_name = f"{count}Correct"
-    col_idx = get_column_index(sheet, col_name)
-    current_value = row.get(col_name, "")
-    ids = [i for i in current_value.split(",") if i.strip()]
-    if discord_id not in ids:
-        ids.append(discord_id)
-    update_cell(sheet, 2, col_idx, ",".join(ids))
-
-def clear_lotto_winners():
-    sheet, _ = get_lotto_entries()
-    for i in range(1, 7):
-        col_name = f"{i}Correct"
-        update_cell(sheet, 2, get_column_index(sheet, col_name), "")
-
-# ---------- Registrations ----------
-
-def get_registered_row(user_id: int) -> Optional[dict]:
-    sheet = get_sheet_s("Registrations")
-    records = sheet.get_all_records()
-    for row in records:
-        if str(row.get("DiscordID")).strip() == str(user_id):
-            return row
-    return None
-
-# ---------- Winner Check ----------
-
-def check_winners_and_update_sheet(winning_numbers: list[int]):
-    reg_sheet = get_sheet_s("Registrations")
-    lotto_sheet, lotto_row = get_lotto_entries()
-
-    all_users = reg_sheet.get_all_records()
-    pot = get_current_pot()
-
-    payout_percent = {1: 0.005, 2: 0.01, 3: 0.02, 4: 0.03, 5: 1.0}
-    payouts = {}
-
-    for user in all_users:
-        discord_id = str(user.get("DiscordID"))
-        ticket_data = user.get("LotteryNumbers", "")
-        if not ticket_data:
-            continue
-
-        tickets = [t.strip() for t in ticket_data.split(",") if t.strip()]
-        for ticket_str in tickets:
-            try:
-                ticket = list(map(int, ticket_str.replace(" ", "").split("|")))
-                if len(ticket) != 5:
-                    continue
-                matches = len(set(ticket) & set(winning_numbers))
-                if 1 <= matches <= 5:
-                    update_lotto_winners(matches, discord_id)
-                    reward = int(pot * payout_percent[matches])
-                    if discord_id in payouts:
-                        payouts[discord_id] += reward
-                    else:
-                        payouts[discord_id] = reward
-            except Exception as e:
-                print(f"[ERROR] Malformed ticket: {ticket_str}, error: {e}")
-
-    total_payout = sum(payouts.values())
-    new_pot = pot - total_payout
-    update_pot(new_pot)
-
-    print(f"🏆 Total paid out: ${total_payout:,}")
-    print(f"💰 New pot: ${new_pot:,}")
-    for winner, amount in payouts.items():
-        print(f"✅ {winner} won ${amount:,}")
-
-
-# ---------- Update Pool Message ----------
-
-async def update_pool_message(pot: int, gov_cut: int, ia_cut: int, fut_cut: int):
-    channel = get_lotto_channel()  # Your method to get the target channel
-    message_id = get_pool_message_id()  # Your method to get the stored message ID
-    message = await channel.fetch_message(message_id)
-    win1 = gov_cut*0.01
-    win2 = gov_cut*0.03
-    win3 = gov_cut*0.05
-    win4 = gov_cut*0.07
-    win5 = gov_cut
-
-    embed = discord.Embed(
-        title="🎟️ Lottery Pool",
-        description=(
-            f"**Member Pool:** ${gov_cut:,}\n"
-            f"**IA Cut(already deducted from the above):** ${ia_cut:,}\n"
-            f"**Winning Amounts:**\n"
-            f"- 1 Number = {int(win1):,} (1%)\n"
-            f"- 2 Numbers = {int(win2):,} (3%)\n"
-            f"- 3 Numbers = {int(win3):,} (5%)\n"
-            f"- 4 Numbers = {int(win4):,} (7%)\n"
-            f"- 5 Numbers ={int(win5):,} (100%)\n"
-            f"Winner Announcements are each Saturday at 0:00 UTC\n"
-            f"-# Brought to you and funded by <@303031001116835842>"
-        ),
-        color=discord.Color.gold()
-    )
-    await message.edit(embed=embed)
-
-
-
-# ---------- Weekly Reset ----------
-@bot.tree.command(name="set_numbers", description="Set winning numbers (Government only)")
-@app_commands.checks.has_role("Government member")
-async def set_numbers(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-
-    try:
-        numbers = random.sample(range(1, 21), 5)
-        sheet = get_sheet_s("LottoEntries")
-        sheet.update_cell(2, 1, ",".join(map(str, numbers)))  # A2
-        
-        # Update pot split properly (do NOT write labels in row 2)
-        total_pot = get_current_pot()
-        gov_cut = int(total_pot * 0.9)
-        ia_cut = total_pot - gov_cut
-        
-
-        await interaction.followup.send(f"✅ Winning numbers set.\n🎰 Pot: ${total_pot:,}\n👥 Members: ${gov_cut:,} | 🛠️ IA: ${ia_cut:,}", ephemeral=True)
-
-        # Update the winners
-        check_winners_and_update_sheet(numbers)
-
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error: {e}", ephemeral=True)
-
-@bot.tree.command(name="pool_ratio", description="Show pool split (admin only).")
-async def pool_ratio(interaction: Interaction):
-    if "Government member" not in [role.name for role in interaction.user.roles]:
-        await interaction.response.send_message("Unauthorized.", ephemeral=True)
-        return
-
-    total_pool, gov_cut, ia_cut = calculate_pool()
-
-    await interaction.response.send_message(
-        f"🎰 Pool split:\n- Government Pool: ${gov_cut:,}\n- IA Cut: ${ia_cut:,}",
-        ephemeral=True
-    )
-
-@bot.tree.command(name="buy_lotto_ticket", description="Buy a lottery ticket (500k via 1 iron trade)")
-@app_commands.describe(numbers="Pick 5 numbers between 1–20, comma-separated")
-async def buy_lotto_ticket(interaction: Interaction, numbers: str):
-    await interaction.response.defer(ephemeral=True)
-
-    user_id = str(interaction.user.id)
-    row = get_registered_row(user_id)
-
-    if not row:
-        return await interaction.followup.send("❌ You're not registered.")
-
-    try:
-        user_nation_id = int(row.get("NationID", 0))
-        if not user_nation_id:
-            return await interaction.followup.send("❌ Your nation ID is missing.")
-    except Exception as e:
-        return await interaction.followup.send(f"❌ Invalid nation ID: {e}")
-
-    # Parse the input numbers
-    try:
-        number_list = [int(n.strip()) for n in numbers.replace(" ", "").split(",")]
-        if len(number_list) != 5 or any(n < 1 or n > 20 for n in number_list):
-            return await interaction.followup.send("❌ Invalid numbers. Pick exactly 5 between 1–20.")
-    except Exception:
-        return await interaction.followup.send("❌ Could not parse numbers. Use comma-separated values like: 4,20,19,13,15")
-
-    GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
-
-    # Get 'Kingdom of Duloc' nation ID
-    nation_id_query = """
-    query {
-      nations(nation_name: "Kingdom of Duloc") {
-        data {
-          id
-        }
-      }
-    }
-    """
-    try:
-        res = requests.post(GRAPHQL_URL, json={"query": nation_id_query}).json()
-        duloc_data = res["data"]["nations"]["data"]
-        if not duloc_data:
-            return await interaction.followup.send("❌ Could not find nation 'Kingdom of Duloc'.")
-        duloc_id = int(duloc_data[0]["id"])
-    except Exception as e:
-        return await interaction.followup.send(f"❌ Error fetching Kingdom of Duloc ID: {e}")
-
-    # Fetch recent trades to Duloc
-    trade_query = """
-    query {
-      nations(nation_name: "Kingdom of Duloc") {
-        data {
-          trades(offer_resource: "iron") {
-            id
-            sender_id
-            receiver_id
-            offer_resource
-            offer_amount
-            price
-            accepted
-            date
-          }
-        }
-      }
-    }
-    """
-    try:
-        res = requests.post(GRAPHQL_URL, json={"query": trade_query}).json()
-        trades = res["data"]["nations"]["data"][0]["trades"]
-    except Exception as e:
-        return await interaction.followup.send(f"❌ Error fetching trades: {e}")
-
-    if not trades:
-        return await interaction.followup.send("❌ No trades found for Kingdom of Duloc.")
-
-    matching_trade = next((
-        trade for trade in trades
-        if trade["offer_resource"] == "iron"
-        and int(trade["offer_amount"]) == 1
-        and trade.get("accepted")
-        and int(trade["sender_id"]) == user_nation_id
-        and int(trade["receiver_id"]) == duloc_id
-    ), None)
-
-    if not matching_trade:
-        return await interaction.followup.send("❌ No valid 1 iron trade found from your nation to Kingdom of Duloc.")
-
-    # Safely parse used trade IDs, handle int or empty gracefully
-    trade_id_str = str(matching_trade["id"])
-    used_trade_ids_cell = row.get("Lotto Dates", "")
-    if isinstance(used_trade_ids_cell, int):
-        used_trade_ids_cell = str(used_trade_ids_cell)
-    used_trade_ids = [tid.strip() for tid in used_trade_ids_cell.split(",") if tid.strip()]
-
-    if trade_id_str in used_trade_ids:
-        return await interaction.followup.send("❌ You've already used this trade to buy a ticket.")
-
-    # Warn if price isn't 500k
-    if int(matching_trade.get("price", 0)) != 500_000:
-        await interaction.followup.send(f"⚠️ Warning: Trade was for ${matching_trade['price']}, not $500,000.")
-
-    try:
-        reg_sheet = get_sheet_s("Registrations")
-        lotto_sheet = get_sheet_s("LottoEntries")
-        all_rows = reg_sheet.get_all_records()
-        row_index = next((i + 2 for i, r in enumerate(all_rows) if str(r.get("DiscordID")).strip() == user_id), None)
-
-        if row_index is None:
-            return await interaction.followup.send("❌ Error: You're not registered.")
-
-        # Append new ticket
-        existing_tickets = reg_sheet.cell(row_index, 5).value or ""
-        new_entry = "|".join(map(str, number_list))
-        updated_tickets = existing_tickets + "," + new_entry if existing_tickets else new_entry
-        reg_sheet.update_cell(row_index, 5, updated_tickets)
-
-        # Append trade ID to used trade IDs column
-        col_index = get_column_index(reg_sheet, "Lotto Dates")
-        trade_ids_cell = reg_sheet.cell(row_index, col_index).value or ""
-        if isinstance(trade_ids_cell, int):
-            trade_ids_cell = str(trade_ids_cell)
-        updated_trade_ids = (trade_ids_cell + "," + trade_id_str) if trade_ids_cell else trade_id_str
-        reg_sheet.update_cell(row_index, col_index, updated_trade_ids)
-
-        # Update pot amounts
-        # Increase total pot
-        current_pot = get_current_pot()
-        new_pot = current_pot + 500_000
-        update_pot(new_pot)
-        
-        # Split ticket price into Gov and IA cut
-        gov_add = 400_000
-        fut_add = 50_000# 90% of ticket price
-        ia_add = 50_000    # 10% of ticket price
-        
-        gov_cut = int(lotto_sheet.cell(2, 3).value or 0)
-        ia_cut = int(lotto_sheet.cell(2, 4).value or 0)
-        fut_cut = int(lotto_sheet.cell(2, 5).value or 0)
-        
-        lotto_sheet.update_cell(2, 3, str(gov_cut + gov_add))
-        lotto_sheet.update_cell(2, 4, str(ia_cut + ia_add))
-        lotto_sheet.update_cell(2, 5, str(fut_cut + fut_add))
-
-        await interaction.followup.send("✅ Ticket purchased and trade recorded!")
-        await update_pool_message(new_pot, gov_cut + gov_add, ia_cut + ia_add, fut_cut + fut_add)
-
-    except Exception as e:
-        await interaction.followup.send(f"❌ Failed to buy ticket: {e}")
-
-
-
-@bot.tree.command(name="weekly_lotto_reset", description="Run the weekly lotto reset (Government only)")
-@app_commands.checks.has_role(GOV_ROLE)
-async def weekly_lotto_reset(interaction: Interaction):
-    await interaction.response.defer(ephemeral=True)
-
-    try:
-        reg_sheet = get_sheet_s("Registrations")
-        lotto_sheet = get_sheet_s("LottoEntries")
-        winning_numbers = get_winning_numbers()
-
-        all_regs = reg_sheet.get_all_records()
-        # Track each user's highest correct count
-        user_best_match = {}
-        
-        for record in all_regs:
-            discord_id = str(record.get("DiscordID"))
-            tickets_str = record.get("LotteryNumbers", "")
-            if not tickets_str:
-                continue
-            tickets = tickets_str.split(",")
-            for ticket in tickets:
-                try:
-                    ticket_nums = list(map(int, ticket.strip().split("|")))
-                    correct_count = len(set(ticket_nums) & set(winning_numbers))
-                    if correct_count >= 1:
-                        user_best_match[discord_id] = max(user_best_match.get(discord_id, 0), correct_count)
-                except:
-                    continue
-        
-        # Convert to winners_by_correct
-        winners_by_correct = {i: [] for i in range(1, 7)}
-        for uid, best_match in user_best_match.items():
-            winners_by_correct[best_match].append(uid)
-
-
-        ping_lines = []
-        # Build winner map with highest category per user
-        user_best_counts = {}
-        for count in reversed(range(1, 7)):  # Start from 6 down to 1
-            for uid in winners_by_correct[count]:
-                if uid not in user_best_counts:
-                    user_best_counts[uid] = count
-        
-        # Group users by their best match count
-        count_to_users = {}
-        for uid, count in user_best_counts.items():
-            count_to_users.setdefault(count, []).append(uid)
-        
-        channel = interaction.channel
-        
-        if count_to_users:
-            # Sort counts ascending to show from 1 Number up
-            sorted_counts = sorted(count_to_users.keys())
-        
-            lines = [
-                f"<@&1388256392426688654> Welcome to the Big Dipper Lotto Weekly Drawing! The Winning Numbers were {', '.join(map(str, winning_numbers))} and the following people have won a portion of the pot!",
-            ]
-        
-            for count in sorted_counts:
-                mentions = [f"<@{uid}>" for uid in count_to_users[count]]
-                lines.append(f"{count} Number{'s' if count > 1 else ''}:\n" + ", ".join(mentions))
-        
-            lines.append("\n-# Your winnings will be sent to you within the next 24 hours!")
-        
-            await channel.send("PPL won:")
-            await channel.send("\n".join(lines))
-        else:
-            await channel.send(
-                "Hello <@&1388256392426688654>! During the weekly drawing we have found no winners. "
-                "Don't be discouraged! This just means the pot is increased for next week's drawing. Better luck next time!"
-            )
-
-
-        # Get pot and IA cut from sheet
-        pot = get_current_pot()
-        ia_cut_cell = lotto_sheet.cell(2, 4).value
-        old_ia_cut = int(ia_cut_cell) if ia_cut_cell and ia_cut_cell.isdigit() else 0
-
-        gov_cut = pot - old_ia_cut
-        if gov_cut < 0:
-            gov_cut = 0
-
-        # Save pot and gov cut (do NOT update IA cut here)
-        lotto_sheet.update_cell(2, 2, str(pot))     # Pot (B2)
-        lotto_sheet.update_cell(2, 3, str(gov_cut)) # GovCut (C2)
-
-        # Pay out rewards from gov_cut
-        percentages = {1: 0.005, 2: 0.01, 3: 0.02, 4: 0.05, 5: 0.10, 6: 1.0}
-        total_paid = 0
-
-        for i in range(1, 7):
-            winners = winners_by_correct[i]
-            if winners:
-                payout = int(gov_cut * percentages[i])
-                per_user = payout // len(winners)
-                total_paid += payout
-                for uid in winners:
-                    print(f"User {uid} gets ${per_user:,} for {i} correct.")
-
-        # Recalculate remaining gov cut and pot (IA cut never goes down)
-        remaining_gov = max(gov_cut - total_paid, 0)
-        new_pot = remaining_gov + old_ia_cut 
-
-        # Update pot and gov cut again
-        update_pot(new_pot)  # Make sure this only updates Pot, not IA cut
-        lotto_sheet.update_cell(2, 3, str(remaining_gov))  # GovCut (C2)
-
-        # Ensure IA Cut never decreases (write back if needed)
-        ia_cut_cell_after = lotto_sheet.cell(2, 4).value
-        current_ia_cut = int(ia_cut_cell_after) if ia_cut_cell_after and ia_cut_cell_after.isdigit() else 0
-        if old_ia_cut > current_ia_cut:
-            lotto_sheet.update_cell(2, 4, str(old_ia_cut))
-
-        # Clear ticket entries but keep row 2 intact
-        num_rows = len(all_regs) + 1
-        reg_sheet.batch_clear([f"E2:E{num_rows}"])  # Clear LotteryNumbers (E2+)
-
-        # Clear winners below row 2, NOT row 2 itself
-        lotto_sheet.batch_clear(["A3:F10"])  # Adjust range depending on your winners rows
-
-        clear_lotto_winners()  # If you have helper for additional cleanup
-
-        # Update the pool message
-        await update_pool_message(new_pot, remaining_gov, old_ia_cut)
-
-        await interaction.followup.send("✅ Weekly lotto reset complete.", ephemeral=True)
-
-    except Exception as e:
-        await interaction.followup.send(f"❌ Error: {e}", ephemeral=True)
-
-def get_lotto_channel():
-    guild = bot.get_guild(YOUR_GUILD_ID)
-    return guild.get_channel(YOUR_CHANNEL_ID)
-
-def get_pool_message_id():
-    return POOL_MESSAGE_ID  # Replace with actual message ID
-
-def find_iron_trade(user_nation_id: int):
-    GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
-    query = """
-    query ($id: Int!) {
-      nation(id: $id) {
-        trades(type: "offer") {
-          id
-          date
-          resource
-          quantity
-          price
-          accepted
-          seller {
-            id
-          }
-        }
-      }
-    }
-    """
-    variables = {"id": user_nation_id}
-    try:
-        res = requests.post(GRAPHQL_URL, json={"query": query, "variables": variables})
-        data = res.json()
-        trades = data.get("data", {}).get("nation", {}).get("trades", [])
-        for trade in trades:
-            if (
-                trade["resource"] == "iron"
-                and int(trade["quantity"]) == 1
-                and trade.get("accepted")
-                and str(trade.get("seller", {}).get("id")) == "649719"
-            ):
-                return trade
-    except Exception as e:
-        print(f"[ERROR] find_iron_trade: {e}")
-    return None
-
-
-def calculate_pool():
-    pot = get_current_pot()
-    gov_cut = int(pot * 0.9)
-    ia_cut = pot - gov_cut
-    return pot, gov_cut, ia_cut
 
 bot.run(bot_key)
