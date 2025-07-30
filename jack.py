@@ -3964,14 +3964,18 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member, exte
                 return
 
         
-        for discord_id, info in cached_users.items():
-            if str(who.id) == discord_id:
-                own_id = info.get("NationID")
-                break
-
-        if not own_id:
-            await interaction.followup.send(f"❌ Could not find Nation ID for {who.mention}. They must be registered.")
+        guild_id = str(interaction.guild.id)
+        user_id = str(interaction.user.id)
+    
+        user_data = cached_users.get(guild_id, {}).get(user_id)
+        if not user_data:
+            await interaction.followup.send(
+                "❌ You are not registered. Please register first.", ephemeral=True
+            )
             return
+            
+        
+        own_id = str(user_data.get("NationID", "")).strip()
 
     
     try:
