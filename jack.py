@@ -1290,13 +1290,11 @@ def get_registration_sheet(guild_id):
         records = sheet.get_all_records()
         if len(records) <= 1:
             print(f"⚠️ Guild sheet only has {len(records)} records. Consider running migration.")
-            # Uncomment the next line to auto-migrate:
-            # migrate_data_to_guild_sheet(guild_id)
         
         return sheet
     except gspread.SpreadsheetNotFound:
-        print(f"❌ Sheet '{sheet_name}' not found. Creating it...")
-        try:
+        print(f"❌ Sheet '{sheet_name}' not found.")
+        '''try:
             # Create new guild-specific sheet
             spreadsheet = client.create(sheet_name)
             sheet = spreadsheet.sheet1
@@ -1310,7 +1308,7 @@ def get_registration_sheet(guild_id):
             return sheet
         except Exception as create_error:
             print(f"❌ Failed to create sheet '{sheet_name}': {create_error}")
-            raise
+            raise'''
     except Exception as e:
         print(f"❌ Unexpected error opening sheet '{sheet_name}': {e}")
         raise
