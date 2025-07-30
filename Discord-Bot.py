@@ -2244,6 +2244,7 @@ SETTING_CHOICES = [
     app_commands.Choice(name="WARN_CHANNEL", value="WARN_CHANNEL"),
     app_commands.Choice(name="GOV_ROLE", value="GOV_ROLE"),
     app_commands.Choice(name="API_KEY", value="API_KEY"),
+    app_commands.Choice(name="LOGS", value="LOGS"),
 ]
 
 @bot.tree.command(name="set_setting", description="Set a server setting (e.g. GRANT_REQUEST_CHANNEL_ID).")
@@ -4766,62 +4767,6 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
         await interaction.followup.send(embed=embed, view=GrantView())
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {e}")
-
-
-user_nation_ids = {
-    "lordygon": 459160,
-    "patrickrickrickpatrick": 636722,
-    "masteraced": 365325,
-    "vladmier1": 510930,
-    "goswat14542308": 683429,
-    "darko50110": 671583,
-    "arstotzka111": 605608,
-    "hypercombatman": 236312,
-    ".technostan": 665217,
-    "wholelottawar": 635047,
-    "aeternite": 619412,
-    "speckgard": 631277,
-    "fishpool0211": 510895,
-    "micmou123": 277286,
-    "tymon_pik": 615360,
-    "cookie_xdsorry": 648675,
-    "jhon_tachanka_doe": 538189,
-    "pindakaas07": 613818,
-    "ellianmarkwell": 646388,
-    "sabtien123": 447228,
-    "kaelkek": 614369,
-    "lemyrzin": 650657,
-    "brutallich": 259382,
-    "varant1x": 646579,
-    "chevdev98": 680527,
-    "rogue__5": 673641,
-    "peoplerep_the_great": 554863,
-    "iam_jinxed": 671871,
-    "bendover995": 667252,
-    "scottyboi3413": 679028,
-    "1khri": 679562,
-    "acoldlinks": 615210,
-    "bruhbaboon": 683575,
-    "miranacious_17083": 680196,
-    ".nygi": 677500,
-    "skryni": 688146,
-    "sayyedistan.": 685174,
-    "jonas9629": 433465,
-    "dietc0ke": 622443,
-    "chrissyno": 551321,
-    "bigmoney89": 649719,
-    "man.is.80090": 625208,
-    "actuallyprille": 608492,
-    "fumzy0207": 652466,
-    "georgewashington1111": 645621,
-    "ticklemctickleson": 607513,
-    "r0b3rt11": 646757,
-    "supersmart_09262": 684684,
-    "papang0001": 690323,
-    "gtag4ever": 647486,
-    "jiradin": 656339,
-    "pzoez2": 547638,
-}
 
 @bot.tree.command(name="help", description="Get the available commands")
 async def help(interaction: discord.Interaction):
