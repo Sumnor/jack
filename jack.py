@@ -2297,10 +2297,12 @@ async def list_settings(interaction: discord.Interaction):
     await interaction.response.defer()
     server_id = interaction.guild_id
     settings = list_server_settings(server_id)
+
     if not settings:
         await interaction.followup.send("No settings found for this server.", ephemeral=True)
     else:
-        msg = "\n".join(f"- `{k}` = `{v}`" for k, v in settings)
+        filtered = [(k, v) for k, v in settings if k.upper() != "API_KEY"]
+        msg = "\n".join(f"- `{k}` = `{v}`" for k, v in filtered)
         await interaction.followup.send(f"🔧 Settings:\n{msg}", ephemeral=True)
 
 @bot.tree.command(name="res_details_for_alliance", description="Get each Alliance Member's resources and money individually")
