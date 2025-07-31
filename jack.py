@@ -4830,10 +4830,6 @@ async def help(interaction: discord.Interaction):
         "Get the exact number of resources and money + the total of the members of the alliance\n"
         "The command is /res_details_for_alliance"
     )
-    mmr_audit_desc = (
-        "Get the MMR and the military of the chosen person, with buttons to generate messages to whatever is wrong\n"
-        "The command is /mmr_audit who: @sumnor_the_lazy\n"
-    )
     member_activity_desc = (
         "Get a Pie Chart for the member activity\n"
         "The command is /member_activity\n"
@@ -4845,10 +4841,6 @@ async def help(interaction: discord.Interaction):
     dm_user_desc = (
         "Dm one user who is in the server\n"
         "The command is /dm_user who: @masteraced message: Hello ~Pookie :heart:~\n"
-    )
-    battle_sim_desc = (
-        "Generates an approximate battle based on the military of both nations and shows approximate win-chance\n"
-        "The command is /battle_sim nation_id: 680627, war_type: Raid\n"
     )
     my_nation_desc = (
         "Shows some general information about the chosen person's nation\n"
@@ -4891,19 +4883,15 @@ async def help(interaction: discord.Interaction):
         f"{res_in_m_desc}"
         "\n***`/res_details_for_alliance`:***\n"
         f"{res_detail_desc}"
-        "\n***`/mmr_audit`:***\n"
-        f"{mmr_audit_desc}"
         "\n***`/member_activity`:***\n"
         f"{member_activity_desc}"
         "\n***`/send_message_to_channels`:***\n"
         f"{send_message_to_channels_desc}"
         "\n***`/dm_user`:***\n"
         f"{dm_user_desc}"
-        "\n***`/battle_sim`:***\n"
-        f"{battle_sim_desc}"
         "\n***`/nation_info`:***\n"
         f"{my_nation_desc}"
-        "\n***`/request_grant`:***\n"
+        "\n***`/request_miscellaneous`:***\n"
         f"{request_grant_desc}"
         "\n***`/request_city`:***\n"
         f"{request_city_desc}"
