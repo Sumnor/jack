@@ -2946,6 +2946,10 @@ async def member_activity(interaction: discord.Interaction):
     own_id = str(user_data.get("NationID", "")).strip()
     COLOUR_BLOC = get_colour_bloc(interaction)
 
+    if not COLOUR_BLOC:
+        await interaction.followup.send("❌ Set the colour bloc first.")
+        return
+
     if not own_id:
         await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
         return
@@ -2972,7 +2976,7 @@ async def member_activity(interaction: discord.Interaction):
     inactive_list = []
 
     try:
-        sheet = get_registration_sheet()
+        sheet = get_registration_sheet(guild_id)
         rows = sheet.get_all_records()
         df = pd.DataFrame(rows)
         df.columns = [col.strip() for col in df.columns]
