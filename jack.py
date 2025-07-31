@@ -355,8 +355,8 @@ class NationInfoView(discord.ui.View):
                 color=discord.Color.gold()
             )
             embed.set_footer(
-                text="Brought to you by Darkstar",
-                icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+                text="Brought to you by Sumnor",
+                icon_url="https://i.ibb.co/Kpsfc8Jm/jack.webp"
             )
     
             self.clear_items()
@@ -482,8 +482,8 @@ class NationInfoView(discord.ui.View):
                 embed.add_field(name="Valid Options", value=valid_options, inline=False)
     
             embed.set_footer(
-                text="Brought to you by Darkstar",
-                icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
+                text="Brought to you by Sumnor",
+                icon_url="https://i.ibb.co/Kpsfc8Jm/jack.webp"
             )
     
             
@@ -685,8 +685,8 @@ class BlueGuy(discord.ui.View):
         embed.add_field(name="Note", value=note, inline=False)
 
         
-        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-        embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
+        image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
+        embed.set_footer(text="Brought to you by Sumnor", icon_url=image_url)
 
         await interaction.message.edit(embed=embed, view=GrantView())
 
@@ -714,8 +714,8 @@ class GrantView(View):
             embed.color = discord.Color.green()
             embed.description += f"\n**Status:** ✅ **GRANT SENT**"
 
-            image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-            embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
+            image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
+            embed.set_footer(text="Brought to you by Sumnor", icon_url=image_url)
 
             await interaction.message.edit(embed=embed, view=None)
 
@@ -749,8 +749,8 @@ class GrantView(View):
             embed = interaction.message.embeds[0]
             embed.color = discord.Color.orange()
             embed.description += f"\n**Status:** 🕒 **DELAYED**"
-            image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-            embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
+            image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
+            embed.set_footer(text=f"Brought to you by Sumnor", icon_url=image_url)
 
             new_view = GrantView()
             new_view.remove_item(new_view.children[1]) 
@@ -770,8 +770,8 @@ class GrantView(View):
             embed = interaction.message.embeds[0]
             embed.color = discord.Color.red()
             embed.description += f"\n**Status:** ❌ **GRANT DENIED**"
-            image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-            embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
+            image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
+            embed.set_footer(text=f"Brought to you by Sumnor", icon_url=image_url)
             await interaction.message.edit(embed=embed, view=None)
         except Exception as e:
             await interaction.response.send_message(f"❌ Error: `{e}`", ephemeral=True)
@@ -900,8 +900,8 @@ class RawsAuditView(discord.ui.View):
                 ),
                 color=embed_color
             )
-            image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-            embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
+            image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
+            embed.set_footer(text="Brought to you by Sumnor", icon_url=image_url)
 
             await channel.send(embed=embed, view=GrantView())
 
@@ -1329,6 +1329,9 @@ def get_auto_requests_sheet(guild_id):
 def get_gov_role(interaction: discord.Interaction):
     return get_settings_value("GOV_ROLE", interaction.guild.id)
 
+def get_colour_bloc(interaction: discord.Interaction):
+    return get_settings_value("COLOUR_BLOC", interaction.guild.id)
+
 def get_member_role(interaction: discord.Interaction):
     return get_settings_value("MEMBER_ROLE", interaction.guild.id)
 
@@ -1600,8 +1603,8 @@ async def process_auto_requests():
                                 f"**Reason:** {REASON_FOR_GRANT}\n"
                             )
                         )
-                        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-                        embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
+                        image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
+                        embed.set_footer(text="Brought to you by Sumnor", icon_url=image_url)
                         
                         await channel.send(embed=embed, view=GrantView())
                         
@@ -2454,8 +2457,8 @@ async def res_details_for_alliance(interaction: discord.Interaction):
         colour=discord.Colour.dark_magenta()
     )
 
-    image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-    embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
+    image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
+    embed.set_footer(text=f"Brought to you by Sumnor", icon_url=image_url)
     try:
         await interaction.followup.send(embed=embed,  file=discord.File(io.StringIO(text_content), filename="alliance_resources.txt"))
     except Exception as e:
@@ -2910,8 +2913,8 @@ async def res_in_m_for_a(
         plt.close(fig)
         buf.seek(0)
 
-        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-        embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
+        image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
+        embed.set_footer(text=f"Brought to you by <@1148678095176474678>", icon_url=image_url)
         await interaction.followup.send(embed=embed, file=discord.File(fp=buf, filename="resources_graph.png"))
 
     except Exception as e:
@@ -2939,6 +2942,7 @@ async def member_activity(interaction: discord.Interaction):
         return
 
     own_id = str(user_data.get("NationID", "")).strip()
+    COLOUR_BLOC = get_colour_bloc(interaction)
 
     if not own_id:
         await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
@@ -3002,14 +3006,14 @@ async def member_activity(interaction: discord.Interaction):
                 inactive += 1
                 inactive_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
             elif days_inactive >= 1:
-                if colour.lower() == "olive":
+                if colour.lower() == COLOUR_BLOC.lower():
                     activish += 1
                     activish_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
                 else:
                     activish_wo_bloc += 1
                     activish_wo_bloc_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
             else:
-                if colour.lower() == "olive":
+                if colour.lower() == COLOUR_BLOC.lower():
                     active_w_bloc += 1
                     active_w_bloc_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
                 else:
@@ -3049,7 +3053,7 @@ async def member_activity(interaction: discord.Interaction):
               bbox_to_anchor=(1, 0, 0.5, 1))
 
     plt.setp(autotexts, size=8, weight="bold")
-    ax.set_title("DS Activity Chart")
+    ax.set_title("Activity Chart")
 
     buffer = BytesIO()
     plt.savefig(buffer, format="png")
@@ -3057,7 +3061,7 @@ async def member_activity(interaction: discord.Interaction):
     file = discord.File(fp=buffer, filename="ds_activity.png")
 
     embed = discord.Embed(
-        title="📊 DS Activity",
+        title="📊 Activity",
         description="Here are the members not in ideal status categories:",
         color=discord.Color.dark_teal()
     )
@@ -3080,8 +3084,8 @@ async def member_activity(interaction: discord.Interaction):
     add_field_chunks(embed, "Activish (Wrong Bloc)", activish_wo_bloc_list)
     add_field_chunks(embed, "Inactive", inactive_list)
 
-    image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-    embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
+    image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
+    embed.set_footer(text=f"Brought to you by Sumnor", icon_url=image_url)
     embed.set_image(url="attachment://ds_activity.png")
 
     await interaction.followup.send(embed=embed, file=file)
@@ -3296,8 +3300,8 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
         colour=discord.Colour.dark_orange(),
         description=(file)
     )
-    image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-    embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
+    image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
+    embed.set_footer(text=f"Brought to you by Sumnor", icon_url=image_url)
     
     await interaction.followup.send(embed=embed, file=discord.File(txt_buffer, filename=f"nation_{nation_id}_wars_summary.txt"))
 
@@ -3516,8 +3520,8 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
             colour=discord.Colour.dark_orange(),
             description="Visialized War Results:"
         )
-        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-        embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
+        image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
+        embed.set_footer(text=f"Brought to you by Sumnor", icon_url=image_url)
         await interaction.followup.send(embed=embed)
 
 
@@ -3595,8 +3599,8 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
                 colour=discord.Colour.dark_orange(),
                 description="Visualised Results:"
             )
-            image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-            embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
+            image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
+            embed.set_footer(text=f"Brought to you by Sumnor", icon_url=image_url)
             embed.set_image(url=f"attachment://war_graph_batch{batch_index}.png")
             await interaction.followup.send(embed=embed, file=file)
 
@@ -4068,8 +4072,8 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member, exte
             color=discord.Color.dark_embed(),
             description=msg
         )
-        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-        embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
+        image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
+        embed.set_footer(text="Brought to you by Sumnor", icon_url=image_url)
 
         nation_id = own_id
         view = NationInfoView(nation_id, embed)
@@ -4368,8 +4372,8 @@ async def request_for_ing(
             )
         )
         embed.set_image(url=screenshot.url)
-        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-        embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
+        image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
+        embed.set_footer(text="Brought to you by Sumnor", icon_url=image_url)
 
         await interaction.followup.send(embed=embed, view=GrantView())
 
@@ -4475,8 +4479,8 @@ async def request_grant(
                 f"**Note:** {note}\n"
             )
         )
-        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-        embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
+        image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
+        embed.set_footer(text="Brought to you by Sumnor", icon_url=image_url)
         message = await interaction.followup.send("<@1390237054872322148> <@1388161354086617220>")
         await message.delete()
         await interaction.followup.send(embed=embed, view=GrantView())
@@ -4767,10 +4771,8 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
                 f"**Note:** {note}\n"
             )
         )
-        image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-        embed.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
-        message = await interaction.followup.send("<@1390237054872322148> <@1388161354086617220> <@1148678095176474678>")
-        await message.delete()
+        image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
+        embed.set_footer(text=f"Brought to you by Sumnor", icon_url=image_url)
         await interaction.followup.send(embed=embed, view=GrantView())
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {e}")
@@ -4914,8 +4916,8 @@ async def help(interaction: discord.Interaction):
         color=discord.Color.purple(),
         description=gov_msg
     )
-    image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-    gov_mssg.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
+    image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
+    gov_mssg.set_footer(text=f"Brought to you by Sumnor", icon_url=image_url)
 
     norm_msg = (
         "\n***`/register`:***\n"
@@ -4945,8 +4947,8 @@ async def help(interaction: discord.Interaction):
         color=discord.Color.blue(),
         description=norm_msg
     )
-    image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-    norm_mssg.set_footer(text=f"Brought to you by Darkstar", icon_url=image_url)
+    image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
+    norm_mssg.set_footer(text=f"Brought to you by Sumnor", icon_url=image_url)
     async def is_high_power(interaction):
         GOV_ROLE = get_gov_role(interaction)
         return (
@@ -5056,8 +5058,8 @@ async def request_city(interaction: discord.Interaction, current_cities: int, ta
         description="\n".join(cost_details)
     )
     embed.add_field(name="Total Cost:", value=f"${total_cost:,.0f}", inline=False)
-    image_url = "https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg"
-    embed.set_footer(text="Brought to you by Darkstar", icon_url=image_url)
+    image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
+    embed.set_footer(text="Brought to you by Sumnor", icon_url=image_url)
 
     await interaction.followup.send(
         embed=embed,
@@ -5233,7 +5235,7 @@ async def infra_upgrade_cost(
             color=discord.Color.gold(),
             description=f"Upgrade from {current} to {target_infra}\nEstimated Cost: **${cost:,.0f}**"
         )
-        embed.set_footer(text="Brought to you by Darkstar\nPersonal Contribution by <@1026284133481189388>", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
+        embed.set_footer(text="Brought to you by Sumnor\nPersonal Contribution by <@1026284133481189388>", icon_url="https://i.ibb.co/Kpsfc8Jm/jack.webp")
         await interaction.followup.send(
             embed=embed,
             view=BlueGuy(category="infra", data=data)
@@ -5275,7 +5277,7 @@ async def infra_upgrade_cost(
             color=discord.Color.green(),
             description="\n".join(description_lines) + f"\n\n**Total estimated cost(rounded up to the nearest million): ${rounded_total_cost:,.0f}**"
         )
-        embed.set_footer(text="Brought to you by Darkstar\nPersonal Contribution by @patrickrickrickpatrick", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
+        embed.set_footer(text="Brought to you by Sumnor\nPersonal Contribution by @patrickrickrickpatrick", icon_url="https://i.ibb.co/Kpsfc8Jm/jack.webp")
         await interaction.followup.send(
             embed=embed,
             view=BlueGuy(category="infra", data=data)
@@ -5311,7 +5313,7 @@ async def infra_upgrade_cost(
         color=discord.Color.green(),
         description=f"From `{current_infra}` to `{target_infra}` for `{city_amount}` city(ies)\nEstimated Cost: **${total_cost:,.0f}**"
     )
-    embed.set_footer(text="Brought to you by Darkstar", icon_url="https://i.ibb.co/qJygzr7/Leonardo-Phoenix-A-dazzling-star-emits-white-to-bluish-light-s-2.jpg")
+    embed.set_footer(text="Brought to you by Sumnor", icon_url="https://i.ibb.co/Kpsfc8Jm/jack.webp")
     await interaction.followup.send(embed=embed, view=BlueGuy(category="infra", data=data))
 
 
