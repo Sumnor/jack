@@ -4806,7 +4806,7 @@ async def help(interaction: discord.Interaction):
             await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
             return
     register_description = (
-        "Register yourself using this command to use the *many amazing* freatures of this bot, developed by **<@722094493343416392>**\n"
+        "Register yourself using this command to use the *many amazing* freatures of this bot, developed by **<@1148678095176474678>**\n"
         "The command is /register nation_id: 680627\n"
         "**Note:** The bot only works if you're registered\n"
     )
