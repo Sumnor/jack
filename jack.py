@@ -2251,6 +2251,7 @@ SETTING_CHOICES = [
     app_commands.Choice(name="API_KEY", value="API_KEY"),
     app_commands.Choice(name="LOGS", value="LOGS"),
     app_commands.Choice(name="MEMBER_ROLE", value="MEMBER_ROLE"),
+    app_commands.Choice(name="COLOUR_BLOC", value="COLOUR_BLOC"),
 ]
 
 @bot.tree.command(name="set_setting", description="Set a server setting (e.g. GRANT_REQUEST_CHANNEL_ID).")
@@ -4810,10 +4811,6 @@ async def help(interaction: discord.Interaction):
         "Once your request was approved, it will inform you by pinging you\n"
         "The command is /request_warchest percent: 50% or 100%\n"
     )
-    warchest_audit_desc = (
-        "Calculates the needed amount of materials for a warchest and generates a message to send to the audited user (no ping)\n"
-        "The command is /warchest_audit who: @sumnor_the_lazy\n"
-    )
     war_losses_desc = (
         "Get the war details for your last few wars\n"
         "The command is /war_losses nation_id: 680627, wars_count: 20\n"
@@ -4864,41 +4861,80 @@ async def help(interaction: discord.Interaction):
         "Calculates the needed materials and money to get the wanted project and, if wanted, requests it\n"
         "The command is /request_project project: Moon Landing\n"
     )
-    bug_rep_desc = (
-        "Report a bug"
-        "The command is /bug_report bug: insert bug report here\n"
+    see_report_desc = (
+    "Find the warchest of a registered nation using their nation name\n"
+    "The command is /see_report nation: Neprito\n"
     )
+
+    list_reports_desc = (
+        "See a list of all nations that have been logged\n"
+        "The command is /list_reports\n"
+    )
+
+    register_server_aa_desc = (
+        "Register your server with the bot to enable alliance-wide features\n"
+        "The command is /register_server_aa\n"
+    )
+
+    set_setting_desc = (
+        "Set your server's settings (Gov Role, etc). API key cannot be viewed publicly\n"
+        "The command is /set_setting key: GOV_ROLE value: High Gov\n"
+    )
+
+    get_setting_desc = (
+        "Retrieve a specific setting from the server\n"
+        "The command is /get_setting key: GOV_ROLE\n"
+        "**Note:** API key is intentionally blocked\n"
+    )
+
+    list_settings_desc = (
+        "List all current settings for the server\n"
+        "The command is /list_settings\n"
+        "**Note:** API key will not be shown\n"
+    )
+
+
     gov_msg = (
-        "\n***`/register`:***\n"
-        f"{register_description}"
-        "\n***`/request_warchest`:***\n"
-        f"{warchest_desc}"
-        "\n***`/warchest_audit`:***\n"
-        f"{warchest_audit_desc}"
-        "\n***`/war_losses`:***\n"
-        f"{war_losses_desc}"
-        "\n***`/war_losses_alliance`:***\n"
-        f"{war_losses_alliance_desc}"
-        "\n***`/res_in_m_for_a`:***\n"
-        f"{res_in_m_desc}"
-        "\n***`/res_details_for_alliance`:***\n"
-        f"{res_detail_desc}"
-        "\n***`/member_activity`:***\n"
-        f"{member_activity_desc}"
-        "\n***`/send_message_to_channels`:***\n"
-        f"{send_message_to_channels_desc}"
-        "\n***`/dm_user`:***\n"
-        f"{dm_user_desc}"
-        "\n***`/nation_info`:***\n"
-        f"{my_nation_desc}"
-        "\n***`/request_miscellaneous`:***\n"
-        f"{request_grant_desc}"
-        "\n***`/request_city`:***\n"
-        f"{request_city_desc}"
-        "\n***`/request_infra_grant`:***\n"
-        f"{request_infra_grant_desc}"
-        "\n***`/request_project`:***\n"
-        f"{request_project_desc}"
+    "\n***`/register`:***\n"
+    f"{register_description}"
+    "\n***`/request_warchest`:***\n"
+    f"{warchest_desc}"
+    "\n***`/war_losses`:***\n"
+    f"{war_losses_desc}"
+    "\n***`/war_losses_alliance`:***\n"
+    f"{war_losses_alliance_desc}"
+    "\n***`/res_in_m_for_a`:***\n"
+    f"{res_in_m_desc}"
+    "\n***`/res_details_for_alliance`:***\n"
+    f"{res_detail_desc}"
+    "\n***`/member_activity`:***\n"
+    f"{member_activity_desc}"
+    "\n***`/send_message_to_channels`:***\n"
+    f"{send_message_to_channels_desc}"
+    "\n***`/dm_user`:***\n"
+    f"{dm_user_desc}"
+    "\n***`/nation_info`:***\n"
+    f"{my_nation_desc}"
+    "\n***`/request_miscellaneous`:***\n"
+    f"{request_grant_desc}"
+    "\n***`/request_city`:***\n"
+    f"{request_city_desc}"
+    "\n***`/request_infra_grant`:***\n"
+    f"{request_infra_grant_desc}"
+    "\n***`/request_project`:***\n"
+    f"{request_project_desc}"
+    "\n***`/see_report`:***\n"
+    f"{see_report_desc}"
+    "\n***`/list_reports`:***\n"
+    f"{list_reports_desc}"
+    "\n***`/register_server_aa`:***\n"
+    f"{register_server_aa_desc}"
+    "\n***`/set_setting`:***\n"
+    f"{set_setting_desc}"
+    "\n***`/get_setting`:***\n"
+    f"{get_setting_desc}"
+    "\n***`/list_settings`:***\n"
+    f"{list_settings_desc}"
     )
     gov_mssg = discord.Embed(
         title="List of the commands (including the government ones):",
@@ -4909,26 +4945,28 @@ async def help(interaction: discord.Interaction):
     gov_mssg.set_footer(text=f"Brought to you by Sumnor", icon_url=image_url)
 
     norm_msg = (
-        "\n***`/register`:***\n"
-        f"{register_description}"
-        "\n***`/request_warchest`:***\n"
-        f"{warchest_desc}"
-        "\n***`/war_losses`:***\n"
-        f"{war_losses_desc}"
-        "\n***`/war_losses_alliance`:***\n"
-        f"{war_losses_alliance_desc}"
-        "\n***`/battle_sim`:***\n"
-        f"{battle_sim_desc}"
-        "\n***`/nation_info`:***\n"
-        f"{my_nation_desc}"
-        "\n***`/request_grant`:***\n"
-        f"{request_grant_desc}"
-        "\n***`/request_city`:***\n"
-        f"{request_city_desc}"
-        "\n***`/request_infra_grant`:***\n"
-        f"{request_infra_grant_desc}"
-        "\n***`/request_project`:***\n"
-        f"{request_project_desc}"
+    "\n***`/register`:***\n"
+    f"{register_description}"
+    "\n***`/request_warchest`:***\n"
+    f"{warchest_desc}"
+    "\n***`/war_losses`:***\n"
+    f"{war_losses_desc}"
+    "\n***`/war_losses_alliance`:***\n"
+    f"{war_losses_alliance_desc}"
+    "\n***`/nation_info`:***\n"
+    f"{my_nation_desc}"
+    "\n***`/request_grant`:***\n"
+    f"{request_grant_desc}"
+    "\n***`/request_city`:***\n"
+    f"{request_city_desc}"
+    "\n***`/request_infra_grant`:***\n"
+    f"{request_infra_grant_desc}"
+    "\n***`/request_project`:***\n"
+    f"{request_project_desc}"
+    "\n***`/see_report`:***\n"
+    f"{see_report_desc}"
+    "\n***`/list_reports`:***\n"
+    f"{list_reports_desc}"
     )
 
     norm_mssg = discord.Embed(
