@@ -870,7 +870,7 @@ class TicketButtonView(View):
                 leader_name = "Leader"
             else:
                 nation_name, leader_name = data[0], data[1]
-                city_count = cities[5]
+                city_count = cities[4]
 
             guild = interaction.guild
             if not guild:
