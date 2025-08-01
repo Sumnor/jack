@@ -900,7 +900,7 @@ class TicketButtonView(View):
             try:
                 await interaction.user.edit(nick=f"{leader_name} | {nation_id}")
             except discord.Forbidden:
-                pass  # Missing permissions to change nickname
+                print("Missing permissions to change nickname")
 
             await interaction.followup.send(
                 f"✅ Ticket created: {ticket_channel.mention}", ephemeral=True
