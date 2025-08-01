@@ -864,11 +864,13 @@ class TicketButtonView(View):
 
             # Step 2: Get general nation data
             data = get_military(nation_id, interaction)
+            cities = get_general_data(nation_id, interaction)
             if data is None:
                 nation_name = "unknown-nation"
                 leader_name = "Leader"
             else:
                 nation_name, leader_name = data[0], data[1]
+                city_count = cities[5]
 
             guild = interaction.guild
             if not guild:
@@ -888,7 +890,7 @@ class TicketButtonView(View):
             }
 
             # Create the ticket channel
-            channel_name = nation_name.replace(" ", "-").lower()
+            channel_name = f"{city_count}︱{nation_name.replace(" ", "-").lower()}"
             ticket_channel = await guild.create_text_channel(
                 name=channel_name,
                 category=category,
