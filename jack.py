@@ -843,7 +843,7 @@ class TicketButtonView(View):
 
     @button(label="🎟️ Open Ticket", style=ButtonStyle.primary, custom_id="ticket_open")
     async def open_ticket(self, interaction: Interaction, button: Button):
-        await interaction.reponse.defer()
+        await interaction.response.defer()
         try:
             guild_id = str(interaction.guild.id)
             reg_sheet = get_registration_sheet(guild_id)
