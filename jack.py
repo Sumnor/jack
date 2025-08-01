@@ -868,6 +868,7 @@ class TicketButtonView(View):
             if data is None:
                 nation_name = "unknown-nation"
                 leader_name = "Leader"
+                city_count = "00"
             else:
                 nation_name, leader_name = data[0], data[1]
                 city_count = cities[4]
@@ -890,7 +891,7 @@ class TicketButtonView(View):
             }
 
             # Create the ticket channel
-            channel_name = f"{city_count}︱{nation_name.replace(" ", "-").lower()}"
+            channel_name = f"{city_count}︱{nation_name.replace(' ', '-').lower()}"
             ticket_channel = await guild.create_text_channel(
                 name=channel_name,
                 category=category,
@@ -904,6 +905,11 @@ class TicketButtonView(View):
             except discord.Forbidden:
                 print("Missing permissions to change nickname")
 
+            # ✅ Send welcome message to the ticket channel
+            welcome_message = get_welcome_message(interaction)
+            await ticket_channel.send(f"{welcome_message}\n ||@everyone||")
+            await ticket_channel.send(f"NATION LINK: https://politicsandwar.com/nation/id={nation_id}")
+
             await interaction.followup.send(
                 f"✅ Ticket created: {ticket_channel.mention}", ephemeral=True
             )
@@ -911,6 +917,7 @@ class TicketButtonView(View):
         except Exception as e:
             print(f"[Ticket Error] {e}")
             await interaction.followup.send("❌ Failed to create ticket.", ephemeral=True)
+
 
 class RawsAuditView(discord.ui.View):
     def __init__(self, output, audits):
@@ -1398,6 +1405,9 @@ def get_auto_requests_sheet(guild_id):
 def get_gov_role(interaction: discord.Interaction):
     return get_settings_value("GOV_ROLE", interaction.guild.id)
 
+def get_welcome_message(interaction: discord.Interaction):
+    return get_settings_value("TICKET_MESSAGE", interaction.guild.id)
+
 def get_ticket_category(interaction: discord.Interaction):
     return get_settings_value("TICKET_CATEGORY", interaction.guild.id)
 
@@ -1524,11 +1534,9 @@ async def daily_refresh_loop(guild_id):
 
 
 def load_sheet_data(guild_id):
-    """Simplified function that just calls load_registration_data"""
     guild_id = str(guild_id)
     try:
         load_registration_data(guild_id)
-        # Only create the daily refresh loop once
         if not hasattr(bot, '_refresh_loops'):
             bot._refresh_loops = set()
         if guild_id not in bot._refresh_loops:
@@ -2212,13 +2220,13 @@ async def register(interaction: discord.Interaction, nation_id: str):
     for uid, data in users_in_guild.items():
         if user_discord_username != "sumnor":  # Sumnor can always register
             if uid == user_id:
-                await interaction.followup.send(f"❌ This Discord ID ({user_id}) is already registered in this server.")
+                await interaction.followup.send(f"❌ This Discord ID ({user_id}) is already registered.")
                 return
             if data.get('DiscordUsername', '').lower() == user_discord_username:
-                await interaction.followup.send(f"❌ This Discord username ({user_discord_username}) is already registered in this server.")
+                await interaction.followup.send(f"❌ This Discord username ({user_discord_username}) is already registered.")
                 return
             if data.get('NationID') == nation_id_str:
-                await interaction.followup.send(f"❌ This Nation ID ({nation_id_str}) is already registered in this server.")
+                await interaction.followup.send(f"❌ This Nation ID ({nation_id_str}) is already registered.")
                 return
 
     # Save to correct guild-specific sheet
@@ -2300,7 +2308,6 @@ async def register_server_aa(interaction: discord.Interaction):
 
         await interaction.followup.send(
             f"✅ Created registration sheets for server **{guild.name}**:\n"
-            f"- `{intra_title}`\n"
             f"- `{alliance_title}`\n"
             f"- `{auto_title}`"
         )
@@ -2317,6 +2324,8 @@ SETTING_CHOICES = [
     app_commands.Choice(name="MEMBER_ROLE", value="MEMBER_ROLE"),
     app_commands.Choice(name="COLOUR_BLOC", value="COLOUR_BLOC"),
     app_commands.Choice(name="TICKET_CATEGORY", value="TICKET_CATEGORY"),
+    app_commands.Choice(name="TICKET_MESSAGE", value="TICKET_MESSAGE"),
+
 ]
 
 @bot.tree.command(name="set_setting", description="Set a server setting (e.g. GRANT_REQUEST_CHANNEL_ID).")
