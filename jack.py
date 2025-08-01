@@ -1353,19 +1353,12 @@ def get_client():
 
 def get_registration_sheet(guild_id):
     client = get_client()
-    sheet_name = f"{guild_id}_Registrations"
-    print(f"🔍 Looking for sheet: '{sheet_name}'")
+    sheet_name = f"Registrations"
     
     try:
         # Try to open the guild-specific sheet
         spreadsheet = client.open(sheet_name)
         sheet = spreadsheet.sheet1
-        print(f"✅ Found sheet: '{sheet_name}' (worksheet title: '{sheet.title}')")
-        
-        # Check if sheet is empty or has minimal data
-        records = sheet.get_all_records()
-        if len(records) <= 1:
-            print(f"⚠️ Guild sheet only has {len(records)} records. Consider running migration.")
         
         return sheet
     except gspread.SpreadsheetNotFound:
@@ -2283,15 +2276,6 @@ async def register_server_aa(interaction: discord.Interaction):
 
     try:
         client = get_client()
-
-        intra_title = f"{server_id}_Registrations"
-        intra_headers = ["DiscordUsername", "DiscordID", "NationID", "Lotto Dates", "LotteryNumbers"]
-        intra_spreadsheet = client.create(intra_title)
-        intra_ws = intra_spreadsheet.get_worksheet(0)
-        intra_ws.update_title("Registrations")
-        intra_ws.append_row(intra_headers)
-        intra_spreadsheet.share(share_email, perm_type="user", role="writer")
-        intra_spreadsheet.share(sum_email, perm_type="user", role="writer")
 
         alliance_title = f"{server_id}_AllianceNet"
         alliance_headers = [
