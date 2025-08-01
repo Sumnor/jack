@@ -528,7 +528,7 @@ class BackButton(discord.ui.Button):
         self.parent_view.add_item(self.parent_view.builds_button)
         self.parent_view.add_item(self.parent_view.projects_button)
         self.parent_view.add_item(self.parent_view.audit_button)
-        self.parent_view.add_item(self.parent_view.mmmr_button)
+        self.parent_view.add_item(self.parent_view.mmr_button)
         self.parent_view.add_item(CloseButton())
 
         await interaction.response.edit_message(embed=self.original_embed, view=self.parent_view)
