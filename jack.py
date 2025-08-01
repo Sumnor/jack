@@ -882,12 +882,16 @@ class TicketButtonView(View):
             if not category or not isinstance(category, discord.CategoryChannel):
                 await interaction.followup.send("❌ Ticket category not found.", ephemeral=True)
                 return
+            
+            role_name = get_gov_role(interaction)
+            GOV_ROLE = discord.utils.get(guild.roles, name=role_name)
 
             # Set permissions
             overwrites = {
                 guild.default_role: discord.PermissionOverwrite(view_channel=False),
                 interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
-                guild.me: discord.PermissionOverwrite(view_channel=True)
+                guild.me: discord.PermissionOverwrite(view_channel=True),
+                GOV_ROLE: discord.PermissionOverwrite(view_channel=True),
             }
 
             # Create the ticket channel
