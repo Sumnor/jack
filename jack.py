@@ -843,6 +843,7 @@ class TicketButtonView(View):
 
     @button(label="🎟️ Open Ticket", style=ButtonStyle.primary, custom_id="ticket_open")
     async def open_ticket(self, interaction: Interaction, button: Button):
+        await interaction.reponse.defer()
         try:
             guild_id = str(interaction.guild.id)
             reg_sheet = get_registration_sheet(guild_id)
@@ -853,12 +854,12 @@ class TicketButtonView(View):
             )
 
             if not user_row:
-                await interaction.response.send_message("❌ You are not registered.", ephemeral=True)
+                await interaction.followup.send("❌ You are not registered.", ephemeral=True)
                 return
 
             nation_id = user_row.get("NationID")
             if not nation_id:
-                await interaction.response.send_message("❌ Nation ID not found in your registration.", ephemeral=True)
+                await interaction.followup.send("❌ Nation ID not found in your registration.", ephemeral=True)
                 return
 
             # Step 2: Get general nation data
@@ -868,12 +869,12 @@ class TicketButtonView(View):
 
             guild = interaction.guild
             if not guild:
-                await interaction.response.send_message("❌ Must be used in a server.", ephemeral=True)
+                await interaction.followup.send("❌ Must be used in a server.", ephemeral=True)
                 return
 
             category = guild.get_channel(get_ticket_category(interaction))
             if not category or not isinstance(category, discord.CategoryChannel):
-                await interaction.response.send_message("❌ Ticket category not found.", ephemeral=True)
+                await interaction.followup.send("❌ Ticket category not found.", ephemeral=True)
                 return
 
             # Set permissions
@@ -898,7 +899,7 @@ class TicketButtonView(View):
             except discord.Forbidden:
                 pass  # Missing permissions to change nickname
 
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 f"✅ Ticket created: {ticket_channel.mention}", ephemeral=True
             )
 
