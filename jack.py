@@ -5612,11 +5612,11 @@ async def request_project(interaction: Interaction, project_name: str, tech_adva
 
 @bot.tree.command(name="create_ticket_message", description="Post a ticket embed in this channel")
 @app_commands.describe(message="Message to show in the ticket embed")
-async def create_ticket_message(interaction: discord.Interaction, message: str):
+async def create_ticket_message(interaction: discord.Interaction, message: str, title: str):
     await interaction.response.defer(ephemeral=True)
 
     embed = discord.Embed(
-        title="🎟️ Open a Support Ticket",
+        title=f"🎟️ {title}t",
         description=message,
         color=discord.Color.blurple()
     )
