@@ -2274,7 +2274,7 @@ async def clear_cache(interaction: discord.Interaction):
     await interaction.followup.send(f"✅ Cache cleared and reloaded for this server!", ephemeral=True)
 
 @bot.tree.command(name="register_server_aa", description="Register this server and create Google Sheets")
-#@app_commands.checks.has_permissions(administrator=True)
+@app_commands.checks.has_permissions(administrator=True)
 async def register_server_aa(interaction: discord.Interaction):
     await interaction.response.defer()
     guild = interaction.guild
