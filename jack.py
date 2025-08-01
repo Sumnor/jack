@@ -864,8 +864,11 @@ class TicketButtonView(View):
 
             # Step 2: Get general nation data
             data = get_military(nation_id, interaction)
-            nation_name = data.get("nation_name", "unknown-nation")
-            leader_name = data.get("leader_name", "Leader")
+            if data is None:
+                nation_name = "unknown-nation"
+                leader_name = "Leader"
+            else:
+                nation_name, leader_name = data[0], data[1]
 
             guild = interaction.guild
             if not guild:
@@ -905,7 +908,7 @@ class TicketButtonView(View):
 
         except Exception as e:
             print(f"[Ticket Error] {e}")
-            await interaction.response.send_message("❌ Failed to create ticket.", ephemeral=True)
+            await interaction.followup.send("❌ Failed to create ticket.", ephemeral=True)
 
 class RawsAuditView(discord.ui.View):
     def __init__(self, output, audits):
@@ -2194,7 +2197,8 @@ async def register(interaction: discord.Interaction, nation_id: str):
 
     # Sumnor bypasses username check
     if user_discord_username != "sumnor":
-        if nation_discord_username != user_discord_username:
+        cleaned_nation_username = nation_discord_username.replace("#0", "")
+        if cleaned_nation_username != user_discord_username:
             await interaction.followup.send(
                 f"❌ Username mismatch.\nNation lists: `{nation_discord_username}`\nYour Discord: `{user_discord_username}`"
             )
