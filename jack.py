@@ -2388,7 +2388,7 @@ async def list_settings(interaction: discord.Interaction):
         msg = "\n".join(f"- `{k}` = `{v}`" for k, v in filtered)
         await interaction.followup.send(f"🔧 Settings:\n{msg}", ephemeral=True)
 
-@bot.tree.command(name="res_details_for_alliance", description="Get each Alliance Member's resources and money individually")
+'''@bot.tree.command(name="res_details_for_alliance", description="Get each Alliance Member's resources and money individually")
 async def res_details_for_alliance(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
     guild_id = str(interaction.guild.id)
@@ -2543,7 +2543,7 @@ async def res_details_for_alliance(interaction: discord.Interaction):
         await interaction.followup.send(embed=embed,  file=discord.File(io.StringIO(text_content), filename="alliance_resources.txt"))
     except Exception as e:
         print(f"Error sending detailed resources file: {e}")
-        await interaction.followup.send(embed=embed)
+        await interaction.followup.send(embed=embed)'''
 
 import asyncio
 import io
@@ -2565,53 +2565,6 @@ from matplotlib.ticker import FuncFormatter
 import io
 import pandas as pd  
 import requests
-'''
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-
-@bot.tree.command(name="check_site", description="Check for messages and buttons on a site.")
-async def check_site(interaction: discord.Interaction):
-    await interaction.response.defer()
-
-    options = Options()
-    options.add_argument("--headless")  
-    options.add_argument("user-agent=Mozilla/5.0")  
-    driver = webdriver.Chrome(options=options)
-
-    results = []
-
-    try:
-        driver.get("https://politicsandwar.com/obl/host/")
-        page_text = driver.page_source.lower()
-
-        if "login" in page_text:
-            results.append("Login requested")
-
-        if "are you a robot?" in page_text:
-            try:
-                driver.switch_to.frame(driver.find_element(By.XPATH, "//iframe[contains(@src, 'recaptcha')]"))
-                checkbox = driver.find_element(By.ID, "recaptcha-anchor")
-                checkbox.click()
-                driver.switch_to.default_content()
-                results.append("Clicked 'I'm not a robot'")
-            except:
-                results.append("CAPTCHA interaction failed")
-
-        try:
-            host_div = driver.find_element(By.XPATH, "//div[@class='columnheader' and contains(text(), 'Host Home Game')]")
-            host_div.click()
-            results.append("Clicked 'Host Home Game'")
-        except:
-            results.append("'Host Home Game' not found")
-
-        await interaction.followup.send("\n".join(results))
-
-    except Exception as e:
-        await interaction.followup.send(f"Error occurred: {e}")
-    finally:
-        driver.quit()
-        '''
 
 @bot.tree.command(name="auto_week_summary", description="See the total materials which are requested for this week")
 async def auto_week_summary(interaction: discord.Interaction):
@@ -2694,7 +2647,7 @@ def get_prices(guild_id):
         raise
 
 
-@bot.tree.command(name="res_in_m_for_a", description="Get total Alliance Members' resources and money")
+'''@bot.tree.command(name="res_in_m_for_a", description="Get total Alliance Members' resources and money")
 @app_commands.describe(
     mode="Group data by time unit",
     scale="Scale for Y-axis (Millions or Billions)"
@@ -2999,9 +2952,9 @@ async def res_in_m_for_a(
 
     except Exception as e:
         print(f"Failed to generate or send graph: {e}")
-        await interaction.followup.send(embed=embed)
+        await interaction.followup.send(embed=embed)'''
 
-@bot.tree.command(name="member_activity", description="Shows the activity of our members")
+'''@bot.tree.command(name="member_activity", description="Shows the activity of our members")
 async def member_activity(interaction: discord.Interaction):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
@@ -3173,7 +3126,7 @@ async def member_activity(interaction: discord.Interaction):
     embed.set_image(url="attachment://ds_activity.png")
 
     await interaction.followup.send(embed=embed, file=file)
-
+'''
 
 
 import discord
@@ -4985,12 +4938,6 @@ async def help(interaction: discord.Interaction):
     f"{war_losses_desc}"
     "\n***`/war_losses_alliance`:***\n"
     f"{war_losses_alliance_desc}"
-    "\n***`/res_in_m_for_a`:***\n"
-    f"{res_in_m_desc}"
-    "\n***`/res_details_for_alliance`:***\n"
-    f"{res_detail_desc}"
-    "\n***`/member_activity`:***\n"
-    f"{member_activity_desc}"
     "\n***`/send_message_to_channels`:***\n"
     f"{send_message_to_channels_desc}"
     "\n***`/dm_user`:***\n"
