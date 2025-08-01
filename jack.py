@@ -5616,7 +5616,7 @@ async def create_ticket_message(interaction: discord.Interaction, message: str, 
     await interaction.response.defer(ephemeral=True)
 
     embed = discord.Embed(
-        title=f"🎟️ {title}t",
+        title=f"🎟️ {title}",
         description=message,
         color=discord.Color.blurple()
     )
