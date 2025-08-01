@@ -837,6 +837,75 @@ class GrantView(View):
         except Exception as e:
             await interaction.response.send_message(f"❌ Error parsing embed: `{e}`", ephemeral=True)
 
+class TicketButtonView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @button(label="🎟️ Open Ticket", style=ButtonStyle.primary, custom_id="ticket_open")
+    async def open_ticket(self, interaction: Interaction, button: Button):
+        try:
+            guild_id = str(interaction.guild.id)
+            reg_sheet = get_registration_sheet(guild_id)
+            records = reg_sheet.get_all_records()
+            user_row = next(
+                (r for r in records if str(r.get("DiscordID")) == str(interaction.user.id)),
+                None
+            )
+
+            if not user_row:
+                await interaction.response.send_message("❌ You are not registered.", ephemeral=True)
+                return
+
+            nation_id = user_row.get("NationID")
+            if not nation_id:
+                await interaction.response.send_message("❌ Nation ID not found in your registration.", ephemeral=True)
+                return
+
+            # Step 2: Get general nation data
+            data = get_military(nation_id, interaction)
+            nation_name = data.get("nation_name", "unknown-nation")
+            leader_name = data.get("leader_name", "Leader")
+
+            guild = interaction.guild
+            if not guild:
+                await interaction.response.send_message("❌ Must be used in a server.", ephemeral=True)
+                return
+
+            category = guild.get_channel(get_ticket_category(interaction))
+            if not category or not isinstance(category, discord.CategoryChannel):
+                await interaction.response.send_message("❌ Ticket category not found.", ephemeral=True)
+                return
+
+            # Set permissions
+            overwrites = {
+                guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+                guild.me: discord.PermissionOverwrite(view_channel=True)
+            }
+
+            # Create the ticket channel
+            channel_name = nation_name.replace(" ", "-").lower()
+            ticket_channel = await guild.create_text_channel(
+                name=channel_name,
+                category=category,
+                overwrites=overwrites,
+                reason=f"Ticket opened by {interaction.user}"
+            )
+
+            # Set nickname
+            try:
+                await interaction.user.edit(nick=f"{leader_name} | {nation_id}")
+            except discord.Forbidden:
+                pass  # Missing permissions to change nickname
+
+            await interaction.response.send_message(
+                f"✅ Ticket created: {ticket_channel.mention}", ephemeral=True
+            )
+
+        except Exception as e:
+            print(f"[Ticket Error] {e}")
+            await interaction.response.send_message("❌ Failed to create ticket.", ephemeral=True)
+
 class RawsAuditView(discord.ui.View):
     def __init__(self, output, audits):
         super().__init__(timeout=None)
@@ -867,7 +936,7 @@ class RawsAuditView(discord.ui.View):
             await interaction.followup.send("❌ Target channel not found.")
             return
 
-        sheet = get_registration_sheet()
+        sheet = get_registration_sheet(guild_id)
         rows = sheet.get_all_records()
 
         for nation_id, entry in self.audits.items():
@@ -1329,6 +1398,9 @@ def get_auto_requests_sheet(guild_id):
 
 def get_gov_role(interaction: discord.Interaction):
     return get_settings_value("GOV_ROLE", interaction.guild.id)
+
+def get_ticket_category(interaction: discord.Interaction):
+    return get_settings_value("TICKET_CATEGORY", interaction.guild.id)
 
 def get_colour_bloc(interaction: discord.Interaction):
     return get_settings_value("COLOUR_BLOC", interaction.guild.id)
@@ -1907,7 +1979,8 @@ async def on_ready():
     for guild in bot.guilds:
         load_sheet_data(guild.id)
         load_registration_data(guild.id)
-    bot.add_view(BlueGuy()) 
+    bot.add_view(BlueGuy())
+    bot.add_view(TicketButtonView()) 
     print("Starting hourly snapshot task...")
     if not hourly_snapshot.is_running():
         hourly_snapshot.start()
@@ -2252,6 +2325,7 @@ SETTING_CHOICES = [
     app_commands.Choice(name="LOGS", value="LOGS"),
     app_commands.Choice(name="MEMBER_ROLE", value="MEMBER_ROLE"),
     app_commands.Choice(name="COLOUR_BLOC", value="COLOUR_BLOC"),
+    app_commands.Choice(name="TICKET_CATEGORY", value="TICKET_CATEGORY"),
 ]
 
 @bot.tree.command(name="set_setting", description="Set a server setting (e.g. GRANT_REQUEST_CHANNEL_ID).")
@@ -5531,6 +5605,22 @@ async def request_project(interaction: Interaction, project_name: str, tech_adva
         )
     else:
         await interaction.followup.send("❌ Project not found.")
+
+@bot.tree.command(name="create_ticket_message", description="Post a ticket embed in this channel")
+@app_commands.describe(message="Message to show in the ticket embed")
+async def create_ticket_message(interaction: discord.Interaction, message: str):
+    await interaction.response.defer(ephemeral=True)
+
+    embed = discord.Embed(
+        title="🎟️ Open a Support Ticket",
+        description=message,
+        color=discord.Color.blurple()
+    )
+    embed.set_footer(text=f"Posted by {interaction.user.display_name}")
+
+    await interaction.channel.send(embed=embed, view=TicketButtonView())
+    await interaction.followup.send("✅ Ticket message sent.", ephemeral=True)
+
 
 @bot.tree.command(name="dm_user", description="DM a user by mentioning them")
 @app_commands.describe(
