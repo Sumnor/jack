@@ -3220,14 +3220,14 @@ async def member_activity(interaction: discord.Interaction):
 
     await interaction.followup.send(embed=embed, file=file)
 
-@bot.command(name="run_check")
-async def run_check(ctx):
-    """Manual command to run the updater with 50 users per minute"""
-    await ctx.send("Starting manual member update. This might take a while...")
+@bot.tree.command(name="run_check", description="Manual update of members")
+async def run_check_slash(interaction: discord.Interaction):
+    await interaction.response.defer()
+    guild_id = str(interaction.guild.id)
 
-    guild_id = str(ctx.guild.id)
+    guild_id = str(interaction.guild.id)
     if guild_id not in cached_users:
-        await ctx.send("No cached users found for this server.")
+        await interaction.send("No cached users found for this server.")
         return
 
     try:
@@ -3237,7 +3237,7 @@ async def run_check(ctx):
         df.columns = [col.strip() for col in df.columns]
 
         if "NationID" not in df.columns:
-            await ctx.send("❌ 'NationID' column missing in the sheet.")
+            await interaction.send("❌ 'NationID' column missing in the sheet.")
             return
 
         for index, row in df.iterrows():
@@ -3245,7 +3245,7 @@ async def run_check(ctx):
             if not nation_id:
                 continue
 
-            result = get_general_data(nation_id, None)
+            result = get_general_data(nation_id, interaction)
             if result is None or len(result) < 7:
                 print(f"Failed to retrieve data for nation {nation_id}")
                 continue
@@ -3256,10 +3256,10 @@ async def run_check(ctx):
             print(f"Updated nation {nation_id} with AA: {alliance_name}")
             await asyncio.sleep(1.2)  # 50 per minute ~= 1.2 seconds delay
 
-        await ctx.send("Manual member update completed.")
+        await interaction.send("Manual member update completed.")
 
     except Exception as e:
-        await ctx.send(f"Error during manual update: {e}")
+        await interaction.send(f"Error during manual update: {e}")
 
 import discord
 import requests
