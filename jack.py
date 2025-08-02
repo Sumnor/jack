@@ -56,9 +56,8 @@ cached_sheet_data = []
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix="/", intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents)
 bot_key = os.getenv("Key")
-#API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
 snapshots_file = "snapshots.json"
@@ -1983,6 +1982,55 @@ def get_api_key_for_guild(guild_id: int) -> str | None:
         print(f"❌ Error fetching API key for guild {guild_id}: {e}")
         return None
 
+@tasks.loop(hours=168)  # 168 hours = 1 week
+async def weekly_member_updater():
+    print(f"[Updater] Starting weekly member update at {datetime.utcnow()}")
+
+    try:
+        for guild_id in cached_users:
+            print(f"[Updater] Processing guild: {guild_id}")
+            try:
+                sheet = get_registration_sheet(guild_id)
+                records = sheet.get_all_records()
+                df = pd.DataFrame(records)
+                df.columns = [col.strip() for col in df.columns]
+
+                if "NationID" not in df.columns:
+                    print(f"[Updater] 'NationID' column missing for guild {guild_id}")
+                    continue
+
+                for index, row in df.iterrows():
+                    nation_id = row.get("NationID")
+                    if not nation_id:
+                        continue
+
+                    result = get_general_data(nation_id, None)
+                    if result is None or len(result) < 7:
+                        print(f"[Updater] Failed to retrieve data for nation {nation_id}")
+                        continue
+
+                    _, _, alliance_name, _, _, _, last_active, *_ = result
+
+                    # Update the row in the sheet
+                    cell_range = f"G{index + 2}"  # Assuming column G is for AA (Alliance)
+                    sheet.update_acell(cell_range, alliance_name)
+
+                    print(f"[Updater] Updated nation {nation_id} with AA: {alliance_name}")
+                    await asyncio.sleep(30)  # Wait 30 seconds per user
+
+            except Exception as guild_error:
+                print(f"[Updater] Error processing guild {guild_id}: {guild_error}")
+                continue
+
+    except Exception as e:
+        print(f"[Updater] Unhandled error during update: {e}")
+
+
+@weekly_member_updater.before_loop
+async def before_updater():
+    await bot.wait_until_ready()
+    print("[Updater] Bot is ready. Waiting for weekly loop to begin.")
+
 
 @bot.event
 async def on_ready():
@@ -1997,8 +2045,10 @@ async def on_ready():
         hourly_snapshot.start()
     if not process_auto_requests.is_running():
         process_auto_requests.start()
-    '''if not check_api_loop.is_running():
-        check_api_loop.start()'''
+    if not weekly_member_updater.is_running():
+        weekly_member_updater.start()
+    if not check_api_loop.is_running():
+        check_api_loop.start()
     await bot.tree.sync()
     print(f"✅ Logged in as {bot.user}")
 
@@ -2232,6 +2282,7 @@ async def register(interaction: discord.Interaction, nation_id: str):
             if data.get('NationID') == nation_id_str:
                 await interaction.followup.send(f"❌ This Nation ID ({nation_id_str}) is already registered.")
                 return
+            datta = get_general_data(interaction)
 
     # Save to correct guild-specific sheet
     try:
@@ -2331,6 +2382,40 @@ SETTING_CHOICES = [
     app_commands.Choice(name="TICKET_MESSAGE", value="TICKET_MESSAGE"),
 
 ]
+
+@bot.command(name="run_check")
+async def run_check(ctx):
+    await ctx.send("✅ Starting check...")
+
+    # Example user list (replace with real user IDs or objects)
+    users_to_check = [f"user_{i}" for i in range(1, 201)]
+
+    batch_size = 50
+    delay = 60  # 60 seconds
+
+    for i in range(0, len(users_to_check), batch_size):
+        batch = users_to_check[i:i + batch_size]
+
+        # Process batch (replace this with your actual logic)
+        results = []
+        for user in batch:
+            try:
+                # Replace with actual processing logic per user
+                results.append(f"✅ Processed {user}")
+            except Exception as e:
+                results.append(f"❌ {user}: {str(e)}")
+
+        msg = "\n".join(results)
+        if len(msg) > 1900:
+            msg = msg[:1900] + "\n...truncated..."
+
+        await ctx.send(f"🔄 Batch {i//batch_size + 1} results:\n{msg}")
+
+        if i + batch_size < len(users_to_check):
+            await ctx.send("⏳ Waiting 60 seconds before next batch...")
+            await asyncio.sleep(delay)
+
+    await ctx.send("✅ All users processed.")
 
 @bot.tree.command(name="set_setting", description="Set a server setting (e.g. GRANT_REQUEST_CHANNEL_ID).")
 @app_commands.describe(key="The setting key", value="The value to store")
@@ -2954,7 +3039,7 @@ async def res_in_m_for_a(
         print(f"Failed to generate or send graph: {e}")
         await interaction.followup.send(embed=embed)'''
 
-'''@bot.tree.command(name="member_activity", description="Shows the activity of our members")
+@bot.tree.command(name="member_activity", description="Shows the activity of our members")
 async def member_activity(interaction: discord.Interaction):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
@@ -2962,12 +3047,8 @@ async def member_activity(interaction: discord.Interaction):
     global cached_users
 
     guild_id = str(interaction.guild.id)
-    user_data = cached_users.get(guild_id, {}).get(str(interaction.user.id))
-
-    guild_id = str(interaction.guild.id)
-    user_id = str(interaction.user.id)
-
     user_data = cached_users.get(guild_id, {}).get(user_id)
+
     if not user_data:
         await interaction.followup.send(
             "❌ You are not registered. Please register first.", ephemeral=True
@@ -2987,9 +3068,7 @@ async def member_activity(interaction: discord.Interaction):
 
     async def is_banker(interaction):
         GOV_ROLE = get_gov_role(interaction)
-        return (
-            any(role.name == GOV_ROLE for role in interaction.user.roles)
-        )
+        return any(role.name == GOV_ROLE for role in interaction.user.roles)
 
     if not await is_banker(interaction):
         await interaction.followup.send("❌ You don't have the rights, lil bro.")
@@ -3000,11 +3079,14 @@ async def member_activity(interaction: discord.Interaction):
     active_w_bloc = 0
     active_wo_bloc = 0
     inactive = 0
+
     activish_list = []
     activish_wo_bloc_list = []
     active_w_bloc_list = []
     active_wo_bloc_list = []
     inactive_list = []
+
+    aa_names = set()
 
     try:
         sheet = get_registration_sheet(guild_id)
@@ -3029,6 +3111,8 @@ async def member_activity(interaction: discord.Interaction):
 
             alliance_id, alliance_position, alliance, domestic_policy, num_cities, colour, activity, *_ = result
 
+            aa_names.add(alliance)
+
             try:
                 activity_dt = datetime.fromisoformat(activity)
             except (ValueError, TypeError):
@@ -3039,23 +3123,26 @@ async def member_activity(interaction: discord.Interaction):
             delta = now - activity_dt
             days_inactive = delta.total_seconds() / 86400
 
+            display = f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}, AA: {alliance}\n"
+
             if days_inactive >= 2:
                 inactive += 1
-                inactive_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
+                inactive_list.append(display)
             elif days_inactive >= 1:
                 if colour.lower() == COLOUR_BLOC.lower():
                     activish += 1
-                    activish_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
+                    activish_list.append(display)
                 else:
                     activish_wo_bloc += 1
-                    activish_wo_bloc_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
+                    activish_wo_bloc_list.append(display)
             else:
                 if colour.lower() == COLOUR_BLOC.lower():
                     active_w_bloc += 1
-                    active_w_bloc_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
+                    active_w_bloc_list.append(display)
                 else:
                     active_wo_bloc += 1
-                    active_wo_bloc_list.append(f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
+                    active_wo_bloc_list.append(display)
+
             await asyncio.sleep(3)
         except Exception as e:
             print(f"Error processing nation ID {own_id}: {e}")
@@ -3064,10 +3151,9 @@ async def member_activity(interaction: discord.Interaction):
     data = [active_w_bloc, active_wo_bloc, activish, activish_wo_bloc, inactive]
 
     if sum(data) == 0:
-        await interaction.followup.send("⚠️ No activity data available to generate chart.")
+        await interaction.followup.send("\u26a0\ufe0f No activity data available to generate chart.")
         return
 
-    
     fig, ax = plt.subplots(figsize=(8, 4), subplot_kw=dict(aspect="equal"))
 
     labels = [
@@ -3098,7 +3184,7 @@ async def member_activity(interaction: discord.Interaction):
     file = discord.File(fp=buffer, filename="ds_activity.png")
 
     embed = discord.Embed(
-        title="📊 Activity",
+        title="\ud83d\udcca Activity",
         description="Here are the members not in ideal status categories:",
         color=discord.Color.dark_teal()
     )
@@ -3121,12 +3207,19 @@ async def member_activity(interaction: discord.Interaction):
     add_field_chunks(embed, "Activish (Wrong Bloc)", activish_wo_bloc_list)
     add_field_chunks(embed, "Inactive", inactive_list)
 
+    if aa_names:
+        aa_list = "\n".join(sorted(aa_names))
+        embed.add_field(
+            name="Included Alliances",
+            value=aa_list if len(aa_list) <= 1024 else "Too many to display",
+            inline=False
+        )
+
     image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
     embed.set_footer(text=f"Brought to you by Sumnor", icon_url=image_url)
     embed.set_image(url="attachment://ds_activity.png")
 
     await interaction.followup.send(embed=embed, file=file)
-'''
 
 
 import discord
