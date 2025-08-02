@@ -3237,7 +3237,7 @@ async def run_check_slash(interaction: discord.Interaction):
         df.columns = [col.strip() for col in df.columns]
 
         if "NationID" not in df.columns:
-            await interaction.send("❌ 'NationID' column missing in the sheet.")
+            await interaction.followup.send("❌ 'NationID' column missing in the sheet.")
             return
 
         for index, row in df.iterrows():
@@ -3256,10 +3256,10 @@ async def run_check_slash(interaction: discord.Interaction):
             print(f"Updated nation {nation_id} with AA: {alliance_name}")
             await asyncio.sleep(1.2)  # 50 per minute ~= 1.2 seconds delay
 
-        await interaction.send("Manual member update completed.")
+        await interaction.followup.send("Manual member update completed.")
 
     except Exception as e:
-        await interaction.send(f"Error during manual update: {e}")
+        await interaction.followup.send(f"Error during manual update: {e}")
 
 import discord
 import requests
