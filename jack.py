@@ -2004,7 +2004,7 @@ async def weekly_member_updater():
                     if not nation_id:
                         continue
 
-                    result = get_general_data(nation_id, None)
+                    result = get_general_data(nation_id, guild_id)
                     if result is None or len(result) < 7:
                         print(f"[Updater] Failed to retrieve data for nation {nation_id}")
                         continue
@@ -2012,7 +2012,7 @@ async def weekly_member_updater():
                     _, _, alliance_name, _, _, _, last_active, *_ = result
 
                     # Update the alliance name in the AA column (assuming column G)
-                    cell_range = f"G{index + 2}"
+                    cell_range = f"D{index + 2}"
                     sheet.update_acell(cell_range, alliance_name)
 
                     print(f"[Updater] Updated nation {nation_id} with AA: {alliance_name}")
@@ -3251,7 +3251,7 @@ async def run_check_slash(interaction: discord.Interaction):
                 continue
 
             _, _, alliance_name, _, _, _, last_active, *_ = result
-            cell_range = f"G{index + 2}"
+            cell_range = f"D{index + 2}"
             sheet.update_acell(cell_range, alliance_name)
             print(f"Updated nation {nation_id} with AA: {alliance_name}")
             await asyncio.sleep(1.2)  # 50 per minute ~= 1.2 seconds delay
