@@ -2381,6 +2381,7 @@ SETTING_CHOICES = [
     app_commands.Choice(name="COLOUR_BLOC", value="COLOUR_BLOC"),
     app_commands.Choice(name="TICKET_CATEGORY", value="TICKET_CATEGORY"),
     app_commands.Choice(name="TICKET_MESSAGE", value="TICKET_MESSAGE"),
+    app_commands.Choice(name="AA_NAME", value="AA_NAME"),
 
 ]
 
