@@ -56,8 +56,9 @@ cached_sheet_data = []
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="/", intents=intents)
 bot_key = os.getenv("Key")
+#API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
 snapshots_file = "snapshots.json"
@@ -527,7 +528,7 @@ class BackButton(discord.ui.Button):
         self.parent_view.add_item(self.parent_view.builds_button)
         self.parent_view.add_item(self.parent_view.projects_button)
         self.parent_view.add_item(self.parent_view.audit_button)
-        self.parent_view.add_item(self.parent_view.mmr_button)
+        self.parent_view.add_item(self.parent_view.mmmr_button)
         self.parent_view.add_item(CloseButton())
 
         await interaction.response.edit_message(embed=self.original_embed, view=self.parent_view)
@@ -1982,10 +1983,9 @@ def get_api_key_for_guild(guild_id: int) -> str | None:
         print(f"❌ Error fetching API key for guild {guild_id}: {e}")
         return None
 
-@tasks.loop(hours=168)  # 168 hours = 1 week
+@tasks.loop(hours=168)  # runs weekly
 async def weekly_member_updater():
     print(f"[Updater] Starting weekly member update at {datetime.utcnow()}")
-
     try:
         for guild_id in cached_users:
             print(f"[Updater] Processing guild: {guild_id}")
@@ -2011,12 +2011,12 @@ async def weekly_member_updater():
 
                     _, _, alliance_name, _, _, _, last_active, *_ = result
 
-                    # Update the row in the sheet
-                    cell_range = f"G{index + 2}"  # Assuming column G is for AA (Alliance)
+                    # Update the alliance name in the AA column (assuming column G)
+                    cell_range = f"G{index + 2}"
                     sheet.update_acell(cell_range, alliance_name)
 
                     print(f"[Updater] Updated nation {nation_id} with AA: {alliance_name}")
-                    await asyncio.sleep(30)  # Wait 30 seconds per user
+                    await asyncio.sleep(30)  # Delay to respect API limits
 
             except Exception as guild_error:
                 print(f"[Updater] Error processing guild {guild_id}: {guild_error}")
@@ -2030,7 +2030,6 @@ async def weekly_member_updater():
 async def before_updater():
     await bot.wait_until_ready()
     print("[Updater] Bot is ready. Waiting for weekly loop to begin.")
-
 
 @bot.event
 async def on_ready():
@@ -2047,8 +2046,8 @@ async def on_ready():
         process_auto_requests.start()
     if not weekly_member_updater.is_running():
         weekly_member_updater.start()
-    if not check_api_loop.is_running():
-        check_api_loop.start()
+    '''if not check_api_loop.is_running():
+        check_api_loop.start()'''
     await bot.tree.sync()
     print(f"✅ Logged in as {bot.user}")
 
@@ -2282,7 +2281,6 @@ async def register(interaction: discord.Interaction, nation_id: str):
             if data.get('NationID') == nation_id_str:
                 await interaction.followup.send(f"❌ This Nation ID ({nation_id_str}) is already registered.")
                 return
-            datta = get_general_data(interaction)
 
     # Save to correct guild-specific sheet
     try:
@@ -2325,7 +2323,7 @@ async def clear_cache(interaction: discord.Interaction):
     await interaction.followup.send(f"✅ Cache cleared and reloaded for this server!", ephemeral=True)
 
 @bot.tree.command(name="register_server_aa", description="Register this server and create Google Sheets")
-@app_commands.checks.has_permissions(administrator=True)
+#@app_commands.checks.has_permissions(administrator=True)
 async def register_server_aa(interaction: discord.Interaction):
     await interaction.response.defer()
     guild = interaction.guild
@@ -2383,40 +2381,6 @@ SETTING_CHOICES = [
 
 ]
 
-@bot.command(name="run_check")
-async def run_check(ctx):
-    await ctx.send("✅ Starting check...")
-
-    # Example user list (replace with real user IDs or objects)
-    users_to_check = [f"user_{i}" for i in range(1, 201)]
-
-    batch_size = 50
-    delay = 60  # 60 seconds
-
-    for i in range(0, len(users_to_check), batch_size):
-        batch = users_to_check[i:i + batch_size]
-
-        # Process batch (replace this with your actual logic)
-        results = []
-        for user in batch:
-            try:
-                # Replace with actual processing logic per user
-                results.append(f"✅ Processed {user}")
-            except Exception as e:
-                results.append(f"❌ {user}: {str(e)}")
-
-        msg = "\n".join(results)
-        if len(msg) > 1900:
-            msg = msg[:1900] + "\n...truncated..."
-
-        await ctx.send(f"🔄 Batch {i//batch_size + 1} results:\n{msg}")
-
-        if i + batch_size < len(users_to_check):
-            await ctx.send("⏳ Waiting 60 seconds before next batch...")
-            await asyncio.sleep(delay)
-
-    await ctx.send("✅ All users processed.")
-
 @bot.tree.command(name="set_setting", description="Set a server setting (e.g. GRANT_REQUEST_CHANNEL_ID).")
 @app_commands.describe(key="The setting key", value="The value to store")
 @app_commands.choices(key=SETTING_CHOICES)
@@ -2473,7 +2437,7 @@ async def list_settings(interaction: discord.Interaction):
         msg = "\n".join(f"- `{k}` = `{v}`" for k, v in filtered)
         await interaction.followup.send(f"🔧 Settings:\n{msg}", ephemeral=True)
 
-'''@bot.tree.command(name="res_details_for_alliance", description="Get each Alliance Member's resources and money individually")
+@bot.tree.command(name="res_details_for_alliance", description="Get each Alliance Member's resources and money individually")
 async def res_details_for_alliance(interaction: discord.Interaction):
     await interaction.response.defer(thinking=True)
     guild_id = str(interaction.guild.id)
@@ -2628,7 +2592,7 @@ async def res_details_for_alliance(interaction: discord.Interaction):
         await interaction.followup.send(embed=embed,  file=discord.File(io.StringIO(text_content), filename="alliance_resources.txt"))
     except Exception as e:
         print(f"Error sending detailed resources file: {e}")
-        await interaction.followup.send(embed=embed)'''
+        await interaction.followup.send(embed=embed)
 
 import asyncio
 import io
@@ -2650,6 +2614,53 @@ from matplotlib.ticker import FuncFormatter
 import io
 import pandas as pd  
 import requests
+'''
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+
+@bot.tree.command(name="check_site", description="Check for messages and buttons on a site.")
+async def check_site(interaction: discord.Interaction):
+    await interaction.response.defer()
+
+    options = Options()
+    options.add_argument("--headless")  
+    options.add_argument("user-agent=Mozilla/5.0")  
+    driver = webdriver.Chrome(options=options)
+
+    results = []
+
+    try:
+        driver.get("https://politicsandwar.com/obl/host/")
+        page_text = driver.page_source.lower()
+
+        if "login" in page_text:
+            results.append("Login requested")
+
+        if "are you a robot?" in page_text:
+            try:
+                driver.switch_to.frame(driver.find_element(By.XPATH, "//iframe[contains(@src, 'recaptcha')]"))
+                checkbox = driver.find_element(By.ID, "recaptcha-anchor")
+                checkbox.click()
+                driver.switch_to.default_content()
+                results.append("Clicked 'I'm not a robot'")
+            except:
+                results.append("CAPTCHA interaction failed")
+
+        try:
+            host_div = driver.find_element(By.XPATH, "//div[@class='columnheader' and contains(text(), 'Host Home Game')]")
+            host_div.click()
+            results.append("Clicked 'Host Home Game'")
+        except:
+            results.append("'Host Home Game' not found")
+
+        await interaction.followup.send("\n".join(results))
+
+    except Exception as e:
+        await interaction.followup.send(f"Error occurred: {e}")
+    finally:
+        driver.quit()
+        '''
 
 @bot.tree.command(name="auto_week_summary", description="See the total materials which are requested for this week")
 async def auto_week_summary(interaction: discord.Interaction):
@@ -2732,7 +2743,7 @@ def get_prices(guild_id):
         raise
 
 
-'''@bot.tree.command(name="res_in_m_for_a", description="Get total Alliance Members' resources and money")
+@bot.tree.command(name="res_in_m_for_a", description="Get total Alliance Members' resources and money")
 @app_commands.describe(
     mode="Group data by time unit",
     scale="Scale for Y-axis (Millions or Billions)"
@@ -3037,123 +3048,122 @@ async def res_in_m_for_a(
 
     except Exception as e:
         print(f"Failed to generate or send graph: {e}")
-        await interaction.followup.send(embed=embed)'''
+        await interaction.followup.send(embed=embed)
 
 @bot.tree.command(name="member_activity", description="Shows the activity of our members")
 async def member_activity(interaction: discord.Interaction):
     await interaction.response.defer()
-    user_id = str(interaction.user.id)
-
-    global cached_users
 
     guild_id = str(interaction.guild.id)
-    user_data = cached_users.get(guild_id, {}).get(user_id)
+    user_id = str(interaction.user.id)
 
+    user_data = cached_users.get(guild_id, {}).get(user_id)
     if not user_data:
-        await interaction.followup.send(
-            "❌ You are not registered. Please register first.", ephemeral=True
-        )
+        await interaction.followup.send("❌ You are not registered. Please register first.", ephemeral=True)
+        return
+
+    COLOUR_BLOC = get_colour_bloc(interaction)
+    if not COLOUR_BLOC:
+        await interaction.followup.send("❌ Set the colour bloc first.", ephemeral=True)
         return
 
     own_id = str(user_data.get("NationID", "")).strip()
-    COLOUR_BLOC = get_colour_bloc(interaction)
-
-    if not COLOUR_BLOC:
-        await interaction.followup.send("❌ Set the colour bloc first.")
-        return
-
     if not own_id:
-        await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+        await interaction.followup.send("❌ Could not find your Nation ID in the sheet.", ephemeral=True)
         return
 
-    async def is_banker(interaction):
+    # Check if user is banker
+    async def is_banker():
         GOV_ROLE = get_gov_role(interaction)
         return any(role.name == GOV_ROLE for role in interaction.user.roles)
 
-    if not await is_banker(interaction):
-        await interaction.followup.send("❌ You don't have the rights, lil bro.")
+    if not await is_banker():
+        await interaction.followup.send("❌ You don't have the rights, lil bro.", ephemeral=True)
         return
 
-    activish = 0
-    activish_wo_bloc = 0
+    # Initialize counts and lists
     active_w_bloc = 0
     active_wo_bloc = 0
+    activish = 0
+    activish_wo_bloc = 0
     inactive = 0
 
-    activish_list = []
-    activish_wo_bloc_list = []
     active_w_bloc_list = []
     active_wo_bloc_list = []
+    activish_list = []
+    activish_wo_bloc_list = []
     inactive_list = []
-
-    aa_names = set()
 
     try:
         sheet = get_registration_sheet(guild_id)
-        rows = sheet.get_all_records()
-        df = pd.DataFrame(rows)
+        records = sheet.get_all_records()
+        df = pd.DataFrame(records)
         df.columns = [col.strip() for col in df.columns]
+
+        if "NationID" not in df.columns:
+            await interaction.followup.send("❌ 'NationID' column missing in the sheet.", ephemeral=True)
+            return
+
         nation_ids = df["NationID"].dropna().astype(int).tolist()
     except Exception as e:
-        await interaction.followup.send(f"❌ Error loading Nation IDs: {e}")
+        await interaction.followup.send(f"❌ Error loading Nation IDs: {e}", ephemeral=True)
         return
 
-    for own_id in nation_ids:
+    now = datetime.now(timezone.utc)
+
+    for nation_id in nation_ids:
         try:
-            military_data = get_military(own_id, interaction)
+            military_data = get_military(nation_id, interaction)
             nation_name = military_data[0]
             nation_leader = military_data[1]
             score = military_data[2]
-            result = get_general_data(own_id, interaction)
-            if result is None or len(result) < 7:
-                print(f"Missing data for nation {own_id}")
+
+            result = get_general_data(nation_id, interaction)
+            if not result or len(result) < 7:
                 continue
 
             alliance_id, alliance_position, alliance, domestic_policy, num_cities, colour, activity, *_ = result
 
-            aa_names.add(alliance)
-
             try:
                 activity_dt = datetime.fromisoformat(activity)
             except (ValueError, TypeError):
-                print(f"Invalid activity date for nation {own_id}: {activity}")
+                print(f"Invalid activity date for nation {nation_id}: {activity}")
                 continue
 
-            now = datetime.now(timezone.utc)
             delta = now - activity_dt
             days_inactive = delta.total_seconds() / 86400
 
-            display = f"Nation: {nation_name}(ID: `{own_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}, AA: {alliance}\n"
-
             if days_inactive >= 2:
                 inactive += 1
-                inactive_list.append(display)
+                inactive_list.append(f"Nation: {nation_name} (ID: `{nation_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
             elif days_inactive >= 1:
                 if colour.lower() == COLOUR_BLOC.lower():
                     activish += 1
-                    activish_list.append(display)
+                    activish_list.append(f"Nation: {nation_name} (ID: `{nation_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
                 else:
                     activish_wo_bloc += 1
-                    activish_wo_bloc_list.append(display)
+                    activish_wo_bloc_list.append(f"Nation: {nation_name} (ID: `{nation_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
             else:
                 if colour.lower() == COLOUR_BLOC.lower():
                     active_w_bloc += 1
-                    active_w_bloc_list.append(display)
+                    active_w_bloc_list.append(f"Nation: {nation_name} (ID: `{nation_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
                 else:
                     active_wo_bloc += 1
-                    active_wo_bloc_list.append(display)
+                    active_wo_bloc_list.append(f"Nation: {nation_name} (ID: `{nation_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
 
-            await asyncio.sleep(3)
+            await asyncio.sleep(3)  # Rate limit delay
+
         except Exception as e:
-            print(f"Error processing nation ID {own_id}: {e}")
+            print(f"Error processing nation ID {nation_id}: {e}")
             continue
 
     data = [active_w_bloc, active_wo_bloc, activish, activish_wo_bloc, inactive]
-
-    if sum(data) == 0:
-        await interaction.followup.send("\u26a0\ufe0f No activity data available to generate chart.")
+    total_activity = sum(data)
+    if total_activity == 0:
+        await interaction.followup.send("⚠️ No activity data available to generate chart.", ephemeral=True)
         return
 
+    # Create pie chart
     fig, ax = plt.subplots(figsize=(8, 4), subplot_kw=dict(aspect="equal"))
 
     labels = [
@@ -3165,15 +3175,12 @@ async def member_activity(interaction: discord.Interaction):
     ]
 
     def func(pct, allvals):
-        absolute = int(np.round(pct / 100. * np.sum(allvals)))
+        absolute = int(round(pct / 100. * sum(allvals)))
         return f"{pct:.1f}%\n({absolute})"
 
     wedges, texts, autotexts = ax.pie(data, autopct=lambda pct: func(pct, data), textprops=dict(color="w"))
 
-    ax.legend(wedges, labels,
-              title="DS Member Statuses",
-              loc="center left",
-              bbox_to_anchor=(1, 0, 0.5, 1))
+    ax.legend(wedges, labels, title="DS Member Statuses", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
 
     plt.setp(autotexts, size=8, weight="bold")
     ax.set_title("Activity Chart")
@@ -3184,7 +3191,7 @@ async def member_activity(interaction: discord.Interaction):
     file = discord.File(fp=buffer, filename="ds_activity.png")
 
     embed = discord.Embed(
-        title="\ud83d\udcca Activity",
+        title="📊 Activity",
         description="Here are the members not in ideal status categories:",
         color=discord.Color.dark_teal()
     )
@@ -3207,20 +3214,52 @@ async def member_activity(interaction: discord.Interaction):
     add_field_chunks(embed, "Activish (Wrong Bloc)", activish_wo_bloc_list)
     add_field_chunks(embed, "Inactive", inactive_list)
 
-    if aa_names:
-        aa_list = "\n".join(sorted(aa_names))
-        embed.add_field(
-            name="Included Alliances",
-            value=aa_list if len(aa_list) <= 1024 else "Too many to display",
-            inline=False
-        )
-
     image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
-    embed.set_footer(text=f"Brought to you by Sumnor", icon_url=image_url)
+    embed.set_footer(text="Brought to you by Sumnor", icon_url=image_url)
     embed.set_image(url="attachment://ds_activity.png")
 
     await interaction.followup.send(embed=embed, file=file)
 
+@bot.command(name="run_check")
+async def run_check(ctx):
+    """Manual command to run the updater with 50 users per minute"""
+    await ctx.send("Starting manual member update. This might take a while...")
+
+    guild_id = str(ctx.guild.id)
+    if guild_id not in cached_users:
+        await ctx.send("No cached users found for this server.")
+        return
+
+    try:
+        sheet = get_registration_sheet(guild_id)
+        records = sheet.get_all_records()
+        df = pd.DataFrame(records)
+        df.columns = [col.strip() for col in df.columns]
+
+        if "NationID" not in df.columns:
+            await ctx.send("❌ 'NationID' column missing in the sheet.")
+            return
+
+        for index, row in df.iterrows():
+            nation_id = row.get("NationID")
+            if not nation_id:
+                continue
+
+            result = get_general_data(nation_id, None)
+            if result is None or len(result) < 7:
+                print(f"Failed to retrieve data for nation {nation_id}")
+                continue
+
+            _, _, alliance_name, _, _, _, last_active, *_ = result
+            cell_range = f"G{index + 2}"
+            sheet.update_acell(cell_range, alliance_name)
+            print(f"Updated nation {nation_id} with AA: {alliance_name}")
+            await asyncio.sleep(1.2)  # 50 per minute ~= 1.2 seconds delay
+
+        await ctx.send("Manual member update completed.")
+
+    except Exception as e:
+        await ctx.send(f"Error during manual update: {e}")
 
 import discord
 import requests
@@ -5031,6 +5070,12 @@ async def help(interaction: discord.Interaction):
     f"{war_losses_desc}"
     "\n***`/war_losses_alliance`:***\n"
     f"{war_losses_alliance_desc}"
+    "\n***`/res_in_m_for_a`:***\n"
+    f"{res_in_m_desc}"
+    "\n***`/res_details_for_alliance`:***\n"
+    f"{res_detail_desc}"
+    "\n***`/member_activity`:***\n"
+    f"{member_activity_desc}"
     "\n***`/send_message_to_channels`:***\n"
     f"{send_message_to_channels_desc}"
     "\n***`/dm_user`:***\n"
@@ -5656,7 +5701,7 @@ async def create_ticket_message(interaction: discord.Interaction, message: str, 
     await interaction.response.defer(ephemeral=True)
 
     embed = discord.Embed(
-        title=f"🎟️ {title}",
+        title=f"🎟️ {title}t",
         description=message,
         color=discord.Color.blurple()
     )
