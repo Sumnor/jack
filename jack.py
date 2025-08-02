@@ -1409,6 +1409,9 @@ def get_auto_requests_sheet(guild_id):
 def get_gov_role(interaction: discord.Interaction):
     return get_settings_value("GOV_ROLE", interaction.guild.id)
 
+def get_aa_name(interaction: discord.Interaction):
+    return get_settings_value("AA_NAME", interaction.guild.id)
+
 def get_welcome_message(interaction: discord.Interaction):
     return get_settings_value("TICKET_MESSAGE", interaction.guild.id)
 
@@ -3100,11 +3103,20 @@ async def member_activity(interaction: discord.Interaction):
         df = pd.DataFrame(records)
         df.columns = [col.strip() for col in df.columns]
 
-        if "NationID" not in df.columns:
-            await interaction.followup.send("❌ 'NationID' column missing in the sheet.", ephemeral=True)
+        if "NationID" not in df.columns or "AA" not in df.columns:
+            await interaction.followup.send("❌ Sheet is missing required 'NationID' or 'AA' column.", ephemeral=True)
             return
 
-        nation_ids = df["NationID"].dropna().astype(int).tolist()
+        aa_name = get_aa_name(interaction)
+        df["AA"] = df["AA"].astype(str).str.strip()
+        filtered_df = df[df["AA"].str.lower() == aa_name.strip().lower()]
+
+        if filtered_df.empty:
+            await interaction.followup.send(f"❌ No members found in AA: {aa_name}", ephemeral=True)
+            return
+
+        nation_ids = filtered_df["NationID"].dropna().astype(int).tolist()
+
     except Exception as e:
         await interaction.followup.send(f"❌ Error loading Nation IDs: {e}", ephemeral=True)
         return
@@ -3151,7 +3163,7 @@ async def member_activity(interaction: discord.Interaction):
                     active_wo_bloc += 1
                     active_wo_bloc_list.append(f"Nation: {nation_name} (ID: `{nation_id}`), Leader: {nation_leader}, Bloc: {colour}, Score: {score}\n")
 
-            await asyncio.sleep(3)  # Rate limit delay
+            await asyncio.sleep(3)
 
         except Exception as e:
             print(f"Error processing nation ID {nation_id}: {e}")
@@ -3163,9 +3175,7 @@ async def member_activity(interaction: discord.Interaction):
         await interaction.followup.send("⚠️ No activity data available to generate chart.", ephemeral=True)
         return
 
-    # Create pie chart
     fig, ax = plt.subplots(figsize=(8, 4), subplot_kw=dict(aspect="equal"))
-
     labels = [
         "Active (Correct Bloc)",
         "Active (Wrong Bloc)",
@@ -3179,9 +3189,7 @@ async def member_activity(interaction: discord.Interaction):
         return f"{pct:.1f}%\n({absolute})"
 
     wedges, texts, autotexts = ax.pie(data, autopct=lambda pct: func(pct, data), textprops=dict(color="w"))
-
     ax.legend(wedges, labels, title="DS Member Statuses", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
-
     plt.setp(autotexts, size=8, weight="bold")
     ax.set_title("Activity Chart")
 
@@ -3214,8 +3222,7 @@ async def member_activity(interaction: discord.Interaction):
     add_field_chunks(embed, "Activish (Wrong Bloc)", activish_wo_bloc_list)
     add_field_chunks(embed, "Inactive", inactive_list)
 
-    image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
-    embed.set_footer(text="Brought to you by Sumnor", icon_url=image_url)
+    embed.set_footer(text="Brought to you by Sumnor", icon_url="https://i.ibb.co/Kpsfc8Jm/jack.webp")
     embed.set_image(url="attachment://ds_activity.png")
 
     await interaction.followup.send(embed=embed, file=file)
@@ -3254,7 +3261,7 @@ async def run_check_slash(interaction: discord.Interaction):
             cell_range = f"D{index + 2}"
             sheet.update_acell(cell_range, alliance_name)
             print(f"Updated nation {nation_id} with AA: {alliance_name}")
-            await asyncio.sleep(3)  # 50 per minute ~= 1.2 seconds delay
+            await asyncio.sleep(1.2)  # 50 per minute ~= 1.2 seconds delay
 
         await interaction.followup.send("Manual member update completed.")
 
