@@ -3254,7 +3254,7 @@ async def run_check_slash(interaction: discord.Interaction):
             cell_range = f"D{index + 2}"
             sheet.update_acell(cell_range, alliance_name)
             print(f"Updated nation {nation_id} with AA: {alliance_name}")
-            await asyncio.sleep(1.2)  # 50 per minute ~= 1.2 seconds delay
+            await asyncio.sleep(3)  # 50 per minute ~= 1.2 seconds delay
 
         await interaction.followup.send("Manual member update completed.")
 
