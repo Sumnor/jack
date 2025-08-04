@@ -10,6 +10,26 @@ from matplotlib.ticker import FuncFormatter, MaxNLocator
 from datetime import datetime, timezone, timedelta
 import numpy as np
 import platform
+import asyncio
+import io
+import requests
+import discord
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import numpy as np
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
+from matplotlib.ticker import FuncFormatter, MaxNLocator
+import asyncio
+import discord
+from discord import app_commands
+from datetime import datetime, timezone
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from matplotlib.ticker import FuncFormatter
+import io
+import pandas as pd  
+import requests
 import datetime
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -1224,6 +1244,7 @@ def extract_cities_from_df(df):
         return None
 
 def get_resources(nation_id, interaction=None, guild_id=None):
+    print(guild_id)
     if not guild_id:
         df = graphql_request(nation_id, interaction, None)
     if not interaction:
@@ -1231,6 +1252,7 @@ def get_resources(nation_id, interaction=None, guild_id=None):
     if df is not None:
         try:
             row = df[df["id"].astype(str) == str(nation_id)].iloc[0]
+            print(row.get("money", 0))
 
             return (
                 row.get("nation_name", ""),
@@ -1487,10 +1509,10 @@ cached_registrations = {}
 cached_conflicts = []
 cached_conflict_data = []
 
-def load_registration_data(guild_id):
+def load_registration_data():
     global cached_users, cached_registrations
 
-    guild_id = str(guild_id)
+    guild_id = "I'm too lazy to remove it from get_registration_sheet so this is a"
 
     try:
         sheet = get_registration_sheet(guild_id)
@@ -1506,51 +1528,52 @@ def load_registration_data(guild_id):
             discord_id = str(record.get('DiscordID', '')).strip()
             discord_username = str(record.get('DiscordUsername', '')).strip().lower()
             nation_id = str(record.get('NationID', '')).strip()
+            aa = str(record.get('AA', '')).strip()  # Add AA field
 
             if discord_id and discord_username and nation_id:
                 user_map[discord_id] = {
                     'DiscordUsername': discord_username,
-                    'NationID': nation_id
+                    'NationID': nation_id,
+                    'AA': aa  # Include AA in the user data
                 }
 
-        # Store guild-specific data instead of overwriting global
-        if guild_id not in cached_users:
-            cached_users[guild_id] = {}
-        if guild_id not in cached_registrations:
-            cached_registrations[guild_id] = {}
-            
-        cached_users[guild_id] = user_map
-        cached_registrations[guild_id] = records
+        # Store as global data since it's one sheet for all guilds
+        cached_users = user_map
+        cached_registrations = records
 
-        print(f"✅ Loaded {len(user_map)} users from registration sheet for guild {guild_id}.")
+        print(f"✅ Loaded {len(user_map)} users from registration sheet.")
 
     except Exception as e:
-        print(f"❌ Failed to load registration sheet data for guild {guild_id}: {e}")
+        print(f"❌ Failed to load registration sheet data: {e}")
         import traceback
         print(traceback.format_exc())
 
 from datetime import datetime, timezone
-async def daily_refresh_loop(guild_id):
+async def daily_refresh_loop():
     while True:
         now = datetime.now(timezone.utc)
         next_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         wait_seconds = (next_midnight - now).total_seconds()
         await asyncio.sleep(wait_seconds)
         print("🔄 Refreshing all cached sheet data at UTC midnight...")
-        load_registration_data(guild_id)
+        load_registration_data()
 
 
-def load_sheet_data(guild_id):
-    guild_id = str(guild_id)
+def load_sheet_data():
     try:
-        load_registration_data(guild_id)
+        # Load the single sheet data (no guild_id needed)
+        load_registration_data()
+        
         if not hasattr(bot, '_refresh_loops'):
             bot._refresh_loops = set()
-        if guild_id not in bot._refresh_loops:
-            bot.loop.create_task(daily_refresh_loop(guild_id))
-            bot._refresh_loops.add(guild_id)
+            
+        # Start refresh loop (only one needed for the single sheet)
+        if 'global' not in bot._refresh_loops:
+            bot.loop.create_task(daily_refresh_loop())
+            bot._refresh_loops.add('global')
+                
     except Exception as e:
-        print(f"❌ Failed to load sheet data for guild {guild_id}: {e}")
+        print(f"❌ Failed to load sheet data: {e}")
         import traceback
         print(traceback.format_exc())
 
@@ -1653,7 +1676,7 @@ async def process_auto_requests():
                             print(f"Guild {guild.name}, row {i}: Skipping due to empty NationID")
                             continue
                         
-                        nation_info_df = graphql_request(nation_id, interaction=discord.Interaction)
+                        nation_info_df = graphql_request(nation_id, None, guild.id)
                         nation_name = nation_info_df.loc[0, "nation_name"] if nation_info_df is not None and not nation_info_df.empty else "Unknown"
                         
                         discord_id = row[col_index["DiscordID"]]
@@ -1716,28 +1739,32 @@ async def hourly_snapshot():
     now = datetime.now(timezone.utc)
     current_hour = now.replace(minute=0, second=0, microsecond=0)
 
-    guild_ids = {str(guild.id) for guild in bot.guilds}
+    guild_ids_to_process = set()
 
-    for guild_id in guild_ids.copy():  
+    # Step 1: Check if snapshots are needed
+    for guild in bot.guilds:
+        guild_id = str(guild.id)
         try:
             alliance_sheet = get_alliance_sheet(guild_id)
             rows = alliance_sheet.get_all_records()
             if rows:
                 last_time_str = rows[-1].get("TimeT", "")
-                last_time = datetime.fromisoformat(last_time_str)
-                last_time_hour = last_time.replace(minute=0, second=0, microsecond=0)
-                if last_time_hour == current_hour:
-                    print(f"⏭ Already saved snapshot this hour for guild {guild_id} (last snapshot time: {last_time_hour})")
-                    guild_ids.remove(guild_id)
-            else:
-                print(f"⚠️ No entries in alliance sheet for guild {guild_id}; proceeding with snapshot.")
+                try:
+                    last_time = datetime.fromisoformat(last_time_str)
+                    if last_time.replace(minute=0, second=0, microsecond=0) == current_hour:
+                        print(f"⏭ Already saved snapshot for guild {guild_id}")
+                        continue
+                except ValueError:
+                    print(f"⚠️ Invalid timestamp in sheet for guild {guild_id}: {last_time_str}")
+            guild_ids_to_process.add(guild_id)
         except Exception as e:
-            print(f"❌ Failed to check alliance sheet for guild {guild_id}: {e}")
+            print(f"❌ Could not access alliance sheet for guild {guild_id}: {e}")
 
-    if not guild_ids:
-        print("⚠️ No guilds require snapshots this hour. Exiting.")
+    if not guild_ids_to_process:
+        print("✅ All guilds already processed this hour.")
         return
 
+    # Step 2: Get settings (API keys and AA names)
     try:
         settings_sheet = get_settings_sheet()
         settings_rows = settings_sheet.get_all_records()
@@ -1745,83 +1772,99 @@ async def hourly_snapshot():
         print(f"❌ Failed to get settings sheet: {e}")
         return
 
-    guild_api_keys = {}
+    guild_settings = {}
     for row in settings_rows:
         server_id = str(row.get("server_id")).strip()
-        key_name = row.get("key", "").strip()
-        value = row.get("value", "")
-        if isinstance(value, str):
-            value = value.strip()
-        if key_name == "API_KEY" and server_id in guild_ids and value:
-            guild_api_keys[server_id] = value
+        key = row.get("key", "").strip()
+        value = str(row.get("value", "")).strip()
+        
+        if server_id in guild_ids_to_process and isinstance(value, str) and value:
+            if server_id not in guild_settings:
+                guild_settings[server_id] = {}
+            guild_settings[server_id][key] = value
 
-    if not guild_api_keys:
-        print("⚠️ No API_KEYs found for current guilds. Skipping snapshot.")
+    # Filter guilds that have both API_KEY and AA_NAME
+    valid_guild_settings = {
+        guild_id: settings for guild_id, settings in guild_settings.items()
+        if "API_KEY" in settings and "AA_NAME" in settings
+    }
+
+    if not valid_guild_settings:
+        print("⚠️ No guilds found with both API_KEY and AA_NAME settings.")
         return
 
-    for guild_id, api_key in guild_api_keys.items():
+    # Load the single registration sheet once
+    load_sheet_data()
 
+    # Step 3: Process each guild
+    for guild_id, settings in valid_guild_settings.items():
+        api_key = settings["API_KEY"]
+        target_aa_name = settings["AA_NAME"]
+        
         try:
-            if guild_id not in cached_users:
-                load_sheet_data(guild_id)
+            # Use the global cached_users (single sheet for all guilds)
+            all_users = cached_users
+            print(f"👥 Guild {guild_id}: {len(all_users)} total registered users in global sheet")
 
-            guild_users = cached_users.get(guild_id, {})
-            print(f"👥 Found {len(guild_users)} registered users in guild {guild_id}")
-
-            if not guild_users:
-                print(f"⚠️ No registered users found for guild {guild_id}. Skipping.")
+            if not all_users:
+                print(f"⚠️ Skipping guild {guild_id} (no users in global sheet)")
                 continue
 
-            totals = {
-                "money": 0, "food": 0, "gasoline": 0, "munitions": 0, "steel": 0,
-                "aluminum": 0, "bauxite": 0, "lead": 0, "iron": 0,
-                "oil": 0, "uranium": 0, "coal": 0, "num_cities": 0
-            }
-            processed_nations = 0
-            failed = 0
+            # Filter users by AA name
+            filtered_users = {}
+            match_count = 0
+            
+            print(f"🎯 Target AA: '{target_aa_name}'")
+            
+            for user_id, user in all_users.items():
+                user_aa = str(user.get("AA", "")).strip()
+                
+                if user_aa.lower() == target_aa_name.lower():
+                    match_count += 1
+                    filtered_users[user_id] = user
 
-            GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={api_key}"
-            prices_query = """
-            {
-              top_trade_info {
-                resources {
-                  resource
-                  average_price
-                }
-              }
-            }
-            """
+            print(f"🔍 Guild {guild_id}: Found {match_count} users in '{target_aa_name}' alliance")
+
+            if not filtered_users:
+                print(f"⚠️ Skipping guild {guild_id} (no users in target alliance '{target_aa_name}')")
+                continue
+
+            # Get prices
+            prices = {}
             try:
-                resp = requests.post(GRAPHQL_URL, json={"query": prices_query}, headers={"Content-Type": "application/json"})
-                resp.raise_for_status()
-                prices = {item["resource"]: float(item["average_price"]) for item in resp.json()["data"]["top_trade_info"]["resources"]}
+                res = requests.post(
+                    f"https://api.politicsandwar.com/graphql?api_key={api_key}",
+                    json={"query": "{ top_trade_info { resources { resource average_price } } }"},
+                    headers={"Content-Type": "application/json"}
+                )
+                res.raise_for_status()
+                resources_data = res.json()["data"]["top_trade_info"]["resources"]
+                prices = {r["resource"]: float(r["average_price"]) for r in resources_data}
             except Exception as e:
-                print(f"❌ Error fetching prices for guild {guild_id}: {e}")
-                prices = {}
+                print(f"⚠️ Failed to fetch prices for guild {guild_id}: {e}")
 
+            totals = {
+                "money": 0, "food": 0, "gasoline": 0, "munitions": 0,
+                "steel": 0, "aluminum": 0, "bauxite": 0, "lead": 0,
+                "iron": 0, "oil": 0, "coal": 0, "uranium": 0, "num_cities": 0
+            }
+            processed, failed = 0, 0
             seen_ids = set()
 
-            for user_id, user_data in guild_users.items():
-                nation_id = str(user_data.get("NationID", "")).strip()
-                username = user_data.get("DiscordUsername", "unknown")
-
-                if not nation_id:
-                    print(f"⚠️ No Nation ID for user {username} ({user_id}) in guild {guild_id}")
+            # Process only filtered users (those in the target AA)
+            for user_id, user in filtered_users.items():
+                nation_id = str(user.get("NationID", "")).strip()
+                if not nation_id or nation_id in seen_ids:
                     failed += 1
                     continue
-
-                if nation_id in seen_ids:
-                    print(f"⚠️ Duplicate Nation ID {nation_id} for user {username} in guild {guild_id}")
-                    failed += 1
-                    continue
-
                 seen_ids.add(nation_id)
 
                 try:
-                    resources = get_resources(nation_id, None, guild_id)
-                    (nation_name, num_cities, food, money, gasoline, munitions, steel,
-                     aluminum, bauxite, lead, iron, oil, coal, uranium) = resources
+                    _, cities, food, money, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, uranium = get_resources(nation_id, None, guild_id)
+                    if not money:
+                        raise ValueError("No data returned")
 
+                    # Accumulate totals
                     totals["money"] += money
                     totals["food"] += food
                     totals["gasoline"] += gasoline
@@ -1834,45 +1877,38 @@ async def hourly_snapshot():
                     totals["oil"] += oil
                     totals["coal"] += coal
                     totals["uranium"] += uranium
-                    totals["num_cities"] += num_cities
-                    processed_nations += 1
-
-                    await asyncio.sleep(5)
+                    totals["num_cities"] += cities
+                    processed += 1
                 except Exception as e:
                     failed += 1
-                    print(f"❌ Failed for nation {nation_id} ({username}) in guild {guild_id}: {e}")
-                    continue
+                    print(f"❌ Failed for user {user_id} (guild {guild_id}): {e}")
+                await asyncio.sleep(5)
 
+            # Step 4: Calculate total value
+            wealth = totals["money"]
             resource_values = {}
-            total_wealth = totals["money"]
-
-            for resource, amount in totals.items():
-                if resource in ["money", "num_cities"]:
+            for res, amt in totals.items():
+                if res in ["money", "num_cities"]:
                     continue
-                price = prices.get(resource, 0)
-                value = amount * price
-                resource_values[resource] = value
-                total_wealth += value
+                val = amt * prices.get(res, 0)
+                resource_values[res] = val
+                wealth += val
 
-            timestamp = current_hour.isoformat()
-            money_snapshots.append({"time": timestamp, "total": total_wealth})
-
-            save_row = [timestamp, total_wealth, totals["money"]]
-            ordered_resources = [
+            save_row = [current_hour.isoformat(), wealth, totals["money"]]
+            for res in [
                 "food", "gasoline", "munitions", "steel", "aluminum",
                 "bauxite", "lead", "iron", "oil", "coal", "uranium"
-            ]
-            for res in ordered_resources:
+            ]:
                 save_row.append(resource_values.get(res, 0))
 
             try:
                 save_to_alliance_net(save_row, guild_id=guild_id)
-                print(f"💾 Snapshot saved at {timestamp} for guild {guild_id}: ${total_wealth:,.0f} (processed {processed_nations} nations, {failed} failed)")
+                print(f"✅ Saved snapshot for guild {guild_id} (AA: '{target_aa_name}'): ${wealth:,.0f} ({processed} processed, {failed} failed)")
             except Exception as e:
                 print(f"❌ Failed to save snapshot for guild {guild_id}: {e}")
 
         except Exception as e:
-            print(f"❌ Error processing guild {guild_id}: {e}")
+            print(f"❌ General error in guild {guild_id}: {e}")
 
 def get_warn_channel(guild_id):
     try:
@@ -1977,6 +2013,7 @@ def get_api_key_for_guild(guild_id: int) -> str | None:
 
         for row in rows:
             if str(row.get("server_id")) == str(guild_id) and row.get("key") == "API_KEY":
+                print(row.get("value").strip())
                 return row.get("value").strip()
 
         print(f"⚠️ API_KEY not found for guild {guild_id}")
@@ -1990,44 +2027,44 @@ def get_api_key_for_guild(guild_id: int) -> str | None:
 async def weekly_member_updater():
     print(f"[Updater] Starting weekly member update at {datetime.utcnow()}")
     try:
-        for guild_id in cached_users:
-            print(f"[Updater] Processing guild: {guild_id}")
-            try:
-                sheet = get_registration_sheet(guild_id)
-                records = sheet.get_all_records()
-                df = pd.DataFrame(records)
-                df.columns = [col.strip() for col in df.columns]
+        # Use the dummy guild_id for the single sheet
+        dummy_guild_id = "I'm too lazy to remove it from get_registration_sheet so this is a"
+        
+        sheet = get_registration_sheet(dummy_guild_id)
+        records = sheet.get_all_records()
+        df = pd.DataFrame(records)
+        df.columns = [col.strip() for col in df.columns]
 
-                if "NationID" not in df.columns:
-                    print(f"[Updater] 'NationID' column missing for guild {guild_id}")
-                    continue
+        if "NationID" not in df.columns:
+            print(f"[Updater] 'NationID' column missing in registration sheet")
+            return
 
-                for index, row in df.iterrows():
-                    nation_id = row.get("NationID")
-                    if not nation_id:
-                        continue
+        print(f"[Updater] Processing {len(df)} nations from registration sheet")
 
-                    result = get_general_data(nation_id, guild_id)
-                    if result is None or len(result) < 7:
-                        print(f"[Updater] Failed to retrieve data for nation {nation_id}")
-                        continue
-
-                    _, _, alliance_name, _, _, _, last_active, *_ = result
-
-                    # Update the alliance name in the AA column (assuming column G)
-                    cell_range = f"D{index + 2}"
-                    sheet.update_acell(cell_range, alliance_name)
-
-                    print(f"[Updater] Updated nation {nation_id} with AA: {alliance_name}")
-                    await asyncio.sleep(30)  # Delay to respect API limits
-
-            except Exception as guild_error:
-                print(f"[Updater] Error processing guild {guild_id}: {guild_error}")
+        for index, row in df.iterrows():
+            nation_id = row.get("NationID")
+            if not nation_id:
                 continue
+
+            # Use any guild for get_general_data (or modify it to not need guild_id)
+            guild_id = str(bot.guilds[0].id) if bot.guilds else dummy_guild_id
+            
+            result = get_general_data(nation_id, guild_id)
+            if result is None or len(result) < 7:
+                print(f"[Updater] Failed to retrieve data for nation {nation_id}")
+                continue
+
+            _, _, alliance_name, _, _, _, last_active, *_ = result
+
+            # Update the alliance name in the AA column (column D is the 4th column)
+            cell_range = f"D{index + 2}"
+            sheet.update_acell(cell_range, alliance_name)
+
+            print(f"[Updater] Updated nation {nation_id} with AA: {alliance_name}")
+            await asyncio.sleep(30)  # Delay to respect API limits
 
     except Exception as e:
         print(f"[Updater] Unhandled error during update: {e}")
-
 
 @weekly_member_updater.before_loop
 async def before_updater():
@@ -2037,9 +2074,8 @@ async def before_updater():
 @bot.event
 async def on_ready():
     bot.add_view(GrantView())  
-    for guild in bot.guilds:
-        load_sheet_data(guild.id)
-        load_registration_data(guild.id)
+    load_sheet_data()
+    load_registration_data()
     bot.add_view(BlueGuy())
     bot.add_view(TicketButtonView()) 
     print("Starting hourly snapshot task...")
@@ -2208,6 +2244,13 @@ async def on_message(message: discord.Message):
 @app_commands.describe(nation_id="Your Nation ID (numbers only, e.g., 365325)")
 async def register(interaction: discord.Interaction, nation_id: str):
     await interaction.response.defer()
+    user_id = interaction.user.id
+    user_data = cached_users.get(user_id)
+    if user_data:
+        await interaction.followup.send(
+            "❌ You are already registered.", ephemeral=True
+        )
+        return
     MEMBER_ROLE = get_member_role(interaction)
     # Custom permission check
     async def is_banker(interaction):
@@ -2248,11 +2291,10 @@ async def register(interaction: discord.Interaction, nation_id: str):
     user_discord_username = interaction.user.name.strip().lower()
     user_id = str(interaction.user.id)
     nation_id_str = str(nation_id).strip()
-    guild_id = str(interaction.guild.id)
 
-    # FORCE reload current guild data to clear any stale cache
-    print(f"🔄 Force reloading data for guild {guild_id}")
-    load_sheet_data(guild_id)
+    # FORCE reload current sheet data to clear any stale cache
+    print(f"🔄 Force reloading global registration data")
+    load_sheet_data()
 
     # Sumnor bypasses username check
     if user_discord_username != "sumnor":
@@ -2263,17 +2305,17 @@ async def register(interaction: discord.Interaction, nation_id: str):
             )
             return
 
-    # Check for duplicates in cached users for THIS SPECIFIC GUILD
-    users_in_guild = cached_users.get(guild_id, {})
-    print(f"🔍 Checking duplicates in guild {guild_id}")
-    print(f"📊 Current users in guild cache: {len(users_in_guild)}")
+    # Check for duplicates in global cached users
+    global_users = cached_users
+    print(f"🔍 Checking duplicates in global registration sheet")
+    print(f"📊 Current users in global cache: {len(global_users)}")
     print(f"👤 User ID: {user_id}, Username: {user_discord_username}, Nation: {nation_id_str}")
 
     # Debug: Show what's in the cache
-    for uid, data in users_in_guild.items():
+    for uid, data in global_users.items():
         print(f"  - Cached: ID={uid}, Username={data.get('DiscordUsername')}, Nation={data.get('NationID')}")
 
-    for uid, data in users_in_guild.items():
+    for uid, data in global_users.items():
         if user_discord_username != "sumnor":  # Sumnor can always register
             if uid == user_id:
                 await interaction.followup.send(f"❌ This Discord ID ({user_id}) is already registered.")
@@ -2285,26 +2327,27 @@ async def register(interaction: discord.Interaction, nation_id: str):
                 await interaction.followup.send(f"❌ This Nation ID ({nation_id_str}) is already registered.")
                 return
 
-    # Save to correct guild-specific sheet
+    # Save to global registration sheet
     try:
-        sheet = get_registration_sheet(guild_id)
+        dummy_guild_id = "I'm too lazy to remove it from get_registration_sheet so this is a"
+        sheet = get_registration_sheet(dummy_guild_id)
         sheet.append_row([interaction.user.name, user_id, nation_id])
-        print(f"📝 Added registration for {interaction.user.name} (ID: {user_id}) in guild {guild_id}")
+        print(f"📝 Added registration for {interaction.user.name} (ID: {user_id}) to global sheet")
     except Exception as e:
         await interaction.followup.send(f"❌ Failed to write registration: {e}")
         return
 
-    # Reload cached data after update for this specific guild
+    # Reload cached data after update
     try:
-        load_sheet_data(guild_id)
-        print(f"✅ Reloaded cache after registration")
+        load_sheet_data()
+        print(f"✅ Reloaded global cache after registration")
     except Exception as e:
-        print(f"⚠️ Failed to reload cached sheet data for guild {guild_id}: {e}")
+        print(f"⚠️ Failed to reload cached sheet data: {e}")
 
-    await interaction.followup.send("✅ You're registered successfully in this server!")
+    await interaction.followup.send("✅ You're registered successfully!")
 
 # Add a debug command to clear cache manually
-@bot.tree.command(name="clear_cache", description="Clear registration cache (Admin only)")
+'''@bot.tree.command(name="clear_cache", description="Clear registration cache (Admin only)")
 async def clear_cache(interaction: discord.Interaction):
     await interaction.response.defer()
     if not (interaction.user.guild_permissions.administrator or str(interaction.user.id) == "1148678095176474678"):
@@ -2323,10 +2366,10 @@ async def clear_cache(interaction: discord.Interaction):
     # Force reload
     load_sheet_data(guild_id)
     
-    await interaction.followup.send(f"✅ Cache cleared and reloaded for this server!", ephemeral=True)
+    await interaction.followup.send(f"✅ Cache cleared and reloaded for this server!", ephemeral=True)'''
 
 @bot.tree.command(name="register_server_aa", description="Register this server and create Google Sheets")
-#@app_commands.checks.has_permissions(administrator=True)
+@app_commands.checks.has_permissions(administrator=True)
 async def register_server_aa(interaction: discord.Interaction):
     await interaction.response.defer()
     guild = interaction.guild
@@ -2450,15 +2493,9 @@ async def res_details_for_alliance(interaction: discord.Interaction):
     rows = sheet.get_all_records()
     user_id = str(interaction.user.id)
     
-    
-    user_data = next(
-        (r for r in rows if str(r.get("DiscordID", "")).strip() == user_id),
-        None
-    )
-    
-    user_id = str(interaction.user.id)
 
-    user_data = cached_users.get(guild_id, {}).get(user_id)
+# Get user data from global cached_users (single sheet)
+    user_data = cached_users.get(user_id)
     if not user_data:
         await interaction.followup.send(
             "❌ You are not registered. Please register first.", ephemeral=True
@@ -2479,7 +2516,7 @@ async def res_details_for_alliance(interaction: discord.Interaction):
         )
     
     if not await is_banker(interaction):
-        await interaction.followup.send("❌ You don't have the rights, lil bro.")
+        await interaction.followup.send("❌ You don't have the rights necessary to perform this action.")
         return
     
     lines = []
@@ -2504,9 +2541,37 @@ async def res_details_for_alliance(interaction: discord.Interaction):
         "num_cities": 0,
     }
     batch_count = 0
-    for row in rows:
-        nation_id = str(row.get("NationID", "")).strip()
-        row_user_id = str(row.get("DiscordID", "")).strip()
+    try:
+        # Use dummy guild_id for the single global sheet
+        dummy_guild_id = "I'm too lazy to remove it from get_registration_sheet so this is a"
+        sheet = get_registration_sheet(dummy_guild_id)
+        records = sheet.get_all_records()
+        df = pd.DataFrame(records)
+        df.columns = [col.strip() for col in df.columns]
+
+        if "NationID" not in df.columns or "AA" not in df.columns:
+            await interaction.followup.send("❌ Sheet is missing required 'NationID' or 'AA' column.", ephemeral=True)
+            return
+
+        aa_name = get_aa_name(interaction)
+        df["AA"] = df["AA"].astype(str).str.strip()
+        filtered_df = df[df["AA"].str.lower() == aa_name.strip().lower()]
+
+        if filtered_df.empty:
+            await interaction.followup.send(f"❌ No members found in AA: {aa_name}", ephemeral=True)
+            return
+
+        # Convert filtered DataFrame back to list of dictionaries (like the original rows)
+        nation_rows = filtered_df.to_dict('records')
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error loading Nation IDs: {e}", ephemeral=True)
+        return
+
+    # Process each row (like the original structure)
+    for nation_row in nation_rows:
+        nation_id = str(nation_row.get("NationID", "")).strip()
+        row_user_id = str(nation_row.get("DiscordID", "")).strip()
 
         try:
             result = get_resources(nation_id, interaction)
@@ -2597,74 +2662,6 @@ async def res_details_for_alliance(interaction: discord.Interaction):
     except Exception as e:
         print(f"Error sending detailed resources file: {e}")
         await interaction.followup.send(embed=embed)
-
-import asyncio
-import io
-import requests
-import discord
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-import numpy as np
-from collections import defaultdict
-from datetime import datetime, timedelta, timezone
-from matplotlib.ticker import FuncFormatter, MaxNLocator
-import asyncio
-import discord
-from discord import app_commands
-from datetime import datetime, timezone
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-from matplotlib.ticker import FuncFormatter
-import io
-import pandas as pd  
-import requests
-'''
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-
-@bot.tree.command(name="check_site", description="Check for messages and buttons on a site.")
-async def check_site(interaction: discord.Interaction):
-    await interaction.response.defer()
-
-    options = Options()
-    options.add_argument("--headless")  
-    options.add_argument("user-agent=Mozilla/5.0")  
-    driver = webdriver.Chrome(options=options)
-
-    results = []
-
-    try:
-        driver.get("https://politicsandwar.com/obl/host/")
-        page_text = driver.page_source.lower()
-
-        if "login" in page_text:
-            results.append("Login requested")
-
-        if "are you a robot?" in page_text:
-            try:
-                driver.switch_to.frame(driver.find_element(By.XPATH, "//iframe[contains(@src, 'recaptcha')]"))
-                checkbox = driver.find_element(By.ID, "recaptcha-anchor")
-                checkbox.click()
-                driver.switch_to.default_content()
-                results.append("Clicked 'I'm not a robot'")
-            except:
-                results.append("CAPTCHA interaction failed")
-
-        try:
-            host_div = driver.find_element(By.XPATH, "//div[@class='columnheader' and contains(text(), 'Host Home Game')]")
-            host_div.click()
-            results.append("Clicked 'Host Home Game'")
-        except:
-            results.append("'Host Home Game' not found")
-
-        await interaction.followup.send("\n".join(results))
-
-    except Exception as e:
-        await interaction.followup.send(f"Error occurred: {e}")
-    finally:
-        driver.quit()
-        '''
 
 @bot.tree.command(name="auto_week_summary", description="See the total materials which are requested for this week")
 async def auto_week_summary(interaction: discord.Interaction):
@@ -2776,7 +2773,7 @@ async def res_in_m_for_a(
     guild_id = str(interaction.guild.id)
     user_id = str(interaction.user.id)
 
-    user_data = cached_users.get(guild_id, {}).get(user_id)
+    user_data = cached_users.get(user_id)
     if not user_data:
         await interaction.followup.send(
             "❌ You are not registered. Please register first.", ephemeral=True
@@ -2842,13 +2839,37 @@ async def res_in_m_for_a(
     except Exception as e:
         print(f"Error fetching resource prices: {e}")
 
-    sheet = get_registration_sheet(guild_id)
-    rows = sheet.get_all_records()
-    batch_count = 0
+    try:
+        # Use dummy guild_id for the single global sheet
+        dummy_guild_id = "I'm too lazy to remove it from get_registration_sheet so this is a"
+        sheet = get_registration_sheet(dummy_guild_id)
+        records = sheet.get_all_records()
+        df = pd.DataFrame(records)
+        df.columns = [col.strip() for col in df.columns]
 
-    for row in rows:
-        nation_id = str(row.get("NationID", "")).strip()
-        user_id = str(row.get("DiscordID", "")).strip()
+        if "NationID" not in df.columns or "AA" not in df.columns:
+            await interaction.followup.send("❌ Sheet is missing required 'NationID' or 'AA' column.", ephemeral=True)
+            return
+
+        aa_name = get_aa_name(interaction)
+        df["AA"] = df["AA"].astype(str).str.strip()
+        filtered_df = df[df["AA"].str.lower() == aa_name.strip().lower()]
+
+        if filtered_df.empty:
+            await interaction.followup.send(f"❌ No members found in AA: {aa_name}", ephemeral=True)
+            return
+
+        # Convert filtered DataFrame back to list of dictionaries (like the original rows)
+        nation_rows = filtered_df.to_dict('records')
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error loading Nation IDs: {e}", ephemeral=True)
+        return
+
+    # Process each row (like the original structure)
+    for nation_row in nation_rows:
+        nation_id = str(nation_row.get("NationID", "")).strip()
+        user_id = str(nation_row.get("DiscordID", "")).strip()
 
         try:
             result = get_resources(nation_id, interaction)
@@ -3061,7 +3082,7 @@ async def member_activity(interaction: discord.Interaction):
     guild_id = str(interaction.guild.id)
     user_id = str(interaction.user.id)
 
-    user_data = cached_users.get(guild_id, {}).get(user_id)
+    user_data = cached_users.get(user_id)
     if not user_data:
         await interaction.followup.send("❌ You are not registered. Please register first.", ephemeral=True)
         return
@@ -3308,7 +3329,7 @@ async def war_losses(interaction: discord.Interaction, nation_id: int, detail: s
     guild_id = str(interaction.guild.id)
     user_id = str(interaction.user.id)
 
-    user_data = cached_users.get(guild_id, {}).get(user_id)
+    user_data = cached_users.get(user_id)
     if not user_data:
         await interaction.followup.send(
             "❌ You are not registered. Please register first.", ephemeral=True
@@ -3516,7 +3537,7 @@ async def war_losses_alliance(interaction: discord.Interaction, alliance_id: int
     guild_id = str(interaction.guild.id)
     user_id = str(interaction.user.id)
 
-    user_data = cached_users.get(guild_id, {}).get(user_id)
+    user_data = cached_users.get(user_id)
     if not user_data:
         await interaction.followup.send(
             "❌ You are not registered. Please register first.", ephemeral=True
@@ -3934,7 +3955,8 @@ async def list_reports(interaction: discord.Interaction):
 @bot.tree.command(name="raws_audits", description="Audit building and raw usage per nation")
 async def raws_audits(interaction: discord.Interaction, day: int):
     await interaction.response.defer(thinking=True)
-    sheet = get_registration_sheet()
+    guild_id = interaction.guild.id
+    sheet = get_registration_sheet(guild_id)
     rows = sheet.get_all_records()
     user_id = str(interaction.user.id)
 
@@ -3942,7 +3964,7 @@ async def raws_audits(interaction: discord.Interaction, day: int):
     guild_id = str(interaction.guild.id)
     user_id = str(interaction.user.id)
 
-    user_data = cached_users.get(guild_id, {}).get(user_id)
+    user_data = cached_users.get(user_id)
     if not user_data:
         await interaction.followup.send(
             "❌ You are not registered. Please register first.", ephemeral=True
@@ -4152,8 +4174,9 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member, exte
         
         guild_id = str(interaction.guild.id)
         user_id = str(interaction.user.id)
+        user_id = str(interaction.user.id)
     
-        user_data = cached_users.get(guild_id, {}).get(user_id)
+        user_data = cached_users.get(user_id)
         if not user_data:
             await interaction.followup.send(
                 "❌ You are not registered. Please register first.", ephemeral=True
@@ -4319,7 +4342,7 @@ async def auto_resources_for_prod_req(
         return
 
     guild_id = str(interaction.guild.id)
-    user_data = cached_users.get(guild_id, {}).get(user_id)
+    user_data = cached_users.get(user_id)
     if not user_data:
         await interaction.followup.send(
             "❌ You are not registered. Please register first.", ephemeral=True
@@ -4787,7 +4810,7 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
     guild_id = str(interaction.guild.id)
     user_id = str(interaction.user.id)
 
-    user_data = cached_users.get(guild_id, {}).get(user_id)
+    user_data = cached_users.get(user_id)
     if not user_data:
         await interaction.followup.send(
             "❌ You are not registered. Please register first.", ephemeral=True
@@ -4964,7 +4987,7 @@ async def help(interaction: discord.Interaction):
     guild_id = str(interaction.guild.id)
     user_id = str(interaction.user.id)
 
-    user_data = cached_users.get(guild_id, {}).get(user_id)
+    user_data = cached_users.get(user_id)
     if not user_data:
         await interaction.followup.send(
             "❌ You are not registered. Please register first.", ephemeral=True
@@ -5067,6 +5090,24 @@ async def help(interaction: discord.Interaction):
         "The command is /list_settings\n"
         "**Note:** API key will not be shown\n"
     )
+
+    auto_resources_for_prod_req_desc = (
+        "Add a resource request which will be requested every x days"
+        "The command is /auto_resources_for_prod_req coal: 100 period: 7 confirmation: Hypopothamus (yes, Hypopothamus)"
+    )
+
+    disable_auto_request_desc = (
+        "Disable your auto request"
+        "The command is /disable_auto_request"
+    )
+
+    auto_week_summary_desc = (
+        "Get the summary for all requests this week"
+        "The command is /auto_week_summary"
+    )
+
+
+
 
 
     gov_msg = (
@@ -5733,7 +5774,7 @@ async def dm_user(interaction: discord.Interaction, user: discord.User, message:
     guild_id = str(interaction.guild.id)
     user_id = str(interaction.user.id)
 
-    user_data = cached_users.get(guild_id, {}).get(user_id)
+    user_data = cached_users.get(user_id)
     if not user_data:
         await interaction.followup.send(
             "❌ You are not registered. Please register first.", ephemeral=True
@@ -5783,7 +5824,7 @@ async def send_message_to_channels(interaction: discord.Interaction, channel_ids
     guild_id = str(interaction.guild.id)
     user_id = str(interaction.user.id)
 
-    user_data = cached_users.get(guild_id, {}).get(user_id)
+    user_data = cached_users.get(user_id)
     if not user_data:
         await interaction.followup.send(
             "❌ You are not registered. Please register first.", ephemeral=True
