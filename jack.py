@@ -137,6 +137,139 @@ PROJECT_KEYS = [
     "military_doctrine"
 ]
 
+class HelpView(discord.ui.View):
+    def __init__(self, user_id: str, is_gov: bool):
+        super().__init__(timeout=300)  # 5 minute timeout
+        self.user_id = user_id
+        self.is_gov = is_gov
+        self.current_category = 0
+        
+        # Define categories and commands
+        self.base_categories = [
+            {
+                "name": "📋 Basic Commands",
+                "commands": {
+                    "/register": "Register yourself to use the bot's features. The bot only works if you're registered.\nUsage: `/register nation_id: 680627`",
+                    "/nation_info": "Shows general information about a chosen person's nation.\nUsage: `/nation_info who: @sumnor_the_lazy`"
+                }
+            },
+            {
+                "name": "⚔️ Spy & Military",
+                "commands": {
+                    "/war_losses": "Get war details for your last few wars.\nUsage: `/war_losses nation_id: 680627, wars_count: 20`",
+                    "/see_report": "Find the warchest of a registered nation using their nation name.\nUsage: `/see_report nation: Neprito`",
+                    "/list_reports": "See a list of all nations that have been logged.\nUsage: `/list_reports`"
+                }
+            },
+            {
+                "name": "💰 EA Related",
+                "commands": {
+                    "/request_warchest": "Calculates needed materials for a warchest and requests them. You'll be pinged when approved.\nUsage: `/request_warchest percent: 50% or 100%`",
+                    "/request_city": "Calculates approximate cost to buy cities and optionally requests them.\nUsage: `/request_city current_city: 10, target_city: 15`\n**Note:** Larger requests have slight cost inflation",
+                    "/request_infra_grant": "Calculates approximate infra cost and optionally requests it.\nUsage: `/request_infra_cost current_infra: 10, target_infra: 1500, city_amount: 10`\n**Note:** Larger requests have slight cost inflation",
+                    "/request_project": "Calculates needed materials and money for projects and optionally requests it.\nUsage: `/request_project project: Moon Landing`",
+                    "/request_miscellaneous": "Request materials to make EA department's job easier.\nUsage: `/request_grant food: 18mil, uranium: 6k, reason: Production`",
+                    "/auto_resources_for_prod_req": "Add a resource request that repeats every x days.\nUsage: `/auto_resources_for_prod_req coal: 100 period: 7`",
+                    "/disable_auto_request": "Disable your automatic resource request.\nUsage: `/disable_auto_request`",
+                    "/auto_week_summary": "Get summary of all requests this week.\nUsage: `/auto_week_summary`"
+                }
+            }
+        ]
+        
+        # Government-only categories
+        self.gov_categories = [
+            {
+                "name": "🛡️ Government Commands",
+                "commands": {
+                    "/send_message_to_channels": "Send a message to chosen channels.\nUsage: `/send_message_to_channels channels: #channel message: Hello!`",
+                    "/dm_user": "Send a DM to a user in the server.\nUsage: `/dm_user who: @masteraced message: Hello there!`",
+                    "/create_ticket_message": "Create a customizable ticket message system.\nUsage: `/create_ticket_message message ticket_message: Press button title: Create Ticket`"
+                }
+            },
+            {
+                "name": "📊 Analytics",
+                "commands": {
+                    "/member_activity": "Get a pie chart showing member activity.\nUsage: `/member_activity`",
+                    "/res_in_m_for_a": "Get the worth of the Alliance and their members with a graph.\nUsage: `/res_in_m_for_a mode: Hourly, scale: Billions`",
+                    "/res_details_for_alliance": "Get exact numbers of resources and money + total of alliance members.\nUsage: `/res_details_for_alliance`",
+                    "/war_losses_alliance": "Get war details for the alliance.\nUsage: `/war_losses_alliance alliance_id: 10259, war_count: 150`"
+                }
+            },
+            {
+                "name": "⚙️ Server Settings",
+                "commands": {
+                    "/register_server_aa": "Register your server with the bot to enable alliance-wide features.\nUsage: `/register_server_aa`",
+                    "/set_setting": "Set your server's settings (Gov Role, etc). API key cannot be viewed publicly.\nUsage: `/set_setting key: GOV_ROLE value: High Gov`",
+                    "/get_setting": "Retrieve a specific setting from the server.\nUsage: `/get_setting key: GOV_ROLE`\n**Note:** API key is intentionally blocked",
+                    "/list_settings": "List all current settings for the server.\nUsage: `/list_settings`\n**Note:** API key will not be shown"
+                }
+            }
+        ]
+        
+        # Combine categories based on permissions
+        self.categories = self.base_categories.copy()
+        if self.is_gov:
+            self.categories.extend(self.gov_categories)
+            
+        self.update_buttons()
+    
+    def update_buttons(self):
+        # Clear existing buttons
+        self.clear_items()
+        
+        # Add navigation buttons
+        if len(self.categories) > 1:
+            self.add_item(self.previous_button)
+            self.add_item(self.next_button)
+    
+    @discord.ui.button(label="◀️ Previous", style=discord.ButtonStyle.secondary)
+    async def previous_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("❌ This help menu is not for you!", ephemeral=True)
+            return
+            
+        self.current_category = (self.current_category - 1) % len(self.categories)
+        embed = self.create_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    @discord.ui.button(label="Next ▶️", style=discord.ButtonStyle.secondary)
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("❌ This help menu is not for you!", ephemeral=True)
+            return
+            
+        self.current_category = (self.current_category + 1) % len(self.categories)
+        embed = self.create_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    def create_embed(self):
+        category = self.categories[self.current_category]
+        
+        embed = discord.Embed(
+            title=f"{category['name']}",
+            color=discord.Color.purple() if self.is_gov else discord.Color.blue(),
+            description="Here are the available commands in this category:"
+        )
+        
+        for command, description in category['commands'].items():
+            embed.add_field(
+                name=f"`{command}`",
+                value=description,
+                inline=False
+            )
+        
+        embed.set_footer(
+            text=f"Page {self.current_category + 1}/{len(self.categories)} • Brought to you by Sumnor",
+            icon_url="https://i.ibb.co/Kpsfc8Jm/jack.webp"
+        )
+        
+        return embed
+    
+    async def on_timeout(self):
+        # Disable all buttons when the view times out
+        for item in self.children:
+            item.disabled = True
+
 class NationInfoView(discord.ui.View):
     def __init__(self, nation_id, original_embed):
         super().__init__(timeout=None)
@@ -3951,7 +4084,7 @@ async def list_reports(interaction: discord.Interaction):
         print(f"Error in list_reports: {e}")
         await interaction.followup.send("❌ An error occurred while retrieving the nation list.")
 
-
+'''
 @bot.tree.command(name="raws_audits", description="Audit building and raw usage per nation")
 async def raws_audits(interaction: discord.Interaction, day: int):
     await interaction.response.defer(thinking=True)
@@ -3990,7 +4123,7 @@ async def raws_audits(interaction: discord.Interaction, day: int):
         if not nation_id:
             continue
 
-        cities_df = graphql_cities(nation_id)
+        cities_df = graphql_cities(nation_id, None, guild_id)
         if cities_df is None or cities_df.empty:
             output.write(f"❌ Nation ID {nation_id} - City data not found.\n\n")
             continue
@@ -4042,7 +4175,7 @@ async def raws_audits(interaction: discord.Interaction, day: int):
             for s in suffitient:
                 suffitient[s] += int(city.get(s, 0))
         
-        res = get_resources(nation_id, interaction)
+        res = get_resources(nation_id, None, guild_id)
         if not res:
             output.write(f"❌ Nation ID {nation_id} - Resource data not found.\n\n")
             continue
@@ -4134,14 +4267,14 @@ async def raws_audits(interaction: discord.Interaction, day: int):
         
         await asyncio.sleep(2.5)
 
-        '''batch_count += 1
+        batch_count += 1
         if batch_count == 30:
             await asyncio.sleep(60)
-            batch_count = 0'''
+            batch_count = 0
 
     output.seek(0)
     discord_file = discord.File(fp=output, filename="raws_audit.txt")
-    await interaction.followup.send("✅ Audit complete.", file=discord_file, view=RawsAuditView(output=output.getvalue(), audits=audits_by_nation))
+    await interaction.followup.send("✅ Audit complete.", file=discord_file, view=RawsAuditView(output=output.getvalue(), audits=audits_by_nation))'''
 
 @bot.tree.command(name="nation_info", description="Info on the chosen Nation")
 @app_commands.describe(
@@ -4984,225 +5117,30 @@ async def help(interaction: discord.Interaction):
     
     global cached_users  
     
-    guild_id = str(interaction.guild.id)
-    user_id = str(interaction.user.id)
-
     user_data = cached_users.get(user_id)
     if not user_data:
         await interaction.followup.send(
-            "❌ You are not registered. Please register first.", ephemeral=True
+            "❌ You are not registered. Please register first using `/register`.", ephemeral=True
         )
         return
     
     own_id = str(user_data.get("NationID", "")).strip()
-
     if not own_id:
-            await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
-            return
-    register_description = (
-        "Register yourself using this command to use the *many amazing* freatures of this bot, developed by **<@1148678095176474678>**\n"
-        "The command is /register nation_id: 680627\n"
-        "**Note:** The bot only works if you're registered\n"
-    )
-    warchest_desc = (
-        "Calculates the needed amount of materials for a warchest and requests those\n"
-        "Once your request was approved, it will inform you by pinging you\n"
-        "The command is /request_warchest percent: 50% or 100%\n"
-    )
-    war_losses_desc = (
-        "Get the war details for your last few wars\n"
-        "The command is /war_losses nation_id: 680627, wars_count: 20\n"
-    )
-    war_losses_alliance_desc = (
-        "Get the war details for the alliance\n"
-        "The command is /war_losses_alliance alliance_id: 10259, war_count: 150, money_more_detail: False\n"
-    )
-    res_in_m_desc = (
-        "Get the worth of the Alliance and their members with a graph\n"
-        "The command is /res_in_m_for_a mode: Hourly, scale: Billions\n "
-    )
-    res_detail_desc = (
-        "Get the exact number of resources and money + the total of the members of the alliance\n"
-        "The command is /res_details_for_alliance"
-    )
-    member_activity_desc = (
-        "Get a Pie Chart for the member activity\n"
-        "The command is /member_activity\n"
-    )
-    send_message_to_channels_desc = (
-        "Send a message to a few of you chosen channels\n"
-        "The command is /send_message_to_channels channels: #channel message: Pookie :heart:\n"
-    )
-    dm_user_desc = (
-        "Dm one user who is in the server\n"
-        "The command is /dm_user who: @masteraced message: Hello ~Pookie :heart:~\n"
-    )
-    my_nation_desc = (
-        "Shows some general information about the chosen person's nation\n"
-        "The command is /nation_info who: @sumnor_the_lazy\n"
-    )
-    request_grant_desc = (
-        "Requests the requested materials. This command is to make the EA departments job easier\n"
-        "The command is /request_grant food: 18mil, uranium: 6k, bauxite: 980, ..., reason: Resources for Production, ...\n"
-    )
-    request_city_desc = (
-        "Calculates the approximate cost to buy the requested cities and, if wanted, requests them\n"
-        "The command is /request_city current_city: 10, target_city: 15\n"
-        "**Note**: On bigger requests the cost inflates a bit\n"
-    )
-    request_infra_grant_desc = (
-        "Calculates the approximate cost of the wanted infra and, if wanted, requests them\n"
-        "The command is /request_infra_cost current_infra: 10, target_infra: 1500, city_amount: 10 or if you want it automatically calculated /request_infra_grant target_infra: 2000. This will calculate the cost to get all your cities to 2k infra\n"
-        "**Note**: On bigger requests the cost inflates a bit\n"
-    )
-    request_project_desc = (
-        "Calculates the needed materials and money to get the wanted project and, if wanted, requests it\n"
-        "The command is /request_project project: Moon Landing\n"
-    )
-    see_report_desc = (
-    "Find the warchest of a registered nation using their nation name\n"
-    "The command is /see_report nation: Neprito\n"
-    )
-
-    list_reports_desc = (
-        "See a list of all nations that have been logged\n"
-        "The command is /list_reports\n"
-    )
-
-    register_server_aa_desc = (
-        "Register your server with the bot to enable alliance-wide features\n"
-        "The command is /register_server_aa\n"
-    )
-
-    set_setting_desc = (
-        "Set your server's settings (Gov Role, etc). API key cannot be viewed publicly\n"
-        "The command is /set_setting key: GOV_ROLE value: High Gov\n"
-    )
-
-    get_setting_desc = (
-        "Retrieve a specific setting from the server\n"
-        "The command is /get_setting key: GOV_ROLE\n"
-        "**Note:** API key is intentionally blocked\n"
-    )
-
-    list_settings_desc = (
-        "List all current settings for the server\n"
-        "The command is /list_settings\n"
-        "**Note:** API key will not be shown\n"
-    )
-
-    auto_resources_for_prod_req_desc = (
-        "Add a resource request which will be requested every x days"
-        "The command is /auto_resources_for_prod_req coal: 100 period: 7 confirmation: Hypopothamus (yes, Hypopothamus)"
-    )
-
-    disable_auto_request_desc = (
-        "Disable your auto request"
-        "The command is /disable_auto_request"
-    )
-
-    auto_week_summary_desc = (
-        "Get the summary for all requests this week"
-        "The command is /auto_week_summary"
-    )
-
-
-
-
-
-    gov_msg = (
-    "\n***`/register`:***\n"
-    f"{register_description}"
-    "\n***`/request_warchest`:***\n"
-    f"{warchest_desc}"
-    "\n***`/war_losses`:***\n"
-    f"{war_losses_desc}"
-    "\n***`/war_losses_alliance`:***\n"
-    f"{war_losses_alliance_desc}"
-    "\n***`/res_in_m_for_a`:***\n"
-    f"{res_in_m_desc}"
-    "\n***`/res_details_for_alliance`:***\n"
-    f"{res_detail_desc}"
-    "\n***`/member_activity`:***\n"
-    f"{member_activity_desc}"
-    "\n***`/send_message_to_channels`:***\n"
-    f"{send_message_to_channels_desc}"
-    "\n***`/dm_user`:***\n"
-    f"{dm_user_desc}"
-    "\n***`/nation_info`:***\n"
-    f"{my_nation_desc}"
-    "\n***`/request_miscellaneous`:***\n"
-    f"{request_grant_desc}"
-    "\n***`/request_city`:***\n"
-    f"{request_city_desc}"
-    "\n***`/request_infra_grant`:***\n"
-    f"{request_infra_grant_desc}"
-    "\n***`/request_project`:***\n"
-    f"{request_project_desc}"
-    "\n***`/see_report`:***\n"
-    f"{see_report_desc}"
-    "\n***`/list_reports`:***\n"
-    f"{list_reports_desc}"
-    "\n***`/register_server_aa`:***\n"
-    f"{register_server_aa_desc}"
-    "\n***`/set_setting`:***\n"
-    f"{set_setting_desc}"
-    "\n***`/get_setting`:***\n"
-    f"{get_setting_desc}"
-    "\n***`/list_settings`:***\n"
-    f"{list_settings_desc}"
-    )
-    gov_mssg = discord.Embed(
-        title="List of the commands (including the government ones):",
-        color=discord.Color.purple(),
-        description=gov_msg
-    )
-    image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
-    gov_mssg.set_footer(text=f"Brought to you by Sumnor", icon_url=image_url)
-
-    norm_msg = (
-    "\n***`/register`:***\n"
-    f"{register_description}"
-    "\n***`/request_warchest`:***\n"
-    f"{warchest_desc}"
-    "\n***`/war_losses`:***\n"
-    f"{war_losses_desc}"
-    "\n***`/war_losses_alliance`:***\n"
-    f"{war_losses_alliance_desc}"
-    "\n***`/nation_info`:***\n"
-    f"{my_nation_desc}"
-    "\n***`/request_grant`:***\n"
-    f"{request_grant_desc}"
-    "\n***`/request_city`:***\n"
-    f"{request_city_desc}"
-    "\n***`/request_infra_grant`:***\n"
-    f"{request_infra_grant_desc}"
-    "\n***`/request_project`:***\n"
-    f"{request_project_desc}"
-    "\n***`/see_report`:***\n"
-    f"{see_report_desc}"
-    "\n***`/list_reports`:***\n"
-    f"{list_reports_desc}"
-    )
-
-    norm_mssg = discord.Embed(
-        title="List of the commands:",
-        color=discord.Color.blue(),
-        description=norm_msg
-    )
-    image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
-    norm_mssg.set_footer(text=f"Brought to you by Sumnor", icon_url=image_url)
+        await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
+        return
+    
+    # Check if user has government permissions
     async def is_high_power(interaction):
         GOV_ROLE = get_gov_role(interaction)
-        return (
-            any(role.name == GOV_ROLE for role in interaction.user.roles)
-        )
+        return any(role.name == GOV_ROLE for role in interaction.user.roles)
     
-    if not await is_high_power(interaction):
-        await interaction.followup.send(embed=norm_mssg)
-    else:
-        await interaction.followup.send(embed=gov_mssg)
-
+    is_gov = await is_high_power(interaction)
+    
+    # Create the view and initial embed
+    view = HelpView(user_id, is_gov)
+    embed = view.create_embed()
+    
+    await interaction.followup.send(embed=embed, view=view)
 
 @bot.tree.command(name="request_city", description="Calculate cost for upgrading from current city to target city")
 @app_commands.describe(current_cities="Your current number of cities", target_cities="Target number of cities")
