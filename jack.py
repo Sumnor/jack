@@ -2633,15 +2633,13 @@ async def register_server_aa(interaction: discord.Interaction):
         await interaction.followup.send(f"❌ Failed to create sheets: {e}", ephemeral=True)
 
 SETTING_CHOICES = [
-    app_commands.Choice(name="GRANT_REQUEST_CHANNEL_ID", value="GRANT_REQUEST_CHANNEL_ID"),
-    app_commands.Choice(name="WARN_CHANNEL", value="WARN_CHANNEL"),
+    app_commands.Choice(name="GRANT_REQUEST_CHANNEL_ID(optional)", value="GRANT_REQUEST_CHANNEL_ID"),
+    app_commands.Choice(name="WARN_CHANNEL(optional)", value="WARN_CHANNEL"),
     app_commands.Choice(name="GOV_ROLE", value="GOV_ROLE"),
     app_commands.Choice(name="API_KEY", value="API_KEY"),
-    app_commands.Choice(name="LOGS", value="LOGS"),
+    app_commands.Choice(name="LOGS(optional)", value="LOGS"),
     app_commands.Choice(name="MEMBER_ROLE", value="MEMBER_ROLE"),
     app_commands.Choice(name="COLOUR_BLOC", value="COLOUR_BLOC"),
-    app_commands.Choice(name="TICKET_CATEGORY", value="TICKET_CATEGORY"),
-    app_commands.Choice(name="TICKET_MESSAGE", value="TICKET_MESSAGE"),
     app_commands.Choice(name="AA_NAME", value="AA_NAME"),
 
 ]
