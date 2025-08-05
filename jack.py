@@ -5793,7 +5793,7 @@ async def create_ticket_message(interaction: discord.Interaction, embed_descript
         embed.set_footer(text=f"Posted by {interaction.user.display_name}")
         
         # Send the message first with a temporary view to get the message ID
-        veri = str(verify)
+        veri = str(verify.value)
         sent_message = await interaction.channel.send(embed=embed, view=TicketButtonView())
         
         # Update status
