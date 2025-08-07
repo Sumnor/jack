@@ -5411,7 +5411,12 @@ def calculate_infra_cost_for_range(start_infra: int, end_infra: int) -> float:
         (1600, 1700, 1_600_000),
         (1700, 1800, 1_800_000),
         (1800, 1900, 2_000_000),
-        (1900, 2000, 2_300_000)
+        (1900, 2000, 2_300_000),
+        (2000, 2100, 2_500_000),
+        (2100, 2200, 2_500_000),
+        (2200, 2200, 2_700_000),
+        (2300, 2400, 3_000_000),
+        (2400, 2500, 3_700_000)
     ]
     
     total_cost = 0.0
@@ -5437,7 +5442,7 @@ def calculate_total_infra_cost(start_infra: int, end_infra: int, num_cities: int
 
 @bot.tree.command(name="request_infra_cost", description="Calculate infrastructure upgrade cost (single city, all cities, or custom)")
 @app_commands.describe(
-    target_infra="Target infrastructure level (max 2000)",
+    target_infra="Target infrastructure level (max 2500)",
     current_infra="Your current infrastructure level (manual mode only)",
     city_amount="Number of cities to upgrade (manual mode only)",
     auto_calculate="Automatically fetch and calculate cost for all cities",
@@ -5454,7 +5459,7 @@ async def infra_upgrade_cost(
     await interaction.response.defer()
     user_id = str(interaction.user.id)
 
-    if target_infra > 2000:
+    if target_infra > 2500:
         await interaction.followup.send("❌ Target infrastructure above 2000 is not supported.(*** Personal Contribution by `@patrickrickrickpatrick` ***)")
         return
 
@@ -5476,7 +5481,6 @@ async def infra_upgrade_cost(
     except Exception as e:
         await interaction.followup.send(f"❌ Failed to access your data: {e}")
         return
-
     
     city_data = get_city_data(own_id, interaction)
     if not city_data:
