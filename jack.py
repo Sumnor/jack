@@ -1298,11 +1298,13 @@ def graphql_cities(nation_id, interaction=None, guild_id=None):
         print(f"Parsing Error: {e}")
         return None
 
-def graphql_request(nation_id, interaction=None, guild_id=None):
-    if not guild_id:
-        API_KEY = get_api_key_for_interaction(interaction)
-    if not interaction:
+def graphql_request(nation_id, interaction=None, guild_id=None, API_KEY=None):
+    if guild_id:
         API_KEY = get_api_key_for_guild(guild_id)
+    elif interaction:
+        API_KEY = get_api_key_for_interaction(interaction)
+    elif API_KEY:
+        API_KEY = API_KEY
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
 
     query = f"""
@@ -1482,8 +1484,8 @@ def get_resources(nation_id, interaction=None, guild_id=None):
         except IndexError:
             return None
 
-def get_general_data(nation_id, interaction):
-    df = graphql_request(nation_id, interaction)
+def get_general_data(nation_id, interaction=None, API_Key=None):
+    df = graphql_request(nation_id, interaction, None, API_Key)
     if df is not None:
         try:
             row = df[df["id"].astype(str) == str(nation_id)].iloc[0]
@@ -2471,6 +2473,8 @@ async def on_message(message: discord.Message):
 async def register(interaction: discord.Interaction, nation_id: str):
     await interaction.response.defer()
     user_id = interaction.user.id
+    data = get_general_data(API_KEY=os.getenv("Key"))
+    aa_name = str(data.get("alliance.name", None))
     user_data = cached_users.get(user_id)
     if user_data:
         await interaction.followup.send(
@@ -2555,9 +2559,9 @@ async def register(interaction: discord.Interaction, nation_id: str):
 
     # Save to global registration sheet
     try:
-        dummy_guild_id = "I'm too lazy to remove it from get_registration_sheet so this is a"
+        dummy_guild_id = "I'm too lazy to remove it from get_registration_sheet so this is a dummy"
         sheet = get_registration_sheet(dummy_guild_id)
-        sheet.append_row([interaction.user.name, user_id, nation_id])
+        sheet.append_row([interaction.user.name, user_id, nation_id, aa_name])
         print(f"📝 Added registration for {interaction.user.name} (ID: {user_id}) to global sheet")
     except Exception as e:
         await interaction.followup.send(f"❌ Failed to write registration: {e}")
