@@ -4852,7 +4852,7 @@ async def request_grant(
     try:
         global cached_users
         guild_id = str(interaction.guild.id)
-        user_data = cached_users.get(guild_id, {}).get(str(interaction.user.id))
+        user_data = cached_users.get(user_id)
 
         if not user_data:
             await interaction.followup.send("❌ You are not registered. Use `/register` first.")
