@@ -849,9 +849,8 @@ class BlueGuy(discord.ui.View):
         await interaction.message.edit(embed=embed, view=GrantView())
 
 class GrantView(View):
-    def __init__(self, guild_id):
+    def __init__(self):
         super().__init__(timeout=None)
-        self.guild_id = guild_id
 
     async def is_government_member(self, interaction):
         return (
