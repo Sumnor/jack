@@ -846,7 +846,7 @@ class BlueGuy(discord.ui.View):
         image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
         embed.set_footer(text="Brought to you by Sumnor", icon_url=image_url)
 
-        await interaction.message.edit(embed=embed, view=GrantView(self.guild_id))
+        await interaction.message.edit(embed=embed, view=GrantView())
 
 class GrantView(View):
     def __init__(self, guild_id):
@@ -911,7 +911,7 @@ class GrantView(View):
             image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
             embed.set_footer(text=f"Brought to you by Sumnor", icon_url=image_url)
 
-            new_view = GrantView(self.guild_id)
+            new_view = GrantView()
             new_view.remove_item(new_view.children[1]) 
 
             await interaction.message.edit(embed=embed, view=new_view)
@@ -1211,7 +1211,7 @@ class RawsAuditView(discord.ui.View):
             image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
             embed.set_footer(text="Brought to you by Sumnor", icon_url=image_url)
 
-            await channel.send(embed=embed, view=GrantView(guild_id))
+            await channel.send(embed=embed, view=GrantView())
 
         await interaction.followup.send(f"✅ Processed {color_emoji} requests.")
     
@@ -1925,7 +1925,7 @@ async def process_auto_requests():
                         image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
                         embed.set_footer(text="Brought to you by Sumnor", icon_url=image_url)
                         
-                        await channel.send(embed=embed, view=GrantView(guild.id))
+                        await channel.send(embed=embed, view=GrantView())
                         
                         await asyncio.to_thread(sheet.update_cell, i, col_index["LastRequested"] + 1, now.strftime("%Y-%m-%d %H:%M:%S"))
                         processed_count += 1
@@ -4801,7 +4801,7 @@ async def request_for_ing(
         image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
         embed.set_footer(text="Brought to you by Sumnor", icon_url=image_url)
 
-        await interaction.followup.send(embed=embed, view=GrantView(guild_id))
+        await interaction.followup.send(embed=embed, view=GrantView())
 
     except Exception as e:
         await interaction.followup.send(f"❌ An unexpected error occurred: {e}", ephemeral=True)
@@ -4912,7 +4912,7 @@ async def request_grant(
         embed.set_footer(text="Brought to you by Sumnor", icon_url=image_url)
         message = await interaction.followup.send("<@1390237054872322148> <@1388161354086617220>")
         await message.delete()
-        await interaction.followup.send(embed=embed, view=GrantView(guild_id))
+        await interaction.followup.send(embed=embed, view=GrantView())
 
     except Exception as e:
         await interaction.followup.send(f"❌ An unexpected error occurred: {e}", ephemeral=True)
@@ -5205,7 +5205,7 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
         )
         image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
         embed.set_footer(text=f"Brought to you by Sumnor", icon_url=image_url)
-        await interaction.followup.send(embed=embed, view=GrantView(guild_id))
+        await interaction.followup.send(embed=embed, view=GrantView())
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {e}")
 
