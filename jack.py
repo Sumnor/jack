@@ -362,15 +362,16 @@ class NationInfoView(discord.ui.View):
             grouped = {}
             for city in cities:
                 infra = city.get("infrastructure", 0)
+                id = city.get("id", 0)
                 build_signature = tuple((key, city.get(key, 0)) for key in BUILD_KEYS)
-                grouped.setdefault(build_signature, []).append((city["name"], infra))
+                grouped.setdefault(build_signature, []).append((city["name"], infra, id))
 
             blocks = []
 
             for build, city_list in grouped.items():
                 count = len(city_list)
                 header = f"🏙️ **{count}/{num_cities} have this build:**\n"
-                build_lines = [f"{name} (Infra: {infra})" for name, infra in city_list]
+                build_lines = [f"🔗 [{name} (Infra: {infra})](https://politicsandwar.com/city/id={id})" for name, infra, id in city_list]
 
                 build_dict = dict(build)
                 category_lines = []
@@ -791,7 +792,7 @@ class BlueGuy(discord.ui.View):
         print(presser)
         if presser != person:
             if presser not in ["1378012299507269692", "1148678095176474678"]:
-                await interaction.followup.send("No :wilted_rose:", ephemeral=True)
+                await interaction.followup.send(f"Only the requester (<@{person}> in this case) may press the button", ephemeral=True)
                 return
 
         embed = discord.Embed(title="Request Grant", color=discord.Color.green())
@@ -824,7 +825,7 @@ class BlueGuy(discord.ui.View):
             note = f"Note: {notes}"
 
         
-        description_lines = [f"**Nation:** {nation_name} (`{nation_id}`)", "**Request:**"]
+        description_lines = [f"**Nation:** 🔗 [{nation_name}](https://politicsandwar.com/nation/id={nation_id})", "**Request:**"]
         if materials:
             for name, amount in materials.items():
                 description_lines.append(f"{name}: {amount:,.0f}")
@@ -834,9 +835,11 @@ class BlueGuy(discord.ui.View):
         description_lines.append(f"\n**Requested by:** <@{presser}>")
         embed.description = "\n".join(description_lines)
 
-        
-        embed.add_field(name="Reason", value=reason, inline=False)
-        embed.add_field(name="Note", value=note, inline=False)
+        now = datetime.now()
+        unix_timestamp = int(now.timestamp())
+        embed.add_field(name="**Reason**", value=reason, inline=False)
+        embed.add_field(name="**Submited**", value=f"<t:{unix_timestamp}:R>", inline=False)
+        embed.add_field(name="**Note**", value=note, inline=False)
 
         
         image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
@@ -1037,12 +1040,13 @@ class TicketButtonView(View):
             reg_sheet = get_registration_sheet(guild_id)
             verify_config = get_verify_conf(message_id)
             verify = verify_config['verify']
+            print(verify)
             records = reg_sheet.get_all_records()
             user_row = next(
                 (r for r in records if str(r.get("DiscordID")) == str(interaction.user.id)),
                 None
             )
-            if verify == True:
+            if verify == "True":
                 if not user_row:
                     await interaction.followup.send("❌ You are not registered.", ephemeral=True)
                     return
@@ -1104,7 +1108,7 @@ class TicketButtonView(View):
                 GOV_ROLE: discord.PermissionOverwrite(view_channel=True),
             }
 
-            if verify == True:
+            if verify == "True":
                 channel_name = f"{city_count}︱{nation_name.replace(' ', '-').lower()}"
                 ticket_channel = await guild.create_text_channel(
                     name=channel_name,
@@ -4888,7 +4892,7 @@ async def request_grant(
             title="💰 Grant Request",
             color=discord.Color.gold(),
             description=(
-                f"**Nation:** {nation_name} (`{own_id}`)\n"
+                f"**Nation:** 🔗 [{nation_name}](https://politicsandwar.com/nation/id={own_id})\n"
                 f"**Requested by:** {interaction.user.mention}\n"
                 f"**Request:**\n{description_text}\n"
                 f"**Reason:** {reason.title()}\n"
@@ -5175,14 +5179,17 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
                 ephemeral=True
             )
             return
-
+        
+        now = datetime.now()
+        unix_timestamp = int(now.timestamp())
         embed = discord.Embed(
             title="💰 Grant Request",
             color=discord.Color.gold(),
             description=(
-                f"**Nation:** {nation_name} (`{own_id}`)\n"
+                f"**Nation:** 🔗 [{nation_name}](https://politicsandwar.com/nation/id={own_id})\n"
                 f"**Requested by:** {interaction.user.mention}\n"
                 f"**Request:**\n{description_text}\n"
+                f"**Submited:** <t:{unix_timestamp}:R>\n" 
                 f"**Reason:** Warchest\n"
                 f"**Note:** {note}\n"
             )
@@ -5235,12 +5242,13 @@ async def request_city(interaction: discord.Interaction, current_cities: int, ta
         global cached_users  
         
         guild_id = str(interaction.guild.id)
-        user_data = cached_users.get(guild_id, {}).get(str(interaction.user.id))  
-        
+
+        user_data = cached_users.get(user_id)
         if not user_data:
-            await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+            await interaction.followup.send(
+                "❌ You are not registered. Please register first.", ephemeral=True
+            )
             return
-        
         own_id = str(user_data.get("NationID", "")).strip()
     except Exception as e:
         print(f"Error checking registration: {e}")
@@ -5444,12 +5452,12 @@ async def infra_upgrade_cost(
     
     try:
         global cached_users  
-        
-        guild_id = str(interaction.guild.id)
-        user_data = cached_users.get(guild_id, {}).get(str(interaction.user.id))  
-        
+
+        user_data = cached_users.get(user_id)
         if not user_data:
-            await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+            await interaction.followup.send(
+                "❌ You are not registered. Please register first.", ephemeral=True
+            )
             return
         
         own_id = str(user_data.get("NationID", "")).strip()
@@ -5717,10 +5725,12 @@ async def request_project(interaction: Interaction, project_name: str, tech_adva
         global cached_users  
         
         guild_id = str(interaction.guild.id)
-        user_data = cached_users.get(guild_id, {}).get(str(interaction.user.id))  
-        
+
+        user_data = cached_users.get(user_id)
         if not user_data:
-            await interaction.followup.send("❌ You are not registered. Use `/register` first.")
+            await interaction.followup.send(
+                "❌ You are not registered. Please register first.", ephemeral=True
+            )
             return
         
         own_id = str(user_data.get("NationID", "")).strip()
@@ -5748,7 +5758,7 @@ async def request_project(interaction: Interaction, project_name: str, tech_adva
         )
 
         embed.description = (
-            f"**Nation:** {nation_name} (`{own_id}`)\n"
+            f"**Nation:** 🔗 [{nation_name}](https://politicsandwar.com/nation/id={own_id})\n"
             f"**Request:**\n" +
             "\n".join([f"{mat}: {amount:,.0f}" for mat, amount in mats.items()]) +
             f"\n\n**Requested by:** {interaction.user.mention}\n"
