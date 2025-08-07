@@ -1301,10 +1301,13 @@ def graphql_cities(nation_id, interaction=None, guild_id=None):
 def graphql_request(nation_id, interaction=None, guild_id=None, API_KEY=None):
     if guild_id:
         API_KEY = get_api_key_for_guild(guild_id)
+        print("1")
     elif interaction:
         API_KEY = get_api_key_for_interaction(interaction)
+        print("2")
     elif API_KEY:
         API_KEY = API_KEY
+        print("3")
     GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
 
     query = f"""
