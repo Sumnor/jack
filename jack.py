@@ -1484,8 +1484,8 @@ def get_resources(nation_id, interaction=None, guild_id=None):
         except IndexError:
             return None
 
-def get_general_data(nation_id, interaction=None, API_Key=None):
-    df = graphql_request(nation_id, interaction, None, API_Key)
+def get_general_data(nation_id, interaction=None, API_KEY=None):
+    df = graphql_request(nation_id, interaction, None, API_KEY)
     if df is not None:
         try:
             row = df[df["id"].astype(str) == str(nation_id)].iloc[0]
