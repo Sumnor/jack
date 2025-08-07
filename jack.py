@@ -853,8 +853,9 @@ class GrantView(View):
         super().__init__(timeout=None)
 
     async def is_government_member(self, interaction):
+        BANKER = get_banking_role(interaction)
         return (
-            any(role.name == "Banker" for role in interaction.user.roles)
+            any(role.name == BANKER for role in interaction.user.roles)
             or str(interaction.user.id) == "1148678095176474678"
         )
 
@@ -1635,6 +1636,8 @@ def get_auto_requests_sheet(guild_id):
     client = get_client()
     return client.open(f"{guild_id}_AutoRequests").sheet1  
 
+def get_banking_role(interaction: discord.Interaction):
+    return get_settings_value("BANKING_ROLE", interaction.guild.id)
 
 def get_gov_role(interaction: discord.Interaction):
     return get_settings_value("GOV_ROLE", interaction.guild.id)
@@ -2646,6 +2649,7 @@ SETTING_CHOICES = [
     app_commands.Choice(name="MEMBER_ROLE", value="MEMBER_ROLE"),
     app_commands.Choice(name="COLOUR_BLOC", value="COLOUR_BLOC"),
     app_commands.Choice(name="AA_NAME", value="AA_NAME"),
+    app_commands.Choice(name="BANKING_ROLE", value="BANKING_ROLE"),
 
 ]
 
@@ -5014,14 +5018,6 @@ async def warn_maint(interaction: discord.Interaction, time: str):
 percent_list = [
     app_commands.Choice(name="50%", value="50%"),
     app_commands.Choice(name="100%", value="100%")
-]
-reasons_for_grant = [
-    app_commands.Choice(name="Warchest", value="warchest"),
-    app_commands.Choice(name="Rebuilding Stage 1", value="rebuilding_stage_1"),
-    app_commands.Choice(name="Rebuilding Stage 2", value="rebuilding_stage_2"),
-    app_commands.Choice(name="Rebuilding Stage 3", value="rebuilding_stage_3"),
-    app_commands.Choice(name="Rebuilding Stage 4", value="rebuilding_stage_4"),
-    app_commands.Choice(name="Project", value="project"),
 ]
 
 @bot.tree.command(name="request_warchest", description="Request a  grant")
