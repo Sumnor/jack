@@ -682,7 +682,7 @@ class BackButton(discord.ui.Button):
         self.parent_view.add_item(self.parent_view.builds_button)
         self.parent_view.add_item(self.parent_view.projects_button)
         self.parent_view.add_item(self.parent_view.audit_button)
-        self.parent_view.add_item(self.parent_view.mmr_button)
+        self.parent_view.add_item(self.parent_view.mmmr_button)
         self.parent_view.add_item(CloseButton())
 
         await interaction.response.edit_message(embed=self.original_embed, view=self.parent_view)
@@ -778,10 +778,11 @@ class MMRView(View):
 
 
 class BlueGuy(discord.ui.View):
-    def __init__(self, category=None, data=None):
+    def __init__(self, category=None, data=None, guild_id=None):
         super().__init__(timeout=None)
         self.category = category
         self.data = data or {}
+        self.guild_id = guild_id
 
     @discord.ui.button(label="Request Grant", style=discord.ButtonStyle.green, custom_id="req_money_needed")
     async def send_request(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -845,11 +846,12 @@ class BlueGuy(discord.ui.View):
         image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
         embed.set_footer(text="Brought to you by Sumnor", icon_url=image_url)
 
-        await interaction.message.edit(embed=embed, view=GrantView())
+        await interaction.message.edit(embed=embed, view=GrantView(self.guild_id))
 
 class GrantView(View):
-    def __init__(self):
+    def __init__(self, guild_id):
         super().__init__(timeout=None)
+        self.guild_id = guild_id
 
     async def is_government_member(self, interaction):
         return (
@@ -909,7 +911,7 @@ class GrantView(View):
             image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
             embed.set_footer(text=f"Brought to you by Sumnor", icon_url=image_url)
 
-            new_view = GrantView()
+            new_view = GrantView(self.guild_id)
             new_view.remove_item(new_view.children[1]) 
 
             await interaction.message.edit(embed=embed, view=new_view)
@@ -1209,7 +1211,7 @@ class RawsAuditView(discord.ui.View):
             image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
             embed.set_footer(text="Brought to you by Sumnor", icon_url=image_url)
 
-            await channel.send(embed=embed, view=GrantView())
+            await channel.send(embed=embed, view=GrantView(guild_id))
 
         await interaction.followup.send(f"✅ Processed {color_emoji} requests.")
     
@@ -1923,7 +1925,7 @@ async def process_auto_requests():
                         image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
                         embed.set_footer(text="Brought to you by Sumnor", icon_url=image_url)
                         
-                        await channel.send(embed=embed, view=GrantView())
+                        await channel.send(embed=embed, view=GrantView(guild.id))
                         
                         await asyncio.to_thread(sheet.update_cell, i, col_index["LastRequested"] + 1, now.strftime("%Y-%m-%d %H:%M:%S"))
                         processed_count += 1
@@ -4734,6 +4736,7 @@ async def request_for_ing(
 ):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
+    guild_id = str(interaction.guild.id)
 
     try:
         if not screenshot.content_type.startswith("image/"):
@@ -4779,14 +4782,17 @@ async def request_for_ing(
             for resource, amount in requested_resources.items()
         ]
         description_text = "\n".join(formatted_lines)
+        now = datetime.now()
+        unix_timestamp = int(now.timestamp())
 
         embed = discord.Embed(
             title="💰 Grant Request (ING)",
             color=discord.Color.gold(),
             description=(
-                f"**Nation:** {nation_name} (`{nation_id}`)\n"
+                f"**Nation:** 🔗 [{nation_name}](https://politicsandwar.com/nation/id={nation_id})\n"
                 f"**Requested by:** {interaction.user.mention}\n"
-                f"**Request:**\n{description_text}\n"
+                f"**Request:**\n{description_text}\n\n"
+                f"**Submited:** <t:{unix_timestamp}:R>\n"
                 f"**Reason:** Player support (with screenshot)\n"
                 f"**Note:** {note}\n"
             )
@@ -4795,7 +4801,7 @@ async def request_for_ing(
         image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
         embed.set_footer(text="Brought to you by Sumnor", icon_url=image_url)
 
-        await interaction.followup.send(embed=embed, view=GrantView())
+        await interaction.followup.send(embed=embed, view=GrantView(guild_id))
 
     except Exception as e:
         await interaction.followup.send(f"❌ An unexpected error occurred: {e}", ephemeral=True)
@@ -4887,6 +4893,8 @@ async def request_grant(
             for resource, amount in requested_resources.items()
         ]
         description_text = "\n".join(formatted_lines)
+        now = datetime.now()
+        unix_timestamp = int(now.timestamp())
 
         embed = discord.Embed(
             title="💰 Grant Request",
@@ -4894,7 +4902,8 @@ async def request_grant(
             description=(
                 f"**Nation:** 🔗 [{nation_name}](https://politicsandwar.com/nation/id={own_id})\n"
                 f"**Requested by:** {interaction.user.mention}\n"
-                f"**Request:**\n{description_text}\n"
+                f"**Request:**\n{description_text}\n\n"
+                f"**Submited:** <t:{unix_timestamp}:R>\n"
                 f"**Reason:** {reason.title()}\n"
                 f"**Note:** {note}\n"
             )
@@ -4903,7 +4912,7 @@ async def request_grant(
         embed.set_footer(text="Brought to you by Sumnor", icon_url=image_url)
         message = await interaction.followup.send("<@1390237054872322148> <@1388161354086617220>")
         await message.delete()
-        await interaction.followup.send(embed=embed, view=GrantView())
+        await interaction.followup.send(embed=embed, view=GrantView(guild_id))
 
     except Exception as e:
         await interaction.followup.send(f"❌ An unexpected error occurred: {e}", ephemeral=True)
@@ -5104,15 +5113,15 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
         
         percent_value = percent.value.strip().lower()
         if percent_value in ["50", "50%"]:
-            nr_a = 325
-            nr_a_f = 1500
+            nr_a = 250
+            nr_a_f = 2500
             nr_a_m = 500000
-            nr_a_u = 20
+            nr_a_u = 25
         else:
-            nr_a = 750
-            nr_a_f = 3000
+            nr_a = 500
+            nr_a_f = 5000
             nr_a_m = 1000000
-            nr_a_u = 40
+            nr_a_u = 50
 
         
         nr_a_minus = city * nr_a
@@ -5188,7 +5197,7 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
             description=(
                 f"**Nation:** 🔗 [{nation_name}](https://politicsandwar.com/nation/id={own_id})\n"
                 f"**Requested by:** {interaction.user.mention}\n"
-                f"**Request:**\n{description_text}\n"
+                f"**Request:**\n{description_text}\n\n"
                 f"**Submited:** <t:{unix_timestamp}:R>\n" 
                 f"**Reason:** Warchest\n"
                 f"**Note:** {note}\n"
@@ -5196,7 +5205,7 @@ async def warchest(interaction: discord.Interaction, percent: app_commands.Choic
         )
         image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
         embed.set_footer(text=f"Brought to you by Sumnor", icon_url=image_url)
-        await interaction.followup.send(embed=embed, view=GrantView())
+        await interaction.followup.send(embed=embed, view=GrantView(guild_id))
     except Exception as e:
         await interaction.followup.send(f"❌ Error: {e}")
 
@@ -5341,8 +5350,8 @@ async def request_city(interaction: discord.Interaction, current_cities: int, ta
             "from": current_cities,
             "city_num": target_cities,
             "total_cost": total_cost,
-            "person": user_id
-        })
+            "person": user_id,
+        }, guild_id=guild_id)
         
                     )
 
@@ -5492,6 +5501,7 @@ async def infra_upgrade_cost(
         if cost > 900_000:
             cost = math.ceil(cost / 10_000) * 10_000
         user_id = interaction.user.id
+        guild_id = interaction.guild.id
         data = {
             "nation_name": nation_name,
             "nation_id": nation_id,
@@ -5510,7 +5520,7 @@ async def infra_upgrade_cost(
         embed.set_footer(text="Brought to you by Sumnor\nPersonal Contribution by <@1026284133481189388>", icon_url="https://i.ibb.co/Kpsfc8Jm/jack.webp")
         await interaction.followup.send(
             embed=embed,
-            view=BlueGuy(category="infra", data=data)
+            view=BlueGuy(category="infra", data=data, guild_id=guild_id)
         )
         return
 
@@ -5533,6 +5543,7 @@ async def infra_upgrade_cost(
             await interaction.followup.send("✅ All cities are already at or above the target infrastructure.")
             return
         user_id = interaction.user.id
+        guild_id = interaction.guild_id
         rounded_total_cost = int(math.ceil(total_cost / 1_000_000.0)) * 1_000_000
         data = {
             "nation_name": nation_name,
@@ -5552,7 +5563,7 @@ async def infra_upgrade_cost(
         embed.set_footer(text="Brought to you by Sumnor\nPersonal Contribution by @patrickrickrickpatrick", icon_url="https://i.ibb.co/Kpsfc8Jm/jack.webp")
         await interaction.followup.send(
             embed=embed,
-            view=BlueGuy(category="infra", data=data)
+            view=BlueGuy(category="infra", data=data, guild_id=guild_id)
         )
         return
 
@@ -5566,6 +5577,7 @@ async def infra_upgrade_cost(
         return
 
     total_cost = calculate_total_infra_cost(current_infra, target_infra, city_amount)
+    guild_id = interaction.guild.id
     if total_cost > 900_000:
         rounded_total_cost = math.ceil(total_cost / 100_000) * 100_000
         
@@ -5586,7 +5598,7 @@ async def infra_upgrade_cost(
         description=f"From `{current_infra}` to `{target_infra}` for `{city_amount}` city(ies)\nEstimated Cost: **${total_cost:,.0f}**"
     )
     embed.set_footer(text="Brought to you by Sumnor", icon_url="https://i.ibb.co/Kpsfc8Jm/jack.webp")
-    await interaction.followup.send(embed=embed, view=BlueGuy(category="infra", data=data))
+    await interaction.followup.send(embed=embed, view=BlueGuy(category="infra", data=data, guild_id=guild_id))
 
 
 list_of_em = [
@@ -5766,10 +5778,11 @@ async def request_project(interaction: Interaction, project_name: str, tech_adva
             f"**Note:** {note}\n" 
         )
         user_id = interaction.user.id
+        guild_id = interaction.guild.id
 
         await interaction.followup.send(
             embed=embed,
-            view=BlueGuy(category="project", data={"nation_name": nation_name, "nation_id": own_id, "project_name": project_name, "materials": mats, "person": user_id, "note": note})
+            view=BlueGuy(category="project", data={"nation_name": nation_name, "nation_id": own_id, "project_name": project_name, "materials": mats, "person": user_id, "note": note}, guild_id=guild_id)
         )
     else:
         await interaction.followup.send("❌ Project not found.")
