@@ -1134,7 +1134,7 @@ class TicketButtonView(View):
 
             if welcome_message:
                 await ticket_channel.send(f"{welcome_message}\n ||@everyone||")
-            if verify == True:
+            if verify == "True":
                 await ticket_channel.send(f"NATION LINK: https://politicsandwar.com/nation/id={nation_id}")
             await interaction.followup.send(
                 f"✅ Ticket created: {ticket_channel.mention}", ephemeral=True
