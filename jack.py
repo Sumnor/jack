@@ -2473,7 +2473,7 @@ async def on_message(message: discord.Message):
 async def register(interaction: discord.Interaction, nation_id: str):
     await interaction.response.defer()
     user_id = interaction.user.id
-    data = get_general_data(None, API_KEY=os.getenv("Key"))
+    data = get_general_data(nation_id, None, API_KEY=os.getenv("Key"))
     aa_name = str(data.get("alliance.name", None))
     user_data = cached_users.get(user_id)
     if user_data:
