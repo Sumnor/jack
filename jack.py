@@ -4079,6 +4079,17 @@ async def register_manual(interaction: discord.Interaction, nation_id: str, disc
 @bot.tree.command(name="see_report", description="See the WC of other nations (may be wrong, idk nor care)")
 async def see_report(interaction: discord.Interaction, nation: str):
     await interaction.response.defer(thinking=True)
+    MEMBER_ROLE = get_member_role(interaction)
+    # Custom permission check
+    async def is_banker(interaction):
+        return (
+            any(role.name == MEMBER_ROLE for role in interaction.user.roles)
+            or str(interaction.user.id) == "1148678095176474678"
+        )
+
+    if not await is_banker(interaction):
+        await interaction.followup.send("❌ You need to be a Member to use this command")
+        return
 
     try:
         guild_id = str(interaction.guild.id)
