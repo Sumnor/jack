@@ -2349,7 +2349,7 @@ async def on_message(message: discord.Message):
         try:
 
             # 🔑 Get prices with guild context
-            prices = get_prices(guild_id=guild_id)  # <-- this assumes your function accepts it
+            prices = get_prices()  # <-- this assumes your function accepts it
 
             resource_prices = {
                 item["resource"]: float(item["average_price"])
@@ -2946,7 +2946,7 @@ async def auto_week_summary(interaction: discord.Interaction):
         print(f"Error in /auto_week_summary: {e}")
         await interaction.followup.send("❌ Error generating summary.", ephemeral=True)
 
-def get_prices(guild_id):
+def get_prices():
     API_KEY = os.getenv("API_KEY")
     if not API_KEY:
         raise ValueError("API key not found for this guild.")
@@ -4084,7 +4084,7 @@ async def see_report(interaction: discord.Interaction, nation: str):
         guild_id = str(interaction.guild.id)
         sheet = get_sheet_s("Nation WC")
         rows = sheet.get_all_records()
-        prices = get_prices(guild_id)
+        prices = get_prices()
         
         
         resource_prices = {
