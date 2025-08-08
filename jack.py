@@ -2338,7 +2338,7 @@ async def on_message(message: discord.Message):
 
     match = intel_pattern.search(message.content)
     if match:
-        await message.add_reaction("<:traumacat:1383500525189861517>")
+        await message.add_reaction("✅")
 
         nation = match.group("nation")
         resources = {
