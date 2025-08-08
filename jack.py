@@ -2950,6 +2950,7 @@ async def auto_week_summary(interaction: discord.Interaction):
 
 def get_prices(guild_id):
     API_KEY = os.getenv(API_KEY)
+    print(API_KEY)
     if not API_KEY:
         raise ValueError("API key not found for this guild.")
 
