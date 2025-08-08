@@ -2347,8 +2347,6 @@ async def on_message(message: discord.Message):
         }
 
         try:
-            # Get guild ID if message is in a guild
-            guild_id = message.guild.id if message.guild else None
 
             # 🔑 Get prices with guild context
             prices = get_prices(guild_id=guild_id)  # <-- this assumes your function accepts it
@@ -2949,9 +2947,7 @@ async def auto_week_summary(interaction: discord.Interaction):
         await interaction.followup.send("❌ Error generating summary.", ephemeral=True)
 
 def get_prices(guild_id):
-    API_KEY = "kys"
-    API_KEY = os.getenv(API_KEY)
-    print(API_KEY)
+    API_KEY = os.getenv("API_KEY")
     if not API_KEY:
         raise ValueError("API key not found for this guild.")
 
