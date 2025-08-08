@@ -2949,7 +2949,7 @@ async def auto_week_summary(interaction: discord.Interaction):
         await interaction.followup.send("❌ Error generating summary.", ephemeral=True)
 
 def get_prices(guild_id):
-    API_KEY = get_api_key_for_guild(guild_id)
+    API_KEY = os.getenv(API_KEY)
     if not API_KEY:
         raise ValueError("API key not found for this guild.")
 
