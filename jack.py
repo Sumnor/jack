@@ -1102,6 +1102,8 @@ class TicketButtonView(View):
             
             role_name = get_gov_role(interaction)
             GOV_ROLE = discord.utils.get(guild.roles, name=role_name)
+            if not GOV_ROLE:
+                return await interaction.followup.send("Define a GOV_ROLE using `/set_setting` first")
 
             overwrites = {
                 guild.default_role: discord.PermissionOverwrite(view_channel=False),
@@ -5807,7 +5809,7 @@ tof = [
     app_commands.Choice(name="False", value="False")
 ]
 
-@bot.tree.command(name="create_ticket_message", description="Post a ticket embed in this channel")
+@bot.tree.command(name="create_ticket_message", description="Post a ticket embed in this channel. (\\n for enter key)")
 @app_commands.describe(
     embed_description="Description text for the ticket embed",
     embed_title="Title for the ticket embed", 
@@ -5818,12 +5820,14 @@ tof = [
 async def create_ticket_message(interaction: discord.Interaction, embed_description: str, embed_title: str, welcome_message: str, category: discord.CategoryChannel, verify: app_commands.Choice[str]):
     # Respond IMMEDIATELY - within 3 seconds
     await interaction.response.send_message("⏳ Creating ticket message...", ephemeral=True)
+    embed_description_decrypt = embed_description.replace("\\n","\n")
+    welcome_message_decrypt = welcome_message.replace("\\n","\n")
     
     try:
         # Create fully custom embed
         embed = discord.Embed(
             title=embed_title,
-            description=embed_description,
+            description=embed_description_decrypt,
             color=discord.Color.blurple()
         )
         embed.set_footer(text=f"Posted by {interaction.user.display_name}")
@@ -5837,7 +5841,7 @@ async def create_ticket_message(interaction: discord.Interaction, embed_descript
         
         # Save the configuration to the sheet (this is the slow part)
         try:
-            save_ticket_config(sent_message.id, welcome_message, category.id, veri)
+            save_ticket_config(sent_message.id, welcome_message_decrypt, category.id, veri)
             
             # Update the view with the message ID for future use
             view_with_id = TicketButtonView(message_id=sent_message.id)
