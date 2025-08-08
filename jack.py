@@ -2401,7 +2401,7 @@ async def on_message(message: discord.Message):
                     await bot.process_commands(message)
                     return
 
-                sheet.update(f"A{row_index}:N{row_index}", [update_row])
+                sheet.update([update_row], f"A{row_index}:N{row_index}")
             else:
                 sheet.append_row(update_row)
 
