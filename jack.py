@@ -1033,7 +1033,7 @@ class TicketButtonView(View):
         self.message_id = message_id
 
     @button(label="🎟️ Open Ticket", style=ButtonStyle.primary, custom_id="ticket_open")
-    async def open_ticket(self, interaction: Interaction, button: Button):
+    async def open_ticket(self, interaction: discord.Interaction, button: Button):
         await interaction.response.defer(ephemeral=True)
         try:
             
