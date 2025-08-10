@@ -1010,7 +1010,7 @@ def get_ticket_config(message_id: int) -> Optional[dict]:
         if str(row["message_id"]) == str(message_id):
             return {
                 'embed_description': row["message"],  # This is the embed description
-                'category_id': int(row["category"]) if row["category"] else Non
+                'category_id': int(row["category"]) if row["category"] else None
             }
     return None
 
