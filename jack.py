@@ -2665,8 +2665,21 @@ SETTING_CHOICES = [
 @app_commands.choices(key=SETTING_CHOICES)
 async def set_setting(interaction: discord.Interaction, key: app_commands.Choice[str], value: str):
     await interaction.response.defer(ephemeral=True)
-    value = value.strip().replace("<#", "").replace(">", "")
-    value = value.strip().replace("<@&", "").replace(">", "")
+    raw_value = value.strip()
+
+    # Role mention pattern
+    if raw_value.startswith("<@&") and raw_value.endswith(">"):
+        role_id = int(raw_value.replace("<@&", "").replace(">", ""))
+        role = interaction.guild.get_role(role_id)
+        if role:
+            value = role.name
+        else:
+            await interaction.followup.send(f"❌ Could not find role with ID `{role_id}`.", ephemeral=True)
+            return
+
+    # Channel mention pattern
+    elif raw_value.startswith("<#") and raw_value.endswith(">"):
+        value = raw_value.replace("<#", "").replace(">", "")
 
     guild = interaction.guild
     guild_id = interaction.guild_id
