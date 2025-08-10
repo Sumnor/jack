@@ -2665,6 +2665,8 @@ SETTING_CHOICES = [
 @app_commands.choices(key=SETTING_CHOICES)
 async def set_setting(interaction: discord.Interaction, key: app_commands.Choice[str], value: str):
     await interaction.response.defer(ephemeral=True)
+    value = value.strip().replace("<#", "").replace(">", "")
+    value = value.strip().replace("<@&", "").replace(">", "")
 
     guild = interaction.guild
     guild_id = interaction.guild_id
@@ -2677,7 +2679,7 @@ async def set_setting(interaction: discord.Interaction, key: app_commands.Choice
 
     if gov_role_id is None:
         set_server_setting(guild_id, key.value, value)
-        await interaction.followup.send(f"✅ GOV_ROLE set to `{value}`.", ephemeral=True)
+        await interaction.followup.send(f"✅ {key.value} set to `{value}`.", ephemeral=True)
         return
 
     if not any(role.name == gov_role_id for role in member.roles):
