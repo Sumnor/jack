@@ -4434,13 +4434,20 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member, exte
 
         
         guild_id = str(interaction.guild.id)
-        user_id = str(interaction.user.id)
+        target_id = str(who.id)
         user_id = str(interaction.user.id)
     
         user_data = cached_users.get(user_id)
         if not user_data:
             await interaction.followup.send(
                 "❌ You are not registered. Please register first.", ephemeral=True
+            )
+            return
+
+        user_data = cached_users.get(target_id)
+        if not user_data:
+            await interaction.followup.send(
+                "❌ Your target is not registered", ephemeral=True
             )
             return
             
