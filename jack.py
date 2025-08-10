@@ -1490,7 +1490,10 @@ def get_resources(nation_id, interaction=None, guild_id=None):
             return None
 
 def get_general_data(nation_id, interaction=None, API_KEY=None):
-    df = graphql_request(nation_id, interaction, None, API_KEY)
+    if not API_KEY:
+        df = graphql_request(nation_id, interaction)
+    if not interaction:
+        df = graphql_request(nation_id, None, None, API_KEY)
     if df is not None:
         try:
             row = df[df["id"].astype(str) == str(nation_id)].iloc[0]
