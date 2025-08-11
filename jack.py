@@ -3595,11 +3595,6 @@ async def run_check_slash(interaction: discord.Interaction):
     await interaction.response.defer()
     guild_id = str(interaction.guild.id)
 
-    guild_id = str(interaction.guild.id)
-    if guild_id not in cached_users:
-        await interaction.send("No cached users found for this server.")
-        return
-
     try:
         sheet = get_registration_sheet(guild_id)
         records = sheet.get_all_records()
