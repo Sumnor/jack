@@ -1858,7 +1858,7 @@ async def on_guild_join(guild):
     
     embed.add_field(
         name="🚀 Getting Started", 
-        value="Use `!help` to see all available commands", 
+        value="Use `/help` to see all available commands", 
         inline=False
     )
     
