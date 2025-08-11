@@ -1865,9 +1865,9 @@ async def on_guild_join(guild):
     embed.add_field(
         name="⚙️ Setup", 
         value=(
-            "Run the `/register_server_aa` command (If you already did so once, don't do it again)\n"
-            "Using `/set_setting` set the different settings like API KEY, Channels, etc\n"
-            "Register yourself using `/register` and enjoy the bot"
+            "- Run the `/register_server_aa` command (If you already did so once, don't do it again)\n"
+            "- Using `/set_setting` set the different settings like API KEY, Channels, etc\n"
+            "- Register yourself using `/register` and enjoy the bot"
         ), 
         inline=False
     )
