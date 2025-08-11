@@ -1847,6 +1847,97 @@ def get_grant_channel(guild_id):
         print(f"❌ Error fetching grant channel for guild {guild_id}: {e}")
         return None
 
+@bot.event
+async def on_guild_join(guild):
+    
+    embed = discord.Embed(
+        title="🎉 Thanks for adding me!",
+        description=f"Hello **{guild.name}**! I'm ready to help your server.",
+        color=0x00ff00 
+    )
+    
+    embed.add_field(
+        name="🚀 Getting Started", 
+        value="Use `!help` to see all available commands", 
+        inline=False
+    )
+    
+    embed.add_field(
+        name="⚙️ Setup", 
+        value=(
+            "Run the `/register_server_aa` command (If you already did so once, don't do it again)\n"
+            "Using `/set_setting` set the different settings like API KEY, Channels, etc\n"
+            "Register yourself using `/register` and enjoy the bot"
+        ), 
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🔗 Support", 
+        value="Need help? Join the discord server: [INTRA](https://discord.gg/37MAfenruR)", 
+        inline=False
+    )
+    
+    embed.set_footer(
+        text=f"Joined {guild.name} • {len(guild.members)} members",
+        icon_url=bot.user.avatar.url if bot.user.avatar else None
+    )
+    
+    embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
+    
+    channel = None
+    
+    channel_names = ['general', 'welcome', 'main', 'chat', 'lobby']
+    
+    for name in channel_names:
+        channel = discord.utils.get(guild.text_channels, name=name)
+        if channel and channel.permissions_for(guild.me).send_messages:
+            break
+    
+    if not channel:
+        for text_channel in guild.text_channels:
+            if text_channel.permissions_for(guild.me).send_messages:
+                channel = text_channel
+                break
+    
+    if not channel and guild.system_channel:
+        if guild.system_channel.permissions_for(guild.me).send_messages:
+            channel = guild.system_channel
+
+    if channel:
+        try:
+            await channel.send(embed=embed)
+            print(f"Sent welcome message to {guild.name} in #{channel.name}")
+        except discord.Forbidden:
+            print(f"No permission to send message in {guild.name}")
+        except Exception as e:
+            print(f"Error sending welcome message to {guild.name}: {e}")
+    else:
+        print(f"Could not find a suitable channel in {guild.name}")
+    
+    try:
+        owner_embed = discord.Embed(
+            title="🎉 Bot Added Successfully!",
+            description=f"Thank you for adding me to **{guild.name}**!",
+            color=0x0099ff
+        )
+        
+        owner_embed.add_field(
+            name="📋 Quick Setup Tips",
+            value="• Make sure I have `Send Messages` and `Embed Links` permissions\n"
+                  "• Use `/help` to see all commands\n"
+                  "• Check out the setup guide in the discord message",
+            inline=False
+        )
+        
+        await guild.owner.send(embed=owner_embed)
+        print(f"Sent DM to owner of {guild.name}")
+        
+    except discord.Forbidden:
+        print(f"Could not DM owner of {guild.name}")
+    except Exception as e:
+        print(f"Error DMing owner of {guild.name}: {e}")
+
 @tasks.loop(hours=1)
 async def process_auto_requests():
     REASON_FOR_GRANT = "Resources for Production (Auto)"
