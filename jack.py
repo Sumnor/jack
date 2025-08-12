@@ -4714,7 +4714,7 @@ async def auto_resources_for_prod_req(
         )
         return
 
-    '''try:
+    try:
         time_period_int = int(time_period.strip())
         f time_period_int < 1:
             raise ValueError
@@ -4722,7 +4722,7 @@ async def auto_resources_for_prod_req(
         await interaction.followup.send(
             "❌ The minimum allowed time period is 1 day.", ephemeral=True
         )
-        return'''
+        return
 
     sheet = get_auto_requests_sheet(guild_id)
     all_rows = await asyncio.to_thread(sheet.get_all_values)
