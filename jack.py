@@ -4673,6 +4673,8 @@ RESOURCE_ABBR = {
     bauxite="Amount of bauxite requested",
     lead="Amount of lead requested",
     iron="Amount of iron requested",
+    food="Amount of food requested",
+    uranium="Amount of uranium requested",
     time_period="How often would you want this requested in days",
     visual_confirmation="Type `Hypopothamus` for further confirmation"
 )
@@ -4683,6 +4685,8 @@ async def auto_resources_for_prod_req(
     bauxite: str = "0",
     lead: str = "0",
     iron: str = "0",
+    food: str = "0",
+    uranium:str = "0",
     time_period: str = "1",
     visual_confirmation: str = ""
 ):
@@ -4712,13 +4716,13 @@ async def auto_resources_for_prod_req(
 
     try:
         time_period_int = int(time_period.strip())
-        if time_period_int < 1:
+        '''if time_period_int < 1:
             raise ValueError
     except ValueError:
         await interaction.followup.send(
             "❌ The minimum allowed time period is 1 day.", ephemeral=True
         )
-        return
+        return'''
 
     sheet = get_auto_requests_sheet(guild_id)
     all_rows = await asyncio.to_thread(sheet.get_all_values)
@@ -4758,6 +4762,8 @@ async def auto_resources_for_prod_req(
         "Bauxite": parse_amount(bauxite),
         "Lead": parse_amount(lead),
         "Iron": parse_amount(iron),
+        "Food": parse_amount(food),
+        "Uranium": parse_amount(uranium),
         "TimePeriod": str(time_period_int),
     }
 
