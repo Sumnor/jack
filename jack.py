@@ -1874,7 +1874,7 @@ async def on_guild_join(guild):
     
     embed.add_field(
         name="🔗 Support", 
-        value="Need help? Join the discord server: [INTRA](https://discord.gg/qqtb3kccjv)", 
+        value="Need help? Join the discord server: [Jack Support](https://discord.gg/qqtb3kccjv)", 
         inline=False
     )
     
