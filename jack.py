@@ -1836,11 +1836,11 @@ def get_grant_channel(guild_id):
         rows = sheet.get_all_records()
 
         for row in rows:
-            if str(row.get("server_id")) == str(guild_id) and row.get("key") == "GRANTS_CHANNEL":
+            if str(row.get("server_id")) == str(guild_id) and row.get("key") == "GRANT_REQUEST_CHANNEL_ID":
                 value = row.get("value")
                 return str(value).strip() if value is not None else None
 
-        print(f"⚠️ GRANTS_CHANNEL not found for guild {guild_id}")
+        print(f"⚠️ GRANT_REQUEST_CHANNEL_ID not found for guild {guild_id}")
         return None
 
     except Exception as e:
