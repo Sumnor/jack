@@ -78,7 +78,6 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 bot_key = os.getenv("Key")
-#API_KEY = os.getenv("API_KEY")
 YT_Key = os.getenv("YT_Key")
 commandscalled = {"_global": 0}
 snapshots_file = "snapshots.json"
@@ -143,8 +142,6 @@ class HelpView(discord.ui.View):
         self.user_id = user_id
         self.is_gov = is_gov
         self.current_category = 0
-        
-        # Define categories and commands
         self.base_categories = [
             {
                 "name": "📋 Basic Commands",
@@ -175,8 +172,6 @@ class HelpView(discord.ui.View):
                 }
             }
         ]
-        
-        # Government-only categories
         self.gov_categories = [
             {
                 "name": "🛡️ Government Commands",
@@ -205,8 +200,6 @@ class HelpView(discord.ui.View):
                 }
             }
         ]
-        
-        # Combine categories based on permissions
         self.categories = self.base_categories.copy()
         if self.is_gov:
             self.categories.extend(self.gov_categories)
@@ -214,10 +207,7 @@ class HelpView(discord.ui.View):
         self.update_buttons()
     
     def update_buttons(self):
-        # Clear existing buttons
         self.clear_items()
-        
-        # Add navigation buttons
         if len(self.categories) > 1:
             self.add_item(self.previous_button)
             self.add_item(self.next_button)
@@ -266,7 +256,6 @@ class HelpView(discord.ui.View):
         return embed
     
     async def on_timeout(self):
-        # Disable all buttons when the view times out
         for item in self.children:
             item.disabled = True
 
@@ -996,13 +985,10 @@ class GrantView(View):
             await interaction.response.send_message(f"❌ Error parsing embed: `{e}`", ephemeral=True)
 
 def save_ticket_config(message_id: int, embed_description: str, category_id: int, embed_title: str):
-    """Save ticket configuration to the sheet"""
     sheet = get_ticket_sheet()
-    # Format: message_id | message (embed_description) | category | register (embed_title)
     sheet.append_row([str(message_id), embed_description, str(category_id), embed_title])
 
 def get_ticket_config(message_id: int) -> Optional[dict]:
-    """Get ticket configuration for a specific message"""
     sheet = get_ticket_sheet()
     records = sheet.get_all_records()
     
@@ -1015,7 +1001,6 @@ def get_ticket_config(message_id: int) -> Optional[dict]:
     return None
 
 def get_verify_conf(message_id: int) -> Optional[dict]:
-    """Get ticket configuration for a specific message"""
     sheet = get_ticket_sheet()
     records = sheet.get_all_records()
 
@@ -1025,8 +1010,6 @@ def get_verify_conf(message_id: int) -> Optional[dict]:
                 'verify': row.get("register", "🎟️ Support Ticket")  # Using register field for title
             }
     return None
-
-# Updated TicketButtonView to use stored config
 class TicketButtonView(View):
     def __init__(self, message_id: int = None):
         super().__init__(timeout=None)
@@ -1057,8 +1040,6 @@ class TicketButtonView(View):
                 if not nation_id:
                     await interaction.followup.send("❌ Nation ID not found in your registration.", ephemeral=True)
                     return
-
-            # Get nation data
                 data = get_military(nation_id, interaction)
                 cities = get_general_data(nation_id, interaction)
                 if data is None:
@@ -1076,8 +1057,6 @@ class TicketButtonView(View):
             if not guild:
                 await interaction.followup.send("❌ Must be used in a server.", ephemeral=True)
                 return
-
-            # Get stored config or fall back to old method
             ticket_config = None
             welcome_message = ""
             category = None
@@ -1411,8 +1390,6 @@ def get_settings_sheet():
         return sheet.worksheet("Settings")
     except:
         return sheet.add_worksheet(title="Settings", rows="1000", cols="3")
-
-# --- Core Logic ---
 def set_server_setting(server_id, key, value):
     sheet = get_settings_sheet()
     records = sheet.get_all_records()
@@ -1608,7 +1585,6 @@ def get_registration_sheet(guild_id):
     sheet_name = f"Registrations"
     
     try:
-        # Try to open the guild-specific sheet
         spreadsheet = client.open(sheet_name)
         sheet = spreadsheet.sheet1
         
@@ -1616,13 +1592,10 @@ def get_registration_sheet(guild_id):
     except gspread.SpreadsheetNotFound:
         print(f"❌ Sheet '{sheet_name}' not found.")
         '''try:
-            # Create new guild-specific sheet
             spreadsheet = client.create(sheet_name)
             sheet = spreadsheet.sheet1
             sheet.update('A1:C1', [['DiscordUsername', 'DiscordID', 'NationID']])
             print(f"✅ Created new sheet: '{sheet_name}'")
-            
-            # Auto-migrate data from main sheet
             print(f"🔄 Auto-migrating data from main 'Registrations' sheet...")
             migrate_data_to_guild_sheet(guild_id)
             
@@ -1670,8 +1643,6 @@ def get_member_role(interaction: discord.Interaction):
 def get_server_sheet():
     client = get_client()
     return client.open("BotServerSettings").sheet1  # Your sheet must have: server_id | api_key | lott_channel_ids
-
-# --- Sheet Access Logic ---
 def save_server_settings(server_id, api_key=None, lott_ids=None):
     sheet = get_server_sheet()
     server_id = str(server_id)
@@ -1757,8 +1728,6 @@ def load_registration_data():
                     'NationID': nation_id,
                     'AA': aa  # Include AA in the user data
                 }
-
-        # Store as global data since it's one sheet for all guilds
         cached_users = user_map
         cached_registrations = records
 
@@ -1782,13 +1751,10 @@ async def daily_refresh_loop():
 
 def load_sheet_data():
     try:
-        # Load the single sheet data (no guild_id needed)
         load_registration_data()
         
         if not hasattr(bot, '_refresh_loops'):
             bot._refresh_loops = set()
-            
-        # Start refresh loop (only one needed for the single sheet)
         if 'global' not in bot._refresh_loops:
             bot.loop.create_task(daily_refresh_loop())
             bot._refresh_loops.add('global')
@@ -1802,19 +1768,12 @@ def migrate_data_to_guild_sheet(guild_id):
     client = get_client()
     
     try:
-        # Open the main registrations sheet
         main_sheet = client.open("Registrations").sheet1
         main_records = main_sheet.get_all_records()
         print(f"📋 Found {len(main_records)} records in main 'Registrations' sheet")
-        
-        # Get or create guild-specific sheet
         guild_sheet = get_registration_sheet(guild_id)
-        
-        # Clear existing data and add headers
         guild_sheet.clear()
         guild_sheet.update('A1:C1', [['DiscordUsername', 'DiscordID', 'NationID']])
-        
-        # Copy all data
         if main_records:
             data_to_copy = []
             for record in main_records:
@@ -2052,8 +2011,6 @@ async def hourly_snapshot():
     current_hour = now.replace(minute=0, second=0, microsecond=0)
 
     guild_ids_to_process = set()
-
-    # Step 1: Check if snapshots are needed
     for guild in bot.guilds:
         guild_id = str(guild.id)
         try:
@@ -2075,8 +2032,6 @@ async def hourly_snapshot():
     if not guild_ids_to_process:
         print("✅ All guilds already processed this hour.")
         return
-
-    # Step 2: Get settings (API keys and AA names)
     try:
         settings_sheet = get_settings_sheet()
         settings_rows = settings_sheet.get_all_records()
@@ -2094,8 +2049,6 @@ async def hourly_snapshot():
             if server_id not in guild_settings:
                 guild_settings[server_id] = {}
             guild_settings[server_id][key] = value
-
-    # Filter guilds that have both API_KEY and AA_NAME
     valid_guild_settings = {
         guild_id: settings for guild_id, settings in guild_settings.items()
         if "API_KEY" in settings and "AA_NAME" in settings
@@ -2104,25 +2057,18 @@ async def hourly_snapshot():
     if not valid_guild_settings:
         print("⚠️ No guilds found with both API_KEY and AA_NAME settings.")
         return
-
-    # Load the single registration sheet once
     load_sheet_data()
-
-    # Step 3: Process each guild
     for guild_id, settings in valid_guild_settings.items():
         api_key = settings["API_KEY"]
         target_aa_name = settings["AA_NAME"]
         
         try:
-            # Use the global cached_users (single sheet for all guilds)
             all_users = cached_users
             print(f"👥 Guild {guild_id}: {len(all_users)} total registered users in global sheet")
 
             if not all_users:
                 print(f"⚠️ Skipping guild {guild_id} (no users in global sheet)")
                 continue
-
-            # Filter users by AA name
             filtered_users = {}
             match_count = 0
             
@@ -2140,8 +2086,6 @@ async def hourly_snapshot():
             if not filtered_users:
                 print(f"⚠️ Skipping guild {guild_id} (no users in target alliance '{target_aa_name}')")
                 continue
-
-            # Get prices
             prices = {}
             try:
                 res = requests.post(
@@ -2162,8 +2106,6 @@ async def hourly_snapshot():
             }
             processed, failed = 0, 0
             seen_ids = set()
-
-            # Process only filtered users (those in the target AA)
             for user_id, user in filtered_users.items():
                 nation_id = str(user.get("NationID", "")).strip()
                 if not nation_id or nation_id in seen_ids:
@@ -2175,8 +2117,6 @@ async def hourly_snapshot():
                     _, cities, food, money, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, uranium = get_resources(nation_id, None, guild_id)
                     if not money:
                         raise ValueError("No data returned")
-
-                    # Accumulate totals
                     totals["money"] += money
                     totals["food"] += food
                     totals["gasoline"] += gasoline
@@ -2195,8 +2135,6 @@ async def hourly_snapshot():
                     failed += 1
                     print(f"❌ Failed for user {user_id} (guild {guild_id}): {e}")
                 await asyncio.sleep(5)
-
-            # Step 4: Calculate total value
             wealth = totals["money"]
             resource_values = {}
             for res, amt in totals.items():
@@ -2339,7 +2277,6 @@ def get_api_key_for_guild(guild_id: int) -> str | None:
 async def weekly_member_updater():
     print(f"[Updater] Starting weekly member update at {datetime.utcnow()}")
     try:
-        # Use the dummy guild_id for the single sheet
         dummy_guild_id = "I'm too lazy to remove it from get_registration_sheet so this is a"
         
         sheet = get_registration_sheet(dummy_guild_id)
@@ -2357,8 +2294,6 @@ async def weekly_member_updater():
             nation_id = row.get("NationID")
             if not nation_id:
                 continue
-
-            # Use any guild for get_general_data (or modify it to not need guild_id)
             guild_id = str(bot.guilds[0].id) if bot.guilds else dummy_guild_id
             
             result = get_general_data(nation_id, guild_id)
@@ -2367,8 +2302,6 @@ async def weekly_member_updater():
                 continue
 
             _, _, alliance_name, _, _, _, last_active, *_ = result
-
-            # Update the alliance name in the AA column (column D is the 4th column)
             cell_range = f"D{index + 2}"
             sheet.update_acell(cell_range, alliance_name)
 
@@ -2389,8 +2322,6 @@ async def on_ready():
     load_sheet_data()
     load_registration_data()
     bot.add_view(BlueGuy())
-    
-    # Load persistent ticket views from sheet
     try:
         sheet = get_ticket_sheet()
         records = sheet.get_all_records()
@@ -2402,7 +2333,6 @@ async def on_ready():
         print(f"✅ Restored {len(records)} persistent ticket views")
     except Exception as e:
         print(f"⚠️ Failed to load ticket views: {e}")
-        # Fallback to generic view if sheet loading fails
         bot.add_view(TicketButtonView())
     
     print("Starting hourly snapshot task...")
@@ -2421,8 +2351,6 @@ async def on_ready():
 async def on_message(message: discord.Message):
     if message.author.bot:
         return
-
-    # ── INTEL PARSING ──────────────────────────────────────────────
     intel_pattern = re.compile(
         r"You successfully gathered intelligence about (?P<nation>.+?)\. .*?has "
         r"\$(?P<money>[\d,\.]+), (?P<coal>[\d,\.]+) coal, (?P<oil>[\d,\.]+) oil, "
@@ -2443,8 +2371,6 @@ async def on_message(message: discord.Message):
         }
 
         try:
-
-            # 🔑 Get prices with guild context
             prices = get_prices()  # <-- this assumes your function accepts it
 
             resource_prices = {
@@ -2518,8 +2444,6 @@ async def on_message(message: discord.Message):
         except Exception as e:
             print(f"Error in intel handler: {e}")
             await message.channel.send("❌ Failed to process intel report.")
-
-    # ── DM LOGGING ─────────────────────────────────────────────────
     if message.guild is None:
         default_reply = "Thanks for your message! We'll get back to you soon."
 
@@ -2531,11 +2455,8 @@ async def on_message(message: discord.Message):
 
         if last_bot_msg != default_reply:
             try:
-                # Load LOGS channel from BotServerSettings
                 settings_sheet = get_sheet_s("BotServerSettings")
                 all_settings = settings_sheet.get_all_records()
-
-                # Find first LOGS row for any server (since it's DM)
                 logs_channel_id = None
                 for row in all_settings:
                     if row["key"] == "LOGS":
@@ -2579,7 +2500,6 @@ async def register(interaction: discord.Interaction, nation_id: str):
         )
         return
     MEMBER_ROLE = get_member_role(interaction)
-    # Custom permission check
     async def is_banker(interaction):
         return (
             any(role.name == MEMBER_ROLE for role in interaction.user.roles)
@@ -2593,8 +2513,6 @@ async def register(interaction: discord.Interaction, nation_id: str):
     if not nation_id.isdigit():
         await interaction.followup.send("❌ Please enter only the Nation ID number, not a link.")
         return
-
-    # Check nation existence and discord username
     url = f"https://politicsandwar.com/nation/id={nation_id}"
     try:
         response = requests.get(url)
@@ -2618,12 +2536,8 @@ async def register(interaction: discord.Interaction, nation_id: str):
     user_discord_username = interaction.user.name.strip().lower()
     user_id = str(interaction.user.id)
     nation_id_str = str(nation_id).strip()
-
-    # FORCE reload current sheet data to clear any stale cache
     print(f"🔄 Force reloading global registration data")
     load_sheet_data()
-
-    # Sumnor bypasses username check
     if user_discord_username != "sumnor":
         cleaned_nation_username = nation_discord_username.replace("#0", "")
         if cleaned_nation_username != user_discord_username:
@@ -2631,14 +2545,10 @@ async def register(interaction: discord.Interaction, nation_id: str):
                 f"❌ Username mismatch.\nNation lists: `{nation_discord_username}`\nYour Discord: `{user_discord_username}`"
             )
             return
-
-    # Check for duplicates in global cached users
     global_users = cached_users
     print(f"🔍 Checking duplicates in global registration sheet")
     print(f"📊 Current users in global cache: {len(global_users)}")
     print(f"👤 User ID: {user_id}, Username: {user_discord_username}, Nation: {nation_id_str}")
-
-    # Debug: Show what's in the cache
     for uid, data in global_users.items():
         print(f"  - Cached: ID={uid}, Username={data.get('DiscordUsername')}, Nation={data.get('NationID')}")
 
@@ -2653,8 +2563,6 @@ async def register(interaction: discord.Interaction, nation_id: str):
             if data.get('NationID') == nation_id_str:
                 await interaction.followup.send(f"❌ This Nation ID ({nation_id_str}) is already registered.")
                 return
-
-    # Save to global registration sheet
     try:
         dummy_guild_id = "I'm too lazy to remove it from get_registration_sheet so this is a dummy"
         sheet = get_registration_sheet(dummy_guild_id)
@@ -2663,8 +2571,6 @@ async def register(interaction: discord.Interaction, nation_id: str):
     except Exception as e:
         await interaction.followup.send(f"❌ Failed to write registration: {e}")
         return
-
-    # Reload cached data after update
     try:
         load_sheet_data()
         print(f"✅ Reloaded global cache after registration")
@@ -2672,8 +2578,6 @@ async def register(interaction: discord.Interaction, nation_id: str):
         print(f"⚠️ Failed to reload cached sheet data: {e}")
 
     await interaction.followup.send("✅ You're registered successfully!")
-
-# Add a debug command to clear cache manually
 '''@bot.tree.command(name="clear_cache", description="Clear registration cache (Admin only)")
 async def clear_cache(interaction: discord.Interaction):
     await interaction.response.defer()
@@ -2683,14 +2587,10 @@ async def clear_cache(interaction: discord.Interaction):
 
     guild_id = str(interaction.guild.id)
     global cached_users, cached_registrations
-    
-    # Clear guild-specific cache
     if guild_id in cached_users:
         del cached_users[guild_id]
     if guild_id in cached_registrations:
         del cached_registrations[guild_id]
-    
-    # Force reload
     load_sheet_data(guild_id)
     
     await interaction.followup.send(f"✅ Cache cleared and reloaded for this server!", ephemeral=True)'''
@@ -2760,8 +2660,6 @@ SETTING_CHOICES = [
 async def set_setting(interaction: discord.Interaction, key: app_commands.Choice[str], value: str):
     await interaction.response.defer(ephemeral=True)
     raw_value = value.strip()
-
-    # Role mention pattern
     if raw_value.startswith("<@&") and raw_value.endswith(">"):
         role_id = int(raw_value.replace("<@&", "").replace(">", ""))
         role = interaction.guild.get_role(role_id)
@@ -2770,8 +2668,6 @@ async def set_setting(interaction: discord.Interaction, key: app_commands.Choice
         else:
             await interaction.followup.send(f"❌ Could not find role with ID `{role_id}`.", ephemeral=True)
             return
-
-    # Channel mention pattern
     elif raw_value.startswith("<#") and raw_value.endswith(">"):
         value = raw_value.replace("<#", "").replace(">", "")
 
@@ -2833,9 +2729,6 @@ async def res_details_for_alliance(interaction: discord.Interaction):
     sheet = get_registration_sheet(guild_id)
     rows = sheet.get_all_records()
     user_id = str(interaction.user.id)
-    
-
-# Get user data from global cached_users (single sheet)
     user_data = cached_users.get(user_id)
     if not user_data:
         await interaction.followup.send(
@@ -2883,7 +2776,6 @@ async def res_details_for_alliance(interaction: discord.Interaction):
     }
     batch_count = 0
     try:
-        # Use dummy guild_id for the single global sheet
         dummy_guild_id = "I'm too lazy to remove it from get_registration_sheet so this is a"
         sheet = get_registration_sheet(dummy_guild_id)
         records = sheet.get_all_records()
@@ -2901,15 +2793,11 @@ async def res_details_for_alliance(interaction: discord.Interaction):
         if filtered_df.empty:
             await interaction.followup.send(f"❌ No members found in AA: {aa_name}", ephemeral=True)
             return
-
-        # Convert filtered DataFrame back to list of dictionaries (like the original rows)
         nation_rows = filtered_df.to_dict('records')
 
     except Exception as e:
         await interaction.followup.send(f"❌ Error loading Nation IDs: {e}", ephemeral=True)
         return
-
-    # Process each row (like the original structure)
     for nation_row in nation_rows:
         nation_id = str(nation_row.get("NationID", "")).strip()
         row_user_id = str(nation_row.get("DiscordID", "")).strip()
@@ -3181,7 +3069,6 @@ async def res_in_m_for_a(
         print(f"Error fetching resource prices: {e}")
 
     try:
-        # Use dummy guild_id for the single global sheet
         dummy_guild_id = "I'm too lazy to remove it from get_registration_sheet so this is a"
         sheet = get_registration_sheet(dummy_guild_id)
         records = sheet.get_all_records()
@@ -3199,15 +3086,11 @@ async def res_in_m_for_a(
         if filtered_df.empty:
             await interaction.followup.send(f"❌ No members found in AA: {aa_name}", ephemeral=True)
             return
-
-        # Convert filtered DataFrame back to list of dictionaries (like the original rows)
         nation_rows = filtered_df.to_dict('records')
 
     except Exception as e:
         await interaction.followup.send(f"❌ Error loading Nation IDs: {e}", ephemeral=True)
         return
-
-    # Process each row (like the original structure)
     for nation_row in nation_rows:
         nation_id = str(nation_row.get("NationID", "")).strip()
         user_id = str(nation_row.get("DiscordID", "")).strip()
@@ -3437,8 +3320,6 @@ async def member_activity(interaction: discord.Interaction):
     if not own_id:
         await interaction.followup.send("❌ Could not find your Nation ID in the sheet.", ephemeral=True)
         return
-
-    # Check if user is banker
     async def is_banker():
         GOV_ROLE = get_gov_role(interaction)
         return any(role.name == GOV_ROLE for role in interaction.user.roles)
@@ -3446,8 +3327,6 @@ async def member_activity(interaction: discord.Interaction):
     if not await is_banker():
         await interaction.followup.send("❌ You don't have the rights, lil bro.", ephemeral=True)
         return
-
-    # Initialize counts and lists
     active_w_bloc = 0
     active_wo_bloc = 0
     activish = 0
@@ -4186,7 +4065,6 @@ async def register_manual(interaction: discord.Interaction, nation_id: str, disc
 async def see_report(interaction: discord.Interaction, nation: str):
     await interaction.response.defer(thinking=True)
     MEMBER_ROLE = get_member_role(interaction)
-    # Custom permission check
     async def is_banker(interaction):
         return (
             any(role.name == MEMBER_ROLE for role in interaction.user.roles)
@@ -5357,15 +5235,11 @@ async def help(interaction: discord.Interaction):
     if not own_id:
         await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
         return
-    
-    # Check if user has government permissions
     async def is_high_power(interaction):
         GOV_ROLE = get_gov_role(interaction)
         return any(role.name == GOV_ROLE for role in interaction.user.roles)
     
     is_gov = await is_high_power(interaction)
-    
-    # Create the view and initial embed
     view = HelpView(user_id, is_gov)
     embed = view.create_embed()
     
@@ -5935,39 +5809,28 @@ tof = [
 )
 @app_commands.choices(verify = tof)
 async def create_ticket_message(interaction: discord.Interaction, embed_description: str, embed_title: str, welcome_message: str, category: discord.CategoryChannel, verify: app_commands.Choice[str]):
-    # Respond IMMEDIATELY - within 3 seconds
     await interaction.response.send_message("⏳ Creating ticket message...", ephemeral=True)
     embed_description_decrypt = embed_description.replace("\\n","\n")
     welcome_message_decrypt = welcome_message.replace("\\n","\n")
     
     try:
-        # Create fully custom embed
         embed = discord.Embed(
             title=embed_title,
             description=embed_description_decrypt,
             color=discord.Color.blurple()
         )
         embed.set_footer(text=f"Posted by {interaction.user.display_name}")
-        
-        # Send the message first with a temporary view to get the message ID
         veri = str(verify.value)
         sent_message = await interaction.channel.send(embed=embed, view=TicketButtonView())
-        
-        # Update status
         await interaction.edit_original_response(content="⏳ Saving configuration...")
-        
-        # Save the configuration to the sheet (this is the slow part)
         try:
             save_ticket_config(sent_message.id, welcome_message_decrypt, category.id, veri)
-            
-            # Update the view with the message ID for future use
             view_with_id = TicketButtonView(message_id=sent_message.id)
             await sent_message.edit(view=view_with_id)
             
             await interaction.edit_original_response(content="✅ Ticket message sent and configuration saved.")
         except Exception as sheet_error:
             print(f"Sheet error: {sheet_error}")
-            # Even if sheet fails, the message is still posted with basic functionality
             await interaction.edit_original_response(content="⚠️ Ticket message sent but failed to save configuration. Button may not work after restart.")
             
     except Exception as e:
