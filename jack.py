@@ -4714,9 +4714,9 @@ async def auto_resources_for_prod_req(
         )
         return
 
-    try:
+    '''try:
         time_period_int = int(time_period.strip())
-        '''if time_period_int < 1:
+        f time_period_int < 1:
             raise ValueError
     except ValueError:
         await interaction.followup.send(
