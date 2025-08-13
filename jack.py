@@ -2982,7 +2982,7 @@ async def bot_info(interaction: discord.Interaction):
     "- User ID: ```1367997847978377247```\n"
     f"- Current Date: <t:{unix_timestamp}:d>\n"
     f"- Command Called: <t:{unix_timestamp}:R>\n"
-    f"- STATUS: {Status}"
+    f"- STATUS: {Status}\n"
     "- Help Server: [Jack Support](https://discord.gg/qqtb3kccjv)\n"
     "- Script: [Github](https://github.com/Sumnor/jack/tree/main)\n"
     "- Invite: [Jack](https://discord.com/oauth2/authorize?client_id=1367997847978377247&permissions=201444368&scope=bot%20applications.commands)"
@@ -3314,7 +3314,7 @@ async def res_in_m_for_a(
         buf.seek(0)
 
         image_url = "https://i.ibb.co/Kpsfc8Jm/jack.webp"
-        embed.set_footer(text=f"Brought to you by <@1148678095176474678>", icon_url=image_url)
+        embed.set_footer(text=f"Brought to you by Sumnor", icon_url=image_url)
         await interaction.followup.send(embed=embed, file=discord.File(fp=buf, filename="resources_graph.png"))
 
     except Exception as e:
