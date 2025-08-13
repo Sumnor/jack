@@ -1816,7 +1816,7 @@ async def on_guild_join(guild):
     
     embed.add_field(
         name="🚀 Getting Started", 
-        value="Use `/help` to see all available commands", 
+        value="Use `/help` to see all available commands, use `/bot_info_and_invite` for all the bot info", 
         inline=False
     )
     
@@ -2973,15 +2973,26 @@ def get_prices():
 
 @bot.tree.command(name=f"bot_info_and_invite", description="Get the Info and invite for me")
 async def bot_info(interaction: discord.Interaction):
+    now = datetime.now()
+    unix_timestamp = int(now.timestamp())
+    Status = os.getenv("STATUS", "ERROR")
     messages = (
-        f"- Name: ```md Jack```\n",
-        "- Discord User: Jack"
-    )
+    "- Name: Jack\n"
+    "- Discriminator: #8205\n"
+    "- User ID: ```1367997847978377247```\n"
+    f"- Current Date: <t:{unix_timestamp}:d>\n"
+    f"- Command Called: <t:{unix_timestamp}:R>\n"
+    f"- STATUS: {Status}"
+    "- Help Server: [Jack Support](https://discord.gg/qqtb3kccjv)\n"
+    "- Script: [Github](https://github.com/Sumnor/jack/tree/main)\n"
+    "- Invite: [Jack](https://discord.com/oauth2/authorize?client_id=1367997847978377247&permissions=201444368&scope=bot%20applications.commands)"
+)
     embed = discord.Embed(
         title="BOT INFO",
         colour=discord.Colour.brand_green(),
         description=messages
     )
+
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="res_in_m_for_a", description="Get total Alliance Members' resources and money")
