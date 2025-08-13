@@ -2984,6 +2984,7 @@ async def bot_info(interaction: discord.Interaction):
     f"- Command Called: <t:{unix_timestamp}:R>\n"
     f"- STATUS: {Status}\n"
     "- Help Server: [Jack Support](https://discord.gg/qqtb3kccjv)\n"
+    "- Current Bugs: [Bugs Dashboard](https://jack-support.streamlit.app/#jack-the-bot-dashboard)\n"
     "- Script: [Github](https://github.com/Sumnor/jack/tree/main)\n"
     "- Invite: [Jack](https://discord.com/oauth2/authorize?client_id=1367997847978377247&permissions=201444368&scope=bot%20applications.commands)"
 )
