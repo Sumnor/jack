@@ -2453,31 +2453,37 @@ async def on_message(message: discord.Message):
                 break
 
         if last_bot_msg != default_reply:
-            try:
                 settings_sheet = get_sheet_s("BotServerSettings")
                 all_settings = settings_sheet.get_all_records()
-                logs_channel_id = None
+                logs_channel_ids = None
                 for row in all_settings:
                     if row["key"] == "LOGS":
-                        logs_channel_id = int(row["value"])
+                        logs_channel_ids = row["value"]
                         break
 
-                if logs_channel_id:
-                    log_channel = bot.get_channel(logs_channel_id)
-                    if log_channel:
-                        embed = discord.Embed(
-                            title="📩 New DM Received",
-                            description=(
-                                f"**From:** {message.author} (`{message.author.id}`)\n"
-                                f"**User message:**\n{message.content}\n\n"
-                                f"**Last bot message to user:**\n{last_bot_msg or 'None'}"
-                            ),
-                            color=discord.Color.blue()
-                        )
-                        await log_channel.send(embed=embed)
-
-            except Exception as e:
-                print(f"Failed to log DM: {e}")
+                if logs_channel_ids:
+                    if ',' in logs_channel_ids:
+                        channel_id_list = [int(id.strip()) for id in logs_channel_ids.split(',')]
+                    elif '/' in logs_channel_ids:
+                        channel_id_list = [int(id.strip()) for id in logs_channel_ids.split('/')]
+                    else:
+                        channel_id_list = [int(logs_channel_ids)]
+                    
+                    for logs_channel_id in channel_id_list:
+                        log_channel = bot.get_channel(logs_channel_id)
+                        if log_channel:
+                            embed = discord.Embed(
+                                title="📩 New DM Received",
+                                description=(
+                                    f"**From:** {message.author} (`{message.author.id}`)\n"
+                                    f"**User message:**\n{message.content}\n\n"
+                                    f"**Last bot message to user:**\n{last_bot_msg or 'None'}"
+                                ),
+                                color=discord.Color.blue()
+                            )
+                            await log_channel.send(embed=embed)
+                        else:
+                            print(f"Warning: Could not find log channel with ID {logs_channel_id}")
 
         await message.channel.send(default_reply)
 
@@ -2984,7 +2990,6 @@ async def bot_info(interaction: discord.Interaction):
     f"- Command Called: <t:{unix_timestamp}:R>\n"
     f"- STATUS: {Status}\n"
     "- Help Server: [Jack Support](https://discord.gg/qqtb3kccjv)\n"
-    "- Current Bugs: [Bugs Dashboard](https://jack-support.streamlit.app/#jack-the-bot-dashboard)\n"
     "- Script: [Github](https://github.com/Sumnor/jack/tree/main)\n"
     "- Invite: [Jack](https://discord.com/oauth2/authorize?client_id=1367997847978377247&permissions=201444368&scope=bot%20applications.commands)"
 )
