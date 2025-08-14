@@ -2583,22 +2583,6 @@ async def register(interaction: discord.Interaction, nation_id: str):
         print(f"⚠️ Failed to reload cached sheet data: {e}")
 
     await interaction.followup.send("✅ You're registered successfully!")
-'''@bot.tree.command(name="clear_cache", description="Clear registration cache (Admin only)")
-async def clear_cache(interaction: discord.Interaction):
-    await interaction.response.defer()
-    if not (interaction.user.guild_permissions.administrator or str(interaction.user.id) == "1148678095176474678"):
-        await interaction.followup.send("❌ You need admin permissions to clear cache.", ephemeral=True)
-        return
-
-    guild_id = str(interaction.guild.id)
-    global cached_users, cached_registrations
-    if guild_id in cached_users:
-        del cached_users[guild_id]
-    if guild_id in cached_registrations:
-        del cached_registrations[guild_id]
-    load_sheet_data(guild_id)
-    
-    await interaction.followup.send(f"✅ Cache cleared and reloaded for this server!", ephemeral=True)'''
 
 @bot.tree.command(name="register_server_aa", description="Register this server and create Google Sheets")
 @app_commands.checks.has_permissions(administrator=True)
@@ -2989,6 +2973,7 @@ async def bot_info(interaction: discord.Interaction):
     f"- Current Date: <t:{unix_timestamp}:d>\n"
     f"- Command Called: <t:{unix_timestamp}:R>\n"
     f"- STATUS: {Status}\n"
+    "- Bugs Dashboard: [Jack's Dashboard](https://jack-support.streamlit.app)\n"
     "- Help Server: [Jack Support](https://discord.gg/qqtb3kccjv)\n"
     "- Script: [Github](https://github.com/Sumnor/jack/tree/main)\n"
     "- Invite: [Jack](https://discord.com/oauth2/authorize?client_id=1367997847978377247&permissions=201444368&scope=bot%20applications.commands)"
