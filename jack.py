@@ -242,6 +242,7 @@ async def process_auto_requests():
     
 @tasks.loop(hours=1)
 async def hourly_snapshot():
+    from utils import cached_users
     now = datetime.datetime.now(timezone.utc)
     current_hour = now.replace(minute=0, second=0, microsecond=0)
 
