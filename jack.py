@@ -14,7 +14,7 @@ from graphql_requests import graphql_request, get_general_data, get_resources
 from utils import get_registration_sheet, load_registration_data, get_sheet_s, save_to_alliance_net, get_prices, get_ticket_sheet,  cached_users, load_sheet_data
 
 UNIT_PRICES = {
-    "soldiers": 5,
+    "soldiers": 5,x
     "tanks": 60,
     "aircraft": 4000,
     "ships": 50000,
@@ -552,8 +552,8 @@ async def on_ready():
         process_auto_requests.start()
     if not weekly_member_updater.is_running():
         weekly_member_updater.start()
-    '''if not check_api_loop.is_running():
-        check_api_loop.start()'''
+    if not check_api_loop.is_running():
+        check_api_loop.start()
     await bot.tree.sync()
     print(f"✅ Logged in as {bot.user}")
 
