@@ -14,7 +14,7 @@ from graphql_requests import graphql_request, get_general_data, get_resources
 from utils import get_registration_sheet, load_registration_data, get_sheet_s, save_to_alliance_net, get_prices, get_ticket_sheet,  cached_users, load_sheet_data
 
 UNIT_PRICES = {
-    "soldiers": 5,x
+    "soldiers": 5,
     "tanks": 60,
     "aircraft": 4000,
     "ships": 50000,
