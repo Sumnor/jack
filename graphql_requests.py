@@ -190,11 +190,12 @@ def graphql_request(nation_id, interaction=None, guild_id=None, API_KEY=None):
         print(f"Parsing Error: {e}")
         return None
     
-def get_resources(nation_id, interaction=None, guild_id=None):
-    print(guild_id)
-    if not guild_id:
-        df = graphql_request(nation_id, interaction, None)
-    if not interaction:
+def get_resources(nation_id, interaction=None, guild_id=None, API_KEY=None):
+    if API_KEY:
+        df = graphql_request(nation_id, None, None, API_KEY)
+    if interaction:
+        df = graphql_request(nation_id, interaction)
+    if guild_id:
         df = graphql_request(nation_id, None, guild_id)
     if df is not None:
         try:
