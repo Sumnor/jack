@@ -5,7 +5,6 @@ from discord import Button, ButtonStyle
 from datetime import datetime
 from dotenv import load_dotenv
 import os
-load_dotenv("cred.env")
 from collections import defaultdict
 from utils import get_registration_sheet, get_verify_conf, get_ticket_config
 from settings_multi import get_banking_role, get_api_key_for_interaction, get_gov_role, get_grant_channel
