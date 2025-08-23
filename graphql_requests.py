@@ -250,8 +250,6 @@ def get_military(nation_id, interaction=None, API_KEY=None):
         df = graphql_request(nation_id, None, None, API_KEY)
     if interaction:
         df = graphql_request(nation_id, interaction)
-    if guild_id:
-        df = graphql_request(nation_id, None, guild_id)
     if df is not None:
         try:
             row = df[df["id"].astype(str) == str(nation_id)].iloc[0]
