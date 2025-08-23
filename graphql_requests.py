@@ -193,9 +193,9 @@ def graphql_request(nation_id, interaction=None, guild_id=None, API_KEY=None):
 def get_resources(nation_id, interaction=None, guild_id=None, API_KEY=None):
     if API_KEY:
         df = graphql_request(nation_id, None, None, API_KEY)
-    if interaction:
+    elif interaction:
         df = graphql_request(nation_id, interaction)
-    if guild_id:
+    elif guild_id:
         df = graphql_request(nation_id, None, guild_id)
     if df is not None:
         try:
@@ -224,9 +224,9 @@ def get_resources(nation_id, interaction=None, guild_id=None, API_KEY=None):
 def get_general_data(nation_id, interaction=None, API_KEY=None, guild_id=None):
     if API_KEY:
         df = graphql_request(nation_id, None, None, API_KEY)
-    if interaction:
+    elif interaction:
         df = graphql_request(nation_id, interaction)
-    if guild_id:
+    elif guild_id:
         df = graphql_request(nation_id, None, guild_id)
     if df is not None:
         try:
@@ -248,7 +248,7 @@ def get_general_data(nation_id, interaction=None, API_KEY=None, guild_id=None):
 def get_military(nation_id, interaction=None, API_KEY=None):
     if API_KEY:
         df = graphql_request(nation_id, None, None, API_KEY)
-    if interaction:
+    elif interaction:
         df = graphql_request(nation_id, interaction)
     if df is not None:
         try:
