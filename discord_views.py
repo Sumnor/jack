@@ -796,7 +796,6 @@ class TicketButtonView(View):
             reg_sheet = get_registration_sheet(guild_id)
             verify_config = get_verify_conf(message_id)
             verify = verify_config['verify']
-            print(verify)
             records = reg_sheet.get_all_records()
             user_row = next(
                 (r for r in records if str(r.get("DiscordID")) == str(interaction.user.id)),
