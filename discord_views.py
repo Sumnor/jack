@@ -811,8 +811,8 @@ class TicketButtonView(View):
                 if not nation_id:
                     await interaction.followup.send("❌ Nation ID not found in your registration.", ephemeral=True)
                     return
-                data = get_military(nation_id, None, None, os.getenv("API_KEY"))
-                cities = get_general_data(nation_id, interaction)
+                data = get_military(nation_id, None, os.getenv("API_KEY"))
+                cities = get_general_data(nation_id, None, None, os.getenv("API_KEY"))
                 if data is None:
                     nation_name = "unknown-nation"
                     leader_name = "Leader"
