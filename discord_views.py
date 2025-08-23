@@ -9,6 +9,7 @@ from collections import defaultdict
 from utils import get_registration_sheet, get_verify_conf, get_ticket_config
 from settings_multi import get_banking_role, get_api_key_for_interaction, get_gov_role, get_grant_channel
 from graphql_requests import graphql_cities, get_military, get_general_data
+load_dotenv("cred.env")
 
 BUILD_CATEGORIES = {
     "Power Plants": [
@@ -806,11 +807,13 @@ class TicketButtonView(View):
                     return
 
                 nation_id = user_row.get("NationID")
+                api_key = os.getenv("API_KEY")
+                print(api_key)
                 if not nation_id:
                     await interaction.followup.send("❌ Nation ID not found in your registration.", ephemeral=True)
                     return
-                data = get_military(nation_id, None, os.getenv("API_KEY"))
-                cities = get_general_data(nation_id, None, None, os.getenv("API_KEY"))
+                data = get_military(nation_id, None, api_key)
+                cities = get_general_data(nation_id, None, None, api_key)
                 if data is None:
                     nation_name = "unknown-nation"
                     leader_name = "Leader"
