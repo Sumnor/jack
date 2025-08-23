@@ -246,10 +246,12 @@ def get_general_data(nation_id, interaction=None, API_KEY=None, guild_id=None):
             return None
 
 def get_military(nation_id, interaction=None, API_KEY=None):
-    if not API_KEY:
-        df = graphql_request(nation_id, interaction)
-    if not interaction:
+    if API_KEY:
         df = graphql_request(nation_id, None, None, API_KEY)
+    if interaction:
+        df = graphql_request(nation_id, interaction)
+    if guild_id:
+        df = graphql_request(nation_id, None, guild_id)
     if df is not None:
         try:
             row = df[df["id"].astype(str) == str(nation_id)].iloc[0]
