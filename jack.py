@@ -350,7 +350,7 @@ async def hourly_snapshot():
                 seen_ids.add(nation_id)
 
                 try:
-                    _, cities, food, money, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, uranium = get_resources(nation_id, None, None,api_key)
+                    _, cities, food, money, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, uranium = get_resources(nation_id, None, None, api_key)
                     if money != 0:
                         if not money:
                             raise ValueError("No data returned")
