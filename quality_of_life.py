@@ -156,20 +156,6 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member, exte
 async def help(interaction: discord.Interaction):
     await interaction.response.defer()
     user_id = str(interaction.user.id)
-    
-    global cached_users  
-    
-    user_data = cached_users.get(user_id)
-    if not user_data:
-        await interaction.followup.send(
-            "❌ You are not registered. Please register first using `/register`.", ephemeral=True
-        )
-        return
-    
-    own_id = str(user_data.get("NationID", "")).strip()
-    if not own_id:
-        await interaction.followup.send("❌ Could not find your Nation ID in the sheet.")
-        return
     async def is_high_power(interaction):
         GOV_ROLE = get_gov_role(interaction)
         return any(role.name == GOV_ROLE for role in interaction.user.roles)
