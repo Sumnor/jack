@@ -103,21 +103,11 @@ async def daily_refresh_loop():
 
 def load_sheet_data():
     try:
-        load_registration_data()
-        
-        if not hasattr(bot, '_refresh_loops'):
-            bot._refresh_loops = set()
-        if 'global' not in bot._refresh_loops:
-            bot.loop.create_task(daily_refresh_loop())
-            bot._refresh_loops.add('global')
-                
+        new_data = load_registration_data()
+        cached_users.clear()
+        cached_users.update(new_data)
     except Exception as e:
-        print(f"❌ Failed to load sheet data: {e}")
-        import traceback
-        print(traceback.format_exc())
-        
-    except Exception as e:
-        print(f"❌ Migration failed: {e}")
+        print(f"⚠️ Failed to reload sheet data: {e}")
 
 def load_registration_data():
     global cached_users, cached_registrations
