@@ -8,9 +8,10 @@ import pandas as pd
 import datetime
 import asyncio
 from bot_instance import bot, YT_Key
-from utils import cached_users, load_sheet_data, get_registration_sheet, get_client
+from utils import load_sheet_data, get_registration_sheet, get_client
 from settings_multi import get_member_role
 from graphql_requests import get_general_data
+import cache
 
 @bot.tree.command(name="register", description="Register your Nation ID")
 @app_commands.describe(nation_id="Your Nation ID (numbers only, e.g., 365325)")
