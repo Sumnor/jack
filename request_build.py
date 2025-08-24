@@ -292,7 +292,7 @@ async def infra_upgrade_cost(
     user_id = str(interaction.user.id)
 
     if target_infra > 2500:
-        await interaction.followup.send("❌ Target infrastructure above 2000 is not supported.(*** Personal Contribution by `@patrickrickrickpatrick` ***)")
+        await interaction.followup.send("❌ Target infrastructure above 2500 is not supported.(*** Personal Contribution by `@patrickrickrickpatrick` ***)")
         return
 
     
