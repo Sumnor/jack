@@ -17,29 +17,31 @@ import cache
 @app_commands.describe(nation_id="Your Nation ID (numbers only, e.g., 365325)")
 async def register(interaction: discord.Interaction, nation_id: str):
     await interaction.response.defer()
-    user_id = interaction.user.id
-    data = get_general_data(nation_id, None, API_KEY=os.getenv("API_KEY"))
-    aa_name = data[2]
-    user_data = cached_users.get(user_id)
-    if user_data:
-        await interaction.followup.send(
-            "❌ You are already registered.", ephemeral=True
-        )
+    user_id = str(interaction.user.id)
+    user_discord_username = interaction.user.name.strip().lower()
+
+    # Ensure cached_users is up-to-date
+    load_sheet_data()
+
+    # Check if already registered
+    if user_id in cached_users:
+        await interaction.followup.send("❌ You are already registered.", ephemeral=True)
         return
+
+    # Permission check
     MEMBER_ROLE = get_member_role(interaction)
     async def is_banker(interaction):
-        return (
-            any(role.name == MEMBER_ROLE for role in interaction.user.roles)
-            or str(interaction.user.id) == "1148678095176474678"
-        )
-
+        return any(role.name == MEMBER_ROLE for role in interaction.user.roles) or user_id == "1148678095176474678"
     if not await is_banker(interaction):
         await interaction.followup.send("❌ You need to be a Member to register yourself.")
         return
 
+    # Validate Nation ID
     if not nation_id.isdigit():
         await interaction.followup.send("❌ Please enter only the Nation ID number, not a link.")
         return
+
+    # Fetch nation data
     url = f"https://politicsandwar.com/nation/id={nation_id}"
     try:
         response = requests.get(url)
@@ -60,49 +62,47 @@ async def register(interaction: discord.Interaction, nation_id: str):
         await interaction.followup.send("❌ Could not parse nation information.")
         return
 
-    user_discord_username = interaction.user.name.strip().lower()
-    user_id = str(interaction.user.id)
-    nation_id_str = str(nation_id).strip()
-    print(f"🔄 Force reloading global registration data")
-    load_sheet_data()
-    if user_discord_username != "sumnor":
+    # Verify Discord username matches the nation
+    if user_discord_username != "sumnor":  # sumnor bypasses checks
         cleaned_nation_username = nation_discord_username.replace("#0", "")
         if cleaned_nation_username != user_discord_username:
             await interaction.followup.send(
                 f"❌ Username mismatch.\nNation lists: `{nation_discord_username}`\nYour Discord: `{user_discord_username}`"
             )
             return
-    global_users = cached_users
-    print(f"🔍 Checking duplicates in global registration sheet")
-    print(f"📊 Current users in global cache: {len(global_users)}")
-    print(f"👤 User ID: {user_id}, Username: {user_discord_username}, Nation: {nation_id_str}")
-    for uid, data in global_users.items():
-        print(f"  - Cached: ID={uid}, Username={data.get('DiscordUsername')}, Nation={data.get('NationID')}")
 
-    for uid, data in global_users.items():
-        if user_discord_username != "sumnor":  # Sumnor can always register
+    # Fetch additional data from API
+    data = get_general_data(nation_id, None, API_KEY=os.getenv("API_KEY"))
+    aa_name = data[2]
+
+    # Check for duplicates
+    for uid, data_entry in cached_users.items():
+        if user_discord_username != "sumnor":
             if uid == user_id:
                 await interaction.followup.send(f"❌ This Discord ID ({user_id}) is already registered.")
                 return
-            if data.get('DiscordUsername', '').lower() == user_discord_username:
+            if data_entry.get('DiscordUsername', '').lower() == user_discord_username:
                 await interaction.followup.send(f"❌ This Discord username ({user_discord_username}) is already registered.")
                 return
-            if data.get('NationID') == nation_id_str:
-                await interaction.followup.send(f"❌ This Nation ID ({nation_id_str}) is already registered.")
+            if data_entry.get('NationID') == nation_id:
+                await interaction.followup.send(f"❌ This Nation ID ({nation_id}) is already registered.")
                 return
+
+    # Register in the sheet
     try:
-        dummy_guild_id = "I'm too lazy to remove it from get_registration_sheet so this is a dummy"
+        dummy_guild_id = "dummy"
         sheet = get_registration_sheet(dummy_guild_id)
         sheet.append_row([interaction.user.name, user_id, nation_id, aa_name])
-        print(f"📝 Added registration for {interaction.user.name} (ID: {user_id}) to global sheet")
     except Exception as e:
         await interaction.followup.send(f"❌ Failed to write registration: {e}")
         return
-    try:
-        load_sheet_data()
-        print(f"✅ Reloaded global cache after registration")
-    except Exception as e:
-        print(f"⚠️ Failed to reload cached sheet data: {e}")
+
+    # Update cached_users in-place so all modules see the change
+    cached_users[user_id] = {
+        "DiscordUsername": interaction.user.name,
+        "NationID": nation_id,
+        "AA": aa_name
+    }
 
     await interaction.followup.send("✅ You're registered successfully!")
 
