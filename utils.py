@@ -118,24 +118,15 @@ def load_sheet_data():
 def load_registration_data():
     global cached_users, cached_registrations
 
-    guild_id = "I'm too lazy to remove it from get_registration_sheet so this is a"
-
     try:
-        sheet = get_registration_sheet(guild_id)
-        print(f"📄 Sheet object: {sheet}")
-        print(f"📘 Sheet title: {sheet.title}")
-
-        records = sheet.get_all_records()
-        print(f"📥 Records fetched: {len(records)}")
+        records = get_registration_sheet("...").get_all_records()
 
         user_map = {}
-
         for record in records:
             discord_id = str(record.get('DiscordID', '')).strip()
             discord_username = str(record.get('DiscordUsername', '')).strip().lower()
             nation_id = str(record.get('NationID', '')).strip()
             aa = str(record.get('AA', '')).strip()
-
             if discord_id and discord_username and nation_id:
                 user_map[discord_id] = {
                     'DiscordUsername': discord_username,
@@ -152,6 +143,7 @@ def load_registration_data():
         cached_registrations.extend(records)
 
         print(f"✅ Loaded {len(user_map)} users from registration sheet.")
+        print(f"✅ cached_users updated: {cached_users}")
 
         return cached_users
 
