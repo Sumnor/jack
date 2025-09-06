@@ -103,10 +103,8 @@ async def daily_refresh_loop():
 
 def load_sheet_data():
     try:
-        # Load latest registration data
-        latest_data = load_registration_data()
+        latest_data = load_registration_data()  # now always a dict
 
-        # Update cached_users in-place so all imports see it
         cached_users.clear()
         cached_users.update(latest_data)
 
@@ -144,16 +142,24 @@ def load_registration_data():
                     'NationID': nation_id,
                     'AA': aa  # Include AA in the user data
                 }
-        cached_users = user_map
-        print(cached_users)
-        cached_registrations = records
+
+        # Update cached_users in-place
+        cached_users.clear()
+        cached_users.update(user_map)
+
+        cached_registrations.clear()
+        cached_registrations.extend(records)
 
         print(f"✅ Loaded {len(user_map)} users from registration sheet.")
+
+        # Return the dict for compatibility with load_sheet_data
+        return cached_users
 
     except Exception as e:
         print(f"❌ Failed to load registration sheet data: {e}")
         import traceback
         print(traceback.format_exc())
+        return {}  # Ensure a dict is always returned
 
 def save_to_alliance_net(data_row, guild_id):
     try:
