@@ -98,6 +98,7 @@ async def register(interaction: discord.Interaction, nation_id: str):
         await interaction.followup.send(f"❌ Failed to write registration: {e}")
         return
     try:
+        load_sheet_data()
         print(f"✅ Reloaded global cache after registration")
     except Exception as e:
         print(f"⚠️ Failed to reload cached sheet data: {e}")
