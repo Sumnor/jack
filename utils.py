@@ -116,8 +116,6 @@ def load_sheet_data():
         print(traceback.format_exc())
 
 def load_registration_data():
-    global cached_users, cached_registrations
-
     try:
         records = get_registration_sheet("...").get_all_records()
 
@@ -134,18 +132,8 @@ def load_registration_data():
                     'AA': aa
                 }
 
-        # Update cached_users in-place
-        cached_users.clear()
-        cached_users.update(user_map)
-
-        # Update cached_registrations in-place
-        cached_registrations.clear()
-        cached_registrations.extend(records)
-
         print(f"✅ Loaded {len(user_map)} users from registration sheet.")
-        print(f"✅ cached_users updated: {cached_users}")
-
-        return cached_users
+        return user_map
 
     except Exception as e:
         print(f"❌ Failed to load registration sheet data: {e}")
