@@ -87,7 +87,7 @@ def get_registration_sheet(guild_id):
         raise
 
 cached_users = {}
-cached_registrations = {}
+cached_registrations = []
 cached_conflicts = []
 cached_conflict_data = []
 
@@ -134,32 +134,32 @@ def load_registration_data():
             discord_id = str(record.get('DiscordID', '')).strip()
             discord_username = str(record.get('DiscordUsername', '')).strip().lower()
             nation_id = str(record.get('NationID', '')).strip()
-            aa = str(record.get('AA', '')).strip()  # Add AA field
+            aa = str(record.get('AA', '')).strip()
 
             if discord_id and discord_username and nation_id:
                 user_map[discord_id] = {
                     'DiscordUsername': discord_username,
                     'NationID': nation_id,
-                    'AA': aa  # Include AA in the user data
+                    'AA': aa
                 }
 
         # Update cached_users in-place
         cached_users.clear()
         cached_users.update(user_map)
 
+        # Update cached_registrations in-place
         cached_registrations.clear()
         cached_registrations.extend(records)
 
         print(f"✅ Loaded {len(user_map)} users from registration sheet.")
 
-        # Return the dict for compatibility with load_sheet_data
         return cached_users
 
     except Exception as e:
         print(f"❌ Failed to load registration sheet data: {e}")
         import traceback
         print(traceback.format_exc())
-        return {}  # Ensure a dict is always returned
+        return {}
 
 def save_to_alliance_net(data_row, guild_id):
     try:
