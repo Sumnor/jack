@@ -108,8 +108,13 @@ def wrap_as_prefix_command(app_command_func):
         params = [p.name for p in sig.parameters.values() if p.name != "interaction"]
 
         parsed_kwargs = {}
-        param_index = 0
         dup_counters = {}
+
+        for idx, raw in enumerate(args):
+            if idx >= len(params):
+                break
+            if not str(raw).startswith("-"):
+                parsed_kwargs[params[idx]] = await resolve_arg(ctx, raw)
 
         i = 0
         while i < len(args):
@@ -136,11 +141,6 @@ def wrap_as_prefix_command(app_command_func):
                             i += 1
                         else:
                             parsed_kwargs[key] = "1"
-            else:
-                if param_index < len(params):
-                    key = params[param_index]
-                    parsed_kwargs[key] = await resolve_arg(ctx, raw)
-                    param_index += 1
 
             i += 1
 
