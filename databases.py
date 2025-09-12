@@ -44,6 +44,30 @@ def fetch_columns(table_name, column_name, last_n=None):
     values = [row[column_name] for row in reversed(data)]
     return values
 
+FORECASTS_TABLE = "forecasts"
+
+def save_forecast(material: str, forecast_avg: float):
+    """
+    Saves or updates a forecast in the Supabase 'forecasts' table.
+    """
+    url = f"{SUPABASE_URL}/{FORECASTS_TABLE}?material=eq.{material}"
+    payload = {
+        "material": material,
+        "forecast_avg": forecast_avg,
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    }
+
+    # Try update first
+    resp = requests.patch(url, headers=headers, json=payload)
+    if resp.status_code == 200 and resp.json():
+        return resp.json()[0]
+
+    # If no existing row, insert
+    resp = requests.post(f"{SUPABASE_URL}/{FORECASTS_TABLE}", headers=headers, json=payload)
+    resp.raise_for_status()
+    return resp.json()[0]
+
+
 def fetch_columnss(table_name, column_name, last_n=None, with_timestamps=False):
     """
     Fetches the latest values from a specific column in Supabase.
