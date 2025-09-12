@@ -559,6 +559,23 @@ async def on_interaction(interaction: discord.Interaction):
         predictions = generate_predictions(mat, days=30)
         valid_predictions = [p for p in predictions if p is not None]
         
+        # Calculate historical prediction accuracy
+        historical_predictions = generate_historical_predictions(mat, daily_data, lookback_days=30)
+        accuracy_stats = ""
+        
+        if historical_predictions:
+            errors = []
+            for i, pred in enumerate(historical_predictions):
+                if pred is not None and i < len(daily_data):
+                    actual = daily_data[i]
+                    if actual != 0:
+                        error = abs(pred - actual) / actual * 100
+                        errors.append(error)
+            
+            if errors:
+                avg_error = sum(errors) / len(errors)
+                accuracy_stats = f"Historical Accuracy: ±{avg_error:.1f}% avg error\n"
+        
         if valid_predictions:
             pred_avg = sum(valid_predictions) / len(valid_predictions)
             pred_high = max(valid_predictions)
@@ -567,19 +584,24 @@ async def on_interaction(interaction: discord.Interaction):
             expected_change = ((pred_avg - current_price) / current_price * 100) if current_price > 0 else 0
             
             forecast_desc = (
-                f"**30-Day Forecast Summary:**\n"
+                f"**30-Day Forecast Analysis:**\n"
                 f"Current Price: {current_price:.2f}\n"
                 f"Predicted Average: {pred_avg:.2f}\n"
                 f"Predicted High: {pred_high:.2f}\n"
                 f"Predicted Low: {pred_low:.2f}\n"
                 f"Expected Change: {expected_change:+.1f}%\n\n"
-                f"*Purple line shows 30-day predictions*"
+                f"{accuracy_stats}"
+                f"**Legend:**\n"
+                f"🔵 Blue = Actual historical prices\n"
+                f"🟠 Orange = Previous predictions (for accuracy)\n"
+                f"🟣 Purple = Future forecasts\n"
+                f"*Shaded regions show historical vs forecast periods*"
             )
         else:
             forecast_desc = "Unable to generate reliable forecasts for this material."
 
         embed = discord.Embed(
-            title=f"{mat.capitalize()} - 30 Day Forecast",
+            title=f"{mat.capitalize()} - Predictive Analysis",
             description=forecast_desc,
             color=discord.Color.purple()
         )
