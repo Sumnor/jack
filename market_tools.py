@@ -7,6 +7,7 @@ import pandas as pd
 from bot_instance import bot, API_KEY, wrap_as_prefix_command
 from databases import fetch_columns, fetch_latest_model, get_alerts_for_user, update_alert, fetch_columnss
 from regression_models import predict_turns_ahead
+from datetime import datetime, timedelta
 
 TABLE_NAME = "materials"
 MATERIALS = ["food","uranium","iron","coal","bauxite","oil","lead","steel","aluminum","munitions","gasoline"]
@@ -59,6 +60,68 @@ def predict_next_price(material, days_ahead=1):
     steps_ahead = days_ahead * 24 // 2
     predicted = intercept + coef * (last_step + steps_ahead)
     return predicted
+
+def generate_predictions(material, days=30):
+    """Generate predictions for the next 30 days"""
+    predictions = []
+    for day in range(1, days + 1):
+        pred = predict_next_price(material, days_ahead=day)
+        if pred is not None:
+            predictions.append(pred)
+        else:
+            # If prediction fails, use linear extrapolation from last known trend
+            if predictions:
+                predictions.append(predictions[-1])
+            else:
+                predictions.append(None)
+    return predictions
+
+def create_graph_with_predictions(data, material, avg=None, title="Price", view_type="day"):
+    plt.figure(figsize=(10, 5), dpi=100)
+    
+    # Plot historical data
+    days_historical = list(range(1, len(data) + 1))
+    plt.plot(days_historical, data, marker='o', label='Historical Price', color='blue', linewidth=2)
+    
+    # Generate and plot predictions
+    predictions = generate_predictions(material, days=30)
+    if predictions and any(p is not None for p in predictions):
+        # Filter out None predictions
+        valid_predictions = [(i, p) for i, p in enumerate(predictions) if p is not None]
+        if valid_predictions:
+            pred_days = [len(data) + i + 1 for i, _ in valid_predictions]
+            pred_values = [p for _, p in valid_predictions]
+            
+            plt.plot(pred_days, pred_values, marker='s', label='30-Day Predictions', 
+                    color='purple', linewidth=2, linestyle='--', alpha=0.8)
+            
+            # Connect last historical point to first prediction
+            if data and pred_values:
+                plt.plot([len(data), len(data) + 1], [data[-1], pred_values[0]], 
+                        color='purple', linewidth=2, linestyle='--', alpha=0.6)
+    
+    # Add average lines if provided
+    if avg is not None:
+        total_range = len(data) + 30
+        plt.axhline(avg*1.2, color='green', linestyle=':', alpha=0.7, label='+20% Avg')
+        plt.axhline(avg*0.8, color='red', linestyle=':', alpha=0.7, label='-20% Avg')
+        plt.axhline(avg, color='gray', linestyle=':', alpha=0.5, label='Avg')
+    
+    # Add vertical line to separate historical from predictions
+    if data:
+        plt.axvline(x=len(data), color='orange', linestyle=':', alpha=0.7, label='Today')
+    
+    plt.title(f"{title} - Historical & 30-Day Forecast")
+    plt.xlabel("Days")
+    plt.ylabel("Price")
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight')
+    plt.close()
+    buf.seek(0)
+    return buf
 
 def create_graph(data, avg=None, title="Price", view_type="day"):
     plt.figure(figsize=(8,4), dpi=100)
@@ -165,6 +228,7 @@ class MaterialView(View):
         self.add_item(Button(label="Alert Below -20%", style=discord.ButtonStyle.danger, custom_id=f"alert_low_{mat}"))
         self.add_item(Button(label="Simulate Trade", style=discord.ButtonStyle.success, custom_id=f"simulate_{mat}"))
         self.add_item(Button(label="Turn View", style=discord.ButtonStyle.primary, custom_id=f"turn_{mat}"))
+        self.add_item(Button(label="Forecast View", style=discord.ButtonStyle.secondary, custom_id=f"forecast_{mat}"))
 
 class TurnView(View):
     def __init__(self, mat, show_graph=True):
@@ -473,6 +537,54 @@ async def on_interaction(interaction: discord.Interaction):
         )
         embed.add_field(name="Simulation (Buy & Sell Profit/Loss)", value="\n".join(lines), inline=False)
         await interaction.edit_original_response(embed=embed)
+        return
+
+    if custom_id.startswith("forecast_"):
+        mat = custom_id.split("_")[1]
+        turn_data, timestamps = fetch_columnss(TABLE_NAME, mat, last_n=1000, with_timestamps=True)
+        if not turn_data or not timestamps:
+            await interaction.followup.send(f"No data available for {mat}.", ephemeral=True)
+            return
+
+        daily_data = turns_to_daily_averages_with_timestamps(turn_data, timestamps, days=30)
+        if not daily_data:
+            await interaction.followup.send(f"Not enough data to create daily averages for {mat}.", ephemeral=True)
+            return
+
+        avg = sum(daily_data)/len(daily_data)
+        buf = create_graph_with_predictions(daily_data, mat, avg, title=mat.capitalize())
+        file = discord.File(buf, filename=f"{mat}_forecast.png")
+
+        # Generate some forecast statistics
+        predictions = generate_predictions(mat, days=30)
+        valid_predictions = [p for p in predictions if p is not None]
+        
+        if valid_predictions:
+            pred_avg = sum(valid_predictions) / len(valid_predictions)
+            pred_high = max(valid_predictions)
+            pred_low = min(valid_predictions)
+            current_price = daily_data[-1] if daily_data else 0
+            expected_change = ((pred_avg - current_price) / current_price * 100) if current_price > 0 else 0
+            
+            forecast_desc = (
+                f"**30-Day Forecast Summary:**\n"
+                f"Current Price: {current_price:.2f}\n"
+                f"Predicted Average: {pred_avg:.2f}\n"
+                f"Predicted High: {pred_high:.2f}\n"
+                f"Predicted Low: {pred_low:.2f}\n"
+                f"Expected Change: {expected_change:+.1f}%\n\n"
+                f"*Purple line shows 30-day predictions*"
+            )
+        else:
+            forecast_desc = "Unable to generate reliable forecasts for this material."
+
+        embed = discord.Embed(
+            title=f"{mat.capitalize()} - 30 Day Forecast",
+            description=forecast_desc,
+            color=discord.Color.purple()
+        )
+        embed.set_image(url=f"attachment://{mat}_forecast.png")
+        await interaction.edit_original_response(embed=embed, view=MaterialView(mat), attachments=[file])
         return
 
     if custom_id.startswith("material_"):
