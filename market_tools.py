@@ -77,32 +77,20 @@ def generate_predictions(material, days=30):
     return predictions
 
 def generate_historical_predictions(material, historical_data, lookback_days=30):
-    """Generate what predictions would have been for historical data points"""
+    """Generate more realistic historical predictions using advanced methods"""
     historical_predictions = []
     
     # For each historical point, simulate what the prediction would have been
     for i in range(len(historical_data)):
-        if i < lookback_days:  # Not enough data for prediction
+        if i < 7:  # Need at least 7 days for meaningful prediction
             historical_predictions.append(None)
             continue
             
-        # Use historical data up to point i to make a "prediction" for that point
-        # This simulates what the model would have predicted at that time
+        # Use data up to point i to make a "prediction" for that point
         try:
-            # Simple trend-based prediction using last few points
-            recent_data = historical_data[max(0, i-7):i]  # Use last 7 days for trend
-            if len(recent_data) >= 2:
-                # Linear trend extrapolation
-                x = list(range(len(recent_data)))
-                y = recent_data
-                if len(x) > 1:
-                    slope = (y[-1] - y[0]) / (len(y) - 1)
-                    prediction = y[-1] + slope
-                    historical_predictions.append(prediction)
-                else:
-                    historical_predictions.append(recent_data[-1])
-            else:
-                historical_predictions.append(None)
+            available_data = historical_data[:i]
+            pred = advanced_predict_price(material, available_data, days_ahead=1)
+            historical_predictions.append(pred)
         except:
             historical_predictions.append(None)
     
