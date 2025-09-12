@@ -52,7 +52,8 @@ def turns_to_daily_averages_with_timestamps(data, timestamps, days=30, turns_per
 # ---------------------------
 def advanced_predict_price(material, history, days_ahead=1):
     """
-    Improved autoregressive + cyclical predictor with volatility and non-negative clamp.
+    Improved autoregressive + cyclical predictor with volatility, clamp at 0,
+    and bounded forecasts.
     """
     if not history or len(history) < 7:
         return None
@@ -66,13 +67,18 @@ def advanced_predict_price(material, history, days_ahead=1):
     last_val = series[-1]
 
     # --- AR component ---
-    if n >= 5:
-        X = np.column_stack([series[i:n-1-i] for i in range(1, min(5, n))])
-        y = series[min(5, n):]
-        if len(y) > 0 and X.shape[0] >= len(y):
-            coef, *_ = np.linalg.lstsq(X[:len(y)], y, rcond=None)
-            ar_pred = np.dot(series[-len(coef):][::-1], coef)
-        else:
+    lag = min(5, n - 1)
+    X, y = [], []
+    for i in range(lag, n):
+        X.append(series[i - lag:i])
+        y.append(series[i])
+    X, y = np.array(X), np.array(y)
+
+    if len(X) > 0 and len(y) > 0:
+        try:
+            coef, *_ = np.linalg.lstsq(X, y, rcond=None)
+            ar_pred = float(np.dot(series[-lag:], coef))
+        except Exception:
             ar_pred = last_val
     else:
         ar_pred = last_val
@@ -80,34 +86,34 @@ def advanced_predict_price(material, history, days_ahead=1):
     # --- Cycle component ---
     fft_vals = np.fft.rfft(series - mean_val)
     freqs = np.fft.rfftfreq(n, d=1.0)
-    idx = np.argmax(np.abs(fft_vals[1:])) + 1 if len(fft_vals) > 1 else 0
-    if idx > 0:
-        cycle_len = 1 / freqs[idx] if freqs[idx] != 0 else 7
+    if len(freqs) > 1:
+        idx = np.argmax(np.abs(fft_vals[1:])) + 1
+    else:
+        idx = 0
+
+    if idx > 0 and freqs[idx] > 0:
+        cycle_len = 1 / freqs[idx]
         phase = np.angle(fft_vals[idx])
-        cycle_pred = mean_val + np.abs(fft_vals[idx]) / n * np.cos(2*np.pi*days_ahead/cycle_len + phase)
+        cycle_pred = mean_val + (np.abs(fft_vals[idx]) / n) * np.cos(
+            2 * np.pi * days_ahead / cycle_len + phase
+        )
     else:
         cycle_pred = last_val
 
     # --- Blend AR + Cycle ---
-    weight_ar = 0.6
-    weight_cycle = 0.4
-    raw_pred = weight_ar * ar_pred + weight_cycle * cycle_pred
+    raw_pred = 0.6 * ar_pred + 0.4 * cycle_pred
 
     # --- Add volatility noise ---
-    noise_scale = std_val * 0.1  # 10% of recent volatility
+    noise_scale = std_val * 0.1  # 10% of volatility
     noise = np.random.normal(0, noise_scale)
 
-    # --- Final forecast ---
     pred = raw_pred + noise
 
-    # --- Clamp to realistic bounds ---
-    pred = max(pred, 0)  # no negatives
-    # Optionally cap extreme spikes (e.g. 3x historical max)
-    pred = min(pred, np.max(series) * 3)
+    # --- Clamp forecast ---
+    pred = max(pred, 0)  # never negative
+    pred = min(pred, np.max(series) * 3)  # cap extreme blow-ups
 
     return float(pred)
-
-
 
 # ---------------------------
 # Prediction wrappers
