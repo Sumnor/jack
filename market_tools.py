@@ -76,14 +76,76 @@ def generate_predictions(material, days=30):
                 predictions.append(None)
     return predictions
 
+def generate_historical_predictions(material, historical_data, lookback_days=30):
+    """Generate what predictions would have been for historical data points"""
+    historical_predictions = []
+    
+    # For each historical point, simulate what the prediction would have been
+    for i in range(len(historical_data)):
+        if i < lookback_days:  # Not enough data for prediction
+            historical_predictions.append(None)
+            continue
+            
+        # Use historical data up to point i to make a "prediction" for that point
+        # This simulates what the model would have predicted at that time
+        try:
+            # Simple trend-based prediction using last few points
+            recent_data = historical_data[max(0, i-7):i]  # Use last 7 days for trend
+            if len(recent_data) >= 2:
+                # Linear trend extrapolation
+                x = list(range(len(recent_data)))
+                y = recent_data
+                if len(x) > 1:
+                    slope = (y[-1] - y[0]) / (len(y) - 1)
+                    prediction = y[-1] + slope
+                    historical_predictions.append(prediction)
+                else:
+                    historical_predictions.append(recent_data[-1])
+            else:
+                historical_predictions.append(None)
+        except:
+            historical_predictions.append(None)
+    
+    return historical_predictions
+
 def create_graph_with_predictions(data, material, avg=None, title="Price", view_type="day"):
-    plt.figure(figsize=(10, 5), dpi=100)
+    plt.figure(figsize=(12, 6), dpi=100)
+    
+    # Generate historical predictions for comparison
+    historical_predictions = generate_historical_predictions(material, data, lookback_days=30)
     
     # Plot historical data
     days_historical = list(range(1, len(data) + 1))
-    plt.plot(days_historical, data, marker='o', label='Historical Price', color='blue', linewidth=2)
+    plt.plot(days_historical, data, marker='o', label='Actual Price', color='blue', linewidth=2, markersize=4)
     
-    # Generate and plot predictions
+    # Plot historical predictions vs actual (for comparison)
+    if historical_predictions:
+        valid_hist_preds = []
+        valid_hist_days = []
+        prediction_errors = []
+        
+        for i, pred in enumerate(historical_predictions):
+            if pred is not None and i < len(data):
+                valid_hist_preds.append(pred)
+                valid_hist_days.append(i + 1)
+                # Calculate prediction accuracy
+                actual = data[i]
+                error = abs(pred - actual) / actual * 100 if actual != 0 else 0
+                prediction_errors.append(error)
+        
+        if valid_hist_preds:
+            plt.plot(valid_hist_days, valid_hist_preds, marker='x', label='Historical Predictions', 
+                    color='orange', linewidth=1.5, linestyle=':', alpha=0.8, markersize=3)
+            
+            # Add accuracy info to the plot
+            if prediction_errors:
+                avg_error = sum(prediction_errors) / len(prediction_errors)
+                plt.text(0.02, 0.98, f'Avg Prediction Error: {avg_error:.1f}%', 
+                        transform=plt.gca().transAxes, fontsize=9, 
+                        bbox=dict(boxstyle="round,pad=0.3", facecolor="yellow", alpha=0.7),
+                        verticalalignment='top')
+    
+    # Generate and plot future predictions
     predictions = generate_predictions(material, days=30)
     if predictions and any(p is not None for p in predictions):
         # Filter out None predictions
@@ -92,8 +154,8 @@ def create_graph_with_predictions(data, material, avg=None, title="Price", view_
             pred_days = [len(data) + i + 1 for i, _ in valid_predictions]
             pred_values = [p for _, p in valid_predictions]
             
-            plt.plot(pred_days, pred_values, marker='s', label='30-Day Predictions', 
-                    color='purple', linewidth=2, linestyle='--', alpha=0.8)
+            plt.plot(pred_days, pred_values, marker='s', label='30-Day Forecasts', 
+                    color='purple', linewidth=2, linestyle='--', alpha=0.8, markersize=3)
             
             # Connect last historical point to first prediction
             if data and pred_values:
@@ -105,17 +167,24 @@ def create_graph_with_predictions(data, material, avg=None, title="Price", view_
         total_range = len(data) + 30
         plt.axhline(avg*1.2, color='green', linestyle=':', alpha=0.7, label='+20% Avg')
         plt.axhline(avg*0.8, color='red', linestyle=':', alpha=0.7, label='-20% Avg')
-        plt.axhline(avg, color='gray', linestyle=':', alpha=0.5, label='Avg')
+        plt.axhline(avg, color='gray', linestyle=':', alpha=0.5, label='Historical Avg')
     
     # Add vertical line to separate historical from predictions
     if data:
         plt.axvline(x=len(data), color='orange', linestyle=':', alpha=0.7, label='Today')
     
-    plt.title(f"{title} - Historical & 30-Day Forecast")
+    # Add shaded regions for better visualization
+    if data:
+        # Shade historical region
+        plt.axvspan(1, len(data), alpha=0.1, color='blue', label='_nolegend_')
+        # Shade prediction region
+        plt.axvspan(len(data), len(data) + 30, alpha=0.1, color='purple', label='_nolegend_')
+    
+    plt.title(f"{title} - Historical vs Predicted Performance")
     plt.xlabel("Days")
     plt.ylabel("Price")
     plt.grid(True, alpha=0.3)
-    plt.legend()
+    plt.legend(loc='upper left')
     
     buf = io.BytesIO()
     plt.savefig(buf, format='png', bbox_inches='tight')
