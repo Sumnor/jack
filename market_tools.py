@@ -17,6 +17,21 @@ GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
 # ---------------------------
 # Utility: daily averaging
 # ---------------------------
+import mysql.connector
+
+def save_forecast(material, forecast_avg):
+    conn = mysql.connector.connect(
+        host="localhost", user="youruser", password="yourpass", database="yourdb"
+    )
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO material_forecasts (material, forecast_avg) VALUES (%s, %s)",
+        (material, forecast_avg)
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
 def turns_to_daily_averages(data, turns_per_day=12):
     if len(data) < turns_per_day:
         return data
@@ -615,61 +630,39 @@ async def on_interaction(interaction: discord.Interaction):
         if not turn_data or not timestamps:
             await interaction.followup.send(f"No data available for {mat}.", ephemeral=True)
             return
-
+    
         daily_data = turns_to_daily_averages_with_timestamps(turn_data, timestamps, days=30)
         if not daily_data:
             await interaction.followup.send(f"Not enough data to create daily averages for {mat}.", ephemeral=True)
             return
-
+    
         avg = sum(daily_data)/len(daily_data)
         buf = create_graph_with_predictions(daily_data, mat, avg, title=mat.capitalize())
         file = discord.File(buf, filename=f"{mat}_forecast.png")
-
-        # Generate some forecast statistics
-        predictions = generate_predictions(mat, days=30)
-        valid_predictions = [p for p in predictions if p is not None]
-
-        # Calculate historical prediction accuracy
-        historical_predictions = generate_historical_predictions(mat, daily_data, lookback_days=30)
-        accuracy_stats = ""
-        
-        if historical_predictions:
-            errors = []
-            for i, pred in enumerate(historical_predictions):
-                if pred is not None and i < len(daily_data):
-                    actual = daily_data[i]
-                    if actual != 0:
-                        error = abs(pred - actual) / actual * 100
-                        errors.append(error)
-            
-            if errors:
-                avg_error = sum(errors) / len(errors)
-                accuracy_stats = f"Historical Accuracy: ±{avg_error:.1f}% avg error\n"
-        
-        if valid_predictions:
-            pred_avg = sum(valid_predictions) / len(valid_predictions)
-            pred_high = max(valid_predictions)
-            pred_low = min(valid_predictions)
-            current_price = daily_data[-1] if daily_data else 0
-            expected_change = ((pred_avg - current_price) / current_price * 100) if current_price > 0 else 0
-            
-            forecast_desc = (
-                f"**30-Day Forecast Analysis:**\n"
-                f"Current Price: {current_price:.2f}\n"
-                f"Predicted Average: {pred_avg:.2f}\n"
-                f"Predicted High: {pred_high:.2f}\n"
-                f"Predicted Low: {pred_low:.2f}\n"
-                f"Expected Change: {expected_change:+.1f}%\n\n"
-                f"{accuracy_stats}"
-                f"**Legend:**\n"
-                f"🔵 Blue = Actual historical prices\n"
-                f"🟠 Orange = Previous predictions (for accuracy)\n"
-                f"🟣 Purple = Future forecasts\n"
-                f"*Shaded regions show historical vs forecast periods*"
-            )
-        else:
-            forecast_desc = "Unable to generate reliable forecasts for this material."
-
+    
+        # --- Run 10 forecast runs ---
+        forecast_runs = []
+        for _ in range(10):
+            preds = generate_predictions(mat, days=30)
+            valid_preds = [p for p in preds if p is not None]
+            if valid_preds:
+                forecast_runs.append(sum(valid_preds) / len(valid_preds))
+    
+        forecast_avg = sum(forecast_runs) / len(forecast_runs) if forecast_runs else None
+    
+        # --- Save to SQL ---
+        if forecast_avg is not None:
+            save_forecast(mat, forecast_avg)
+    
+        forecast_desc = (
+            f"**30-Day Forecast (10-run average):**\n"
+            f"Predicted Avg: {forecast_avg:.2f} (saved to DB)\n\n"
+            f"**Legend:**\n"
+            f"🔵 Historical prices\n"
+            f"🟠 Previous predictions (accuracy)\n"
+            f"🟣 Future forecasts\n"
+        )
+    
         embed = discord.Embed(
             title=f"{mat.capitalize()} - Predictive Analysis",
             description=forecast_desc,
