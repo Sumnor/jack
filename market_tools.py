@@ -7,177 +7,179 @@ import pandas as pd
 from bot_instance import bot, API_KEY, wrap_as_prefix_command
 from databases import fetch_columns, fetch_latest_model, get_alerts_for_user, update_alert, fetch_columnss
 from regression_models import predict_turns_ahead
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 TABLE_NAME = "materials"
 MATERIALS = ["food","uranium","iron","coal","bauxite","oil","lead","steel","aluminum","munitions","gasoline"]
 GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
 
+
+# ---------------------------
+# Utility: daily averaging
+# ---------------------------
 def turns_to_daily_averages(data, turns_per_day=12):
     if len(data) < turns_per_day:
         return data
-    
     daily_averages = []
     for i in range(0, len(data), turns_per_day):
         day_data = data[i:i+turns_per_day]
         if len(day_data) == turns_per_day:
             daily_averages.append(sum(day_data) / len(day_data))
-    
     return daily_averages
 
-from datetime import datetime, timedelta, timezone
 
 def turns_to_daily_averages_with_timestamps(data, timestamps, days=30, turns_per_day=12):
     parsed_ts = [
         datetime.fromisoformat(ts.replace("Z", "+00:00")) if isinstance(ts, str) else ts
         for ts in timestamps
     ]
-
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-
     filtered = [(price, ts) for price, ts in zip(data, parsed_ts) if ts >= cutoff]
-
     if not filtered:
         return []
-
     daily_data = {}
     for price, ts in filtered:
         day_key = ts.date()
         if day_key not in daily_data:
             daily_data[day_key] = []
         daily_data[day_key].append(price)
-
     daily_averages = [sum(prices) / len(prices) for day, prices in sorted(daily_data.items())]
     return daily_averages
 
-def predict_next_price(material, days_ahead=1):
-    model_data = fetch_latest_model(material)
-    if model_data is None:
+
+# ---------------------------
+# Advanced forecasting engine
+# ---------------------------
+def advanced_predict_price(material, data, days_ahead=1):
+    """
+    Hybrid AR + Cycle predictor with fallback.
+    """
+    if len(data) < 7:
         return None
-    intercept, coefficients, features = model_data
-    last_step = features["time_steps"][-1]
-    coef = coefficients[0]
-    steps_ahead = days_ahead * 24 // 2
-    predicted = intercept + coef * (last_step + steps_ahead)
-    return predicted
+    arr = np.array(data, dtype=float)
+    mean_val = np.mean(arr)
+    arr = arr - mean_val
+
+    # AR coefficients (simple OLS)
+    lag = min(7, len(arr) - 1)
+    X, y = [], []
+    for i in range(lag, len(arr)):
+        X.append(arr[i-lag:i])
+        y.append(arr[i])
+    X, y = np.array(X), np.array(y)
+    try:
+        coef, *_ = np.linalg.lstsq(X, y, rcond=None)
+    except Exception:
+        return float(data[-1])
+
+    # Forecast forward iteratively
+    history = arr.tolist()
+    for _ in range(days_ahead):
+        if len(history) < lag:
+            break
+        x_in = np.array(history[-lag:])
+        next_val = float(np.dot(coef, x_in))
+        history.append(next_val)
+
+    ar_forecast = history[-1] + mean_val
+
+    # Cycle detection via FFT
+    fft = np.fft.rfft(arr)
+    freqs = np.fft.rfftfreq(len(arr), d=1)
+    if len(freqs) > 1:
+        idx = np.argmax(np.abs(fft[1:])) + 1
+        cycle_len = int(round(1 / freqs[idx])) if freqs[idx] > 0 else 0
+    else:
+        cycle_len = 0
+
+    if cycle_len > 2 and cycle_len < len(arr):
+        cycle_vals = [arr[-(i*cycle_len) % len(arr)] for i in range(1, days_ahead+1)]
+        cycle_forecast = float(np.mean(cycle_vals)) + mean_val
+    else:
+        cycle_forecast = None
+
+    if cycle_forecast is not None:
+        return 0.6 * ar_forecast + 0.4 * cycle_forecast
+    else:
+        return ar_forecast
+
+
+# ---------------------------
+# Prediction wrappers
+# ---------------------------
+def predict_next_price(material, days_ahead=1):
+    turn_data, timestamps = fetch_columnss("materials", material, last_n=500, with_timestamps=True)
+    if not turn_data or not timestamps:
+        return None
+    daily_data = turns_to_daily_averages_with_timestamps(turn_data, timestamps, days=60)
+    if len(daily_data) < 7:
+        return None
+    return advanced_predict_price(material, daily_data, days_ahead)
+
 
 def generate_predictions(material, days=30):
-    """Generate predictions for the next 30 days"""
+    turn_data, timestamps = fetch_columnss("materials", material, last_n=500, with_timestamps=True)
+    if not turn_data or not timestamps:
+        return [None] * days
+    daily_data = turns_to_daily_averages_with_timestamps(turn_data, timestamps, days=60)
+    if len(daily_data) < 7:
+        return [None] * days
+
     predictions = []
+    base_data = daily_data.copy()
     for day in range(1, days + 1):
-        pred = predict_next_price(material, days_ahead=day)
+        extended = base_data + predictions
+        pred = advanced_predict_price(material, extended, days_ahead=1)
         if pred is not None:
             predictions.append(pred)
         else:
-            # If prediction fails, use linear extrapolation from last known trend
-            if predictions:
-                predictions.append(predictions[-1])
-            else:
-                predictions.append(None)
+            last_pred = predictions[-1] if predictions else daily_data[-1]
+            variation = np.random.normal(0, abs(last_pred) * 0.02)
+            predictions.append(last_pred + variation)
     return predictions
 
-def generate_historical_predictions(material, historical_data, lookback_days=30):
-    """Generate more realistic historical predictions using advanced methods"""
-    historical_predictions = []
-    
-    # For each historical point, simulate what the prediction would have been
-    for i in range(len(historical_data)):
-        if i < 7:  # Need at least 7 days for meaningful prediction
-            historical_predictions.append(None)
-            continue
-            
-        # Use data up to point i to make a "prediction" for that point
-        try:
-            available_data = historical_data[:i]
-            pred = advanced_predict_price(material, available_data, days_ahead=1)
-            historical_predictions.append(pred)
-        except:
-            historical_predictions.append(None)
-    
-    return historical_predictions
 
+def generate_historical_predictions(material, historical_data, lookback_days=30):
+    preds = []
+    for i in range(len(historical_data)):
+        if i < 7:
+            preds.append(None)
+            continue
+        available = historical_data[:i]
+        try:
+            pred = advanced_predict_price(material, available, days_ahead=1)
+            preds.append(pred)
+        except Exception:
+            preds.append(None)
+    return preds
+
+
+# ---------------------------
+# Graphing with predictions
+# ---------------------------
 def create_graph_with_predictions(data, material, avg=None, title="Price", view_type="day"):
     plt.figure(figsize=(12, 6), dpi=100)
-    
-    # Generate historical predictions for comparison
-    historical_predictions = generate_historical_predictions(material, data, lookback_days=30)
-    
-    # Plot historical data
-    days_historical = list(range(1, len(data) + 1))
-    plt.plot(days_historical, data, marker='o', label='Actual Price', color='blue', linewidth=2, markersize=4)
-    
-    # Plot historical predictions vs actual (for comparison)
-    if historical_predictions:
-        valid_hist_preds = []
-        valid_hist_days = []
-        prediction_errors = []
-        
-        for i, pred in enumerate(historical_predictions):
-            if pred is not None and i < len(data):
-                valid_hist_preds.append(pred)
-                valid_hist_days.append(i + 1)
-                # Calculate prediction accuracy
-                actual = data[i]
-                error = abs(pred - actual) / actual * 100 if actual != 0 else 0
-                prediction_errors.append(error)
-        
-        if valid_hist_preds:
-            plt.plot(valid_hist_days, valid_hist_preds, marker='x', label='Historical Predictions', 
-                    color='orange', linewidth=1.5, linestyle=':', alpha=0.8, markersize=3)
-            
-            # Add accuracy info to the plot
-            if prediction_errors:
-                avg_error = sum(prediction_errors) / len(prediction_errors)
-                plt.text(0.02, 0.98, f'Avg Prediction Error: {avg_error:.1f}%', 
-                        transform=plt.gca().transAxes, fontsize=9, 
-                        bbox=dict(boxstyle="round,pad=0.3", facecolor="yellow", alpha=0.7),
-                        verticalalignment='top')
-    
-    # Generate and plot future predictions
-    predictions = generate_predictions(material, days=30)
-    if predictions and any(p is not None for p in predictions):
-        # Filter out None predictions
-        valid_predictions = [(i, p) for i, p in enumerate(predictions) if p is not None]
-        if valid_predictions:
-            pred_days = [len(data) + i + 1 for i, _ in valid_predictions]
-            pred_values = [p for _, p in valid_predictions]
-            
-            plt.plot(pred_days, pred_values, marker='s', label='30-Day Forecasts', 
-                    color='purple', linewidth=2, linestyle='--', alpha=0.8, markersize=3)
-            
-            # Connect last historical point to first prediction
-            if data and pred_values:
-                plt.plot([len(data), len(data) + 1], [data[-1], pred_values[0]], 
-                        color='purple', linewidth=2, linestyle='--', alpha=0.6)
-    
-    # Add average lines if provided
+    hist_preds = generate_historical_predictions(material, data, lookback_days=30)
+    days_hist = list(range(1, len(data) + 1))
+    plt.plot(days_hist, data, marker='o', label='Actual Price', color='blue', linewidth=2, markersize=4)
+    if hist_preds:
+        valid_hist = [(i+1, p) for i,p in enumerate(hist_preds) if p is not None and i < len(data)]
+        if valid_hist:
+            plt.plot([d for d,_ in valid_hist],[p for _,p in valid_hist],marker='x',label='Historical Predictions',color='orange',linestyle=':',alpha=0.8)
+    preds = generate_predictions(material, days=30)
+    valid_preds = [(len(data)+i+1, p) for i,p in enumerate(preds) if p is not None]
+    if valid_preds:
+        plt.plot([d for d,_ in valid_preds],[p for _,p in valid_preds],marker='s',label='30-Day Forecasts',color='purple',linestyle='--',alpha=0.8)
+        plt.plot([len(data),valid_preds[0][0]],[data[-1],valid_preds[0][1]],color='purple',linestyle='--',alpha=0.6)
     if avg is not None:
-        total_range = len(data) + 30
+        plt.axhline(avg, color='gray', linestyle=':', alpha=0.5, label='Historical Avg')
         plt.axhline(avg*1.2, color='green', linestyle=':', alpha=0.7, label='+20% Avg')
         plt.axhline(avg*0.8, color='red', linestyle=':', alpha=0.7, label='-20% Avg')
-        plt.axhline(avg, color='gray', linestyle=':', alpha=0.5, label='Historical Avg')
-    
-    # Add vertical line to separate historical from predictions
     if data:
         plt.axvline(x=len(data), color='orange', linestyle=':', alpha=0.7, label='Today')
-    
-    # Add shaded regions for better visualization
-    if data:
-        # Shade historical region
-        plt.axvspan(1, len(data), alpha=0.1, color='blue', label='_nolegend_')
-        # Shade prediction region
-        plt.axvspan(len(data), len(data) + 30, alpha=0.1, color='purple', label='_nolegend_')
-    
-    plt.title(f"{title} - Historical vs Predicted Performance")
-    plt.xlabel("Days")
-    plt.ylabel("Price")
-    plt.grid(True, alpha=0.3)
-    plt.legend(loc='upper left')
-    
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', bbox_inches='tight')
-    plt.close()
-    buf.seek(0)
+    plt.title(f"{title} - Historical vs Predicted")
+    plt.xlabel("Days"); plt.ylabel("Price"); plt.grid(True, alpha=0.3); plt.legend(loc='upper left')
+    buf = io.BytesIO(); plt.savefig(buf, format='png', bbox_inches='tight'); plt.close(); buf.seek(0)
     return buf
 
 def create_graph(data, avg=None, title="Price", view_type="day"):
@@ -615,7 +617,7 @@ async def on_interaction(interaction: discord.Interaction):
         # Generate some forecast statistics
         predictions = generate_predictions(mat, days=30)
         valid_predictions = [p for p in predictions if p is not None]
-        
+
         # Calculate historical prediction accuracy
         historical_predictions = generate_historical_predictions(mat, daily_data, lookback_days=30)
         accuracy_stats = ""
