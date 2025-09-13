@@ -289,10 +289,17 @@ def predict_next_price(material, days_ahead=1):
     turn_data, timestamps = fetch_columnss("materials", material, last_n=500, with_timestamps=True)
     if not turn_data or not timestamps:
         return None
+
     daily_data = turns_to_daily_averages_with_timestamps(turn_data, timestamps, days=60)
     if len(daily_data) < 10:
         return None
-    return ensemble_predict_multistep(material, daily_data, days_ahead)
+
+    # Ensure a single float is returned, not a list
+    pred = ensemble_predict(material, daily_data, days_ahead)
+    if isinstance(pred, list):
+        return pred[0]  # take the first predicted day
+    return pred
+
 
 def generate_predictions(material, days=30):
     turn_data, timestamps = fetch_columnss("materials", material, last_n=500, with_timestamps=True)
