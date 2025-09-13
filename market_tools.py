@@ -598,6 +598,7 @@ bot.command(name="market_tool")(wrap_as_prefix_command(market_tool.callback))
 # Main interaction handler
 async def handle_market_interaction(interaction, custom_id):
     """Handle all market-related button interactions - Complete handler function"""
+    await interaction.response.defer()
     
     # Market stats handlers
     if custom_id == "overview":
