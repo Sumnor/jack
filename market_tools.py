@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from bot_instance import bot, API_KEY, wrap_as_prefix_command
-from databases import fetch_columns, fetch_latest_model, get_alerts_for_user, update_alert, fetch_columnss
+from databases import fetch_columns, fetch_latest_model, get_alerts_for_user, update_alert, fetch_columnss, fetch_query, execute_query
 from regression_models import predict_turns_ahead
 from datetime import datetime, timedelta, timezone
 from scipy import stats
@@ -17,6 +17,27 @@ warnings.filterwarnings('ignore')
 
 TABLE_NAME = "materials"
 MATERIALS = ["food","uranium","iron","coal","bauxite","oil","lead","steel","aluminum","munitions","gasoline"]
+
+def predict_next_price(material, days_ahead=1):
+    """FIXED: Predict next price with proper error handling"""
+    turn_data, timestamps = fetch_columnss("materials", material, last_n=500, with_timestamps=True)
+    if not turn_data or not timestamps:
+        return None
+
+    daily_data = turns_to_daily_averages_with_timestamps(turn_data, timestamps, days=60)
+    if len(daily_data) < 10:
+        return None
+
+    # Get prediction using the fixed ensemble method
+    pred = ensemble_predict_multistep(material, daily_data, days_ahead=days_ahead)
+    
+    if isinstance(pred, list):
+        # Return first prediction if it's a list
+        return pred[0] if pred and pred[0] is not None else None
+    elif pred is not None:
+        return pred
+    else:
+        return None
 
 def turns_to_daily_averages(data, turns_per_day=12):
     if len(data) < turns_per_day:
@@ -109,97 +130,185 @@ def create_features(data, window=5):
     
     return features
 
+# Supabase integration functions
+def save_predictions_to_supabase(material, predictions, confidence_scores=None, model_used="ensemble"):
+    """Save predictions to Supabase database"""
+    try:
+        today = datetime.now(timezone.utc).date()
+        
+        for i, pred in enumerate(predictions):
+            if pred is None:
+                continue
+                
+            target_date = today + timedelta(days=i+1)
+            confidence = confidence_scores[i] if confidence_scores and i < len(confidence_scores) else 75.0
+            
+            query = """
+                INSERT INTO predictions (material, target_date, predicted_price, confidence_score, model_used)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT DO NOTHING
+            """
+            execute_query(query, (material, target_date, float(pred), confidence, model_used))
+            
+    except Exception as e:
+        print(f"Error saving predictions to Supabase: {e}")
+
+def load_predictions_from_supabase(material, days=30):
+    """Load recent predictions from Supabase"""
+    try:
+        query = """
+            SELECT target_date, predicted_price, confidence_score
+            FROM predictions
+            WHERE material = %s AND target_date >= CURRENT_DATE
+            ORDER BY target_date
+            LIMIT %s
+        """
+        results = fetch_query(query, (material, days))
+        return [(row[0], row[1], row[2]) for row in results] if results else []
+    except Exception as e:
+        print(f"Error loading predictions from Supabase: {e}")
+        return []
+
+# Fixed ensemble prediction function
 def ensemble_predict_multistep(material, history, days_ahead=1):
-    """Multi-step ensemble prediction for dynamic forecasts"""
+    """FIXED: Multi-step ensemble prediction for dynamic forecasts"""
     if not history or len(history) < 10:
-        return simple_predict(history, days_ahead) if history else None
+        return simple_predict(history, days_ahead) if history else [None] * days_ahead
 
     extended_history = history.copy()
     predictions = []
 
     for day in range(days_ahead):
         try:
-            # Prepare features
+            # Prepare features from extended history
             features = create_features(extended_history)
             X_current = np.array([list(features.values())])
             
-            # Train models on historical data
+            # Build training data from full history
             X_train, y_train = [], []
-            for i in range(10, len(extended_history)):
+            min_lookback = min(10, len(extended_history) - 1)
+            
+            for i in range(min_lookback, len(extended_history)):
                 f = create_features(extended_history[:i])
                 X_train.append(list(f.values()))
                 y_train.append(extended_history[i])
             
             if len(X_train) < 5:
-                pred = simple_predict(extended_history)
+                pred = simple_predict(extended_history, days_ahead=1)
+                if isinstance(pred, list):
+                    pred = pred[0] if pred else extended_history[-1] * 1.01
             else:
                 X_train = np.array(X_train)
                 y_train = np.array(y_train)
 
+                # Train ensemble models
                 scaler = StandardScaler()
                 X_scaled = scaler.fit_transform(X_train)
                 
+                # Ridge regression for trend following
                 ridge = Ridge(alpha=1.0).fit(X_scaled, y_train)
-                rf = RandomForestRegressor(n_estimators=50, max_depth=5, random_state=42)
-                rf.fit(X_train, y_train)
                 
-                # Predict
+                # Random forest for pattern recognition
+                rf = RandomForestRegressor(
+                    n_estimators=100, 
+                    max_depth=10, 
+                    min_samples_split=3,
+                    random_state=42 + day  # Different seed for each day
+                ).fit(X_train, y_train)
+                
+                # Make predictions
                 X_scaled_current = scaler.transform(X_current)
                 pred_ridge = ridge.predict(X_scaled_current)[0]
                 pred_rf = rf.predict(X_current)[0]
 
-                # Weighted ensemble
-                pred = 0.4 * pred_ridge + 0.6 * pred_rf
+                # Dynamic ensemble weighting based on recent performance
+                recent_volatility = np.std(extended_history[-10:]) if len(extended_history) >= 10 else np.std(extended_history)
+                recent_trend = np.mean(np.diff(extended_history[-5:])) if len(extended_history) >= 5 else 0
+                
+                # Weight towards RF in volatile markets, Ridge in trending markets
+                if abs(recent_trend) > recent_volatility * 0.1:
+                    # Trending market - favor Ridge
+                    pred = 0.7 * pred_ridge + 0.3 * pred_rf
+                else:
+                    # Volatile market - favor RF
+                    pred = 0.3 * pred_ridge + 0.7 * pred_rf
 
-                # Add dynamic uncertainty based on recent volatility
-                recent_std = np.std(extended_history[-10:])
-                noise = np.random.normal(0, recent_std * 0.2)  # increase noise for multi-step
+                # Add realistic market noise that increases with forecast distance
+                noise_factor = 0.02 * (day + 1) * recent_volatility
+                noise = np.random.normal(0, noise_factor)
                 pred += noise
 
-                # Bound prediction to realistic range
-                recent_mean = np.mean(extended_history[-10:])
-                pred = max(recent_mean * 0.5, min(recent_mean * 2.0, pred))
+                # Apply mean reversion for distant forecasts
+                if day > 7:
+                    long_term_mean = np.mean(history[-30:]) if len(history) >= 30 else np.mean(history)
+                    reversion_strength = min(0.3, (day - 7) * 0.05)
+                    pred = pred * (1 - reversion_strength) + long_term_mean * reversion_strength
+
+                # Bound prediction to realistic range (prevent extreme values)
+                recent_range = max(extended_history[-20:]) - min(extended_history[-20:]) if len(extended_history) >= 20 else extended_history[-1] * 0.5
+                lower_bound = min(extended_history[-10:]) - recent_range * 0.5 if len(extended_history) >= 10 else extended_history[-1] * 0.5
+                upper_bound = max(extended_history[-10:]) + recent_range * 0.5 if len(extended_history) >= 10 else extended_history[-1] * 2
+                pred = max(lower_bound, min(upper_bound, pred))
             
-            predictions.append(pred)
+            predictions.append(max(0.1, pred))  # Ensure positive prices
             extended_history.append(pred)
 
-        except Exception:
-            predictions.append(simple_predict(extended_history))
+        except Exception as e:
+            # Fallback prediction
+            fallback = simple_predict(extended_history, days_ahead=1)
+            if isinstance(fallback, list):
+                fallback = fallback[0] if fallback else extended_history[-1] * 1.01
+            predictions.append(max(0.1, fallback))
             extended_history.append(predictions[-1])
     
     return predictions
 
 def simple_predict(history, days_ahead=1):
+    """FIXED: Simple prediction fallback"""
     # Ensure history is a flat list of floats
     flat_history = []
     for h in history:
         if isinstance(h, list):
             flat_history.extend(h)
         else:
-            flat_history.append(h)
+            flat_history.append(float(h))
     history = flat_history
 
     if len(history) < 3:
-        return history[-1] if history else None
+        base_price = history[-1] if history else 1.0
+        return [base_price * (1 + np.random.normal(0, 0.02)) for _ in range(days_ahead)]
 
-    recent_trend = (history[-1] - history[-3]) / 2
-    mean_val = np.mean(history[-10:]) if len(history) >= 10 else np.mean(history)
+    # Calculate trend and volatility
+    recent_trend = (history[-1] - history[-min(5, len(history))]) / min(5, len(history))
+    mean_val = np.mean(history[-min(10, len(history)):])
+    std_val = np.std(history[-min(10, len(history)):])
 
-    reversion = (mean_val - history[-1]) * 0.1
-    pred = history[-1] + recent_trend * 0.7 + reversion
-
-    std_val = np.std(history[-10:]) if len(history) >= 10 else np.std(history)
-    noise = np.random.normal(0, std_val * 0.05 * days_ahead)
-
-    return max(0, pred + noise)
+    predictions = []
+    last_price = history[-1]
+    
+    for day in range(days_ahead):
+        # Trend component with decay
+        trend_component = recent_trend * (0.9 ** day)
+        
+        # Mean reversion component
+        reversion_strength = 0.1 * (day + 1)
+        reversion_component = (mean_val - last_price) * reversion_strength
+        
+        # Random noise
+        noise = np.random.normal(0, std_val * 0.05)
+        
+        pred = last_price + trend_component + reversion_component + noise
+        pred = max(0.1, pred)  # Ensure positive
+        
+        predictions.append(pred)
+        last_price = pred
+    
+    return predictions[0] if days_ahead == 1 else predictions
 
 
 # Trading signal detection
 def detect_trading_signals(prices, predictions=None):
-    """
-    Detect buy/sell signals based on technical analysis
-    Returns: (buy_signals, sell_signals) as lists of indices
-    """
+    """FIXED: Detect buy/sell signals based on technical analysis"""
     if len(prices) < 10:
         return [], []
     
@@ -213,12 +322,12 @@ def detect_trading_signals(prices, predictions=None):
     
     for i in range(len(prices)):
         if i >= 4:
-            sma_short.append(np.mean(prices[i-4:i+1]))
+            sma_short.append(np.mean(prices[max(0, i-4):i+1]))
         else:
             sma_short.append(prices[i])
             
         if i >= 9:
-            sma_long.append(np.mean(prices[i-9:i+1]))
+            sma_long.append(np.mean(prices[max(0, i-9):i+1]))
         else:
             sma_long.append(prices[i])
     
@@ -233,8 +342,10 @@ def detect_trading_signals(prices, predictions=None):
             if i < window:
                 rsi_values.append(50)  # Neutral
             else:
-                avg_gain = np.mean(gains[i-window:i]) if i >= window else 0
-                avg_loss = np.mean(losses[i-window:i]) if i >= window else 0
+                start_idx = max(0, i-window)
+                avg_gain = np.mean(gains[start_idx:i]) if start_idx < i else 0
+                avg_loss = np.mean(losses[start_idx:i]) if start_idx < i else 0
+                
                 if avg_loss == 0:
                     rsi_values.append(100)
                 else:
@@ -245,18 +356,24 @@ def detect_trading_signals(prices, predictions=None):
     
     rsi = calculate_rsi(prices)
     
-    # Signal detection logic
+    # Signal detection logic with improved conditions
     for i in range(10, len(prices)):
         # Buy signals
         buy_conditions = [
             # Golden cross
+            len(sma_short) > i and len(sma_long) > i and i > 0 and 
             sma_short[i] > sma_long[i] and sma_short[i-1] <= sma_long[i-1],
-            # Oversold RSI
-            rsi[i] < 30 and rsi[i-1] >= 30,
+            
+            # Oversold RSI with momentum
+            len(rsi) > i and rsi[i] < 30 and (i == 0 or rsi[i] > rsi[i-1]),
+            
             # Support bounce
-            prices[i] > prices[i-1] and prices[i-1] == min(prices[max(0, i-5):i+1]),
-            # Volume breakout (simplified as price momentum)
-            prices[i] > max(prices[max(0, i-5):i]) and prices[i] > sma_long[i] * 1.02
+            i >= 5 and prices[i] > prices[i-1] and 
+            prices[i-1] == min(prices[max(0, i-5):i]),
+            
+            # Breakout with volume (approximated by momentum)
+            i >= 5 and prices[i] > max(prices[max(0, i-5):i-1]) and 
+            len(sma_long) > i and prices[i] > sma_long[i] * 1.02
         ]
         
         if sum(buy_conditions) >= 2:  # At least 2 conditions met
@@ -265,13 +382,19 @@ def detect_trading_signals(prices, predictions=None):
         # Sell signals
         sell_conditions = [
             # Death cross
+            len(sma_short) > i and len(sma_long) > i and i > 0 and
             sma_short[i] < sma_long[i] and sma_short[i-1] >= sma_long[i-1],
-            # Overbought RSI
-            rsi[i] > 70 and rsi[i-1] <= 70,
+            
+            # Overbought RSI with reversal
+            len(rsi) > i and rsi[i] > 70 and (i == 0 or rsi[i] < rsi[i-1]),
+            
             # Resistance rejection
-            prices[i] < prices[i-1] and prices[i-1] == max(prices[max(0, i-5):i+1]),
+            i >= 5 and prices[i] < prices[i-1] and 
+            prices[i-1] == max(prices[max(0, i-5):i]),
+            
             # Bearish momentum
-            prices[i] < min(prices[max(0, i-5):i]) and prices[i] < sma_long[i] * 0.98
+            i >= 5 and prices[i] < min(prices[max(0, i-5):i-1]) and 
+            len(sma_long) > i and prices[i] < sma_long[i] * 0.98
         ]
         
         if sum(sell_conditions) >= 2:
@@ -279,50 +402,55 @@ def detect_trading_signals(prices, predictions=None):
     
     return buy_signals, sell_signals
 
+# Fixed predict trading signals function
 def predict_trading_signals(material, future_predictions):
     """Predict future buy/sell signals based on forecasted prices"""
     if not future_predictions or len(future_predictions) < 10:
         return [], []
     
+    # Filter out None values and convert to float
+    clean_predictions = [float(p) for p in future_predictions if p is not None]
+    
+    if len(clean_predictions) < 10:
+        return [], []
+    
     # Use the same logic as historical signals but with lower confidence
-    buy_sigs, sell_sigs = detect_trading_signals(future_predictions)
+    buy_sigs, sell_sigs = detect_trading_signals(clean_predictions)
     return buy_sigs, sell_sigs
 
-# Updated prediction functions
-def predict_next_price(material, days_ahead=1):
-    turn_data, timestamps = fetch_columnss("materials", material, last_n=500, with_timestamps=True)
-    if not turn_data or not timestamps:
-        return None
-
-    daily_data = turns_to_daily_averages_with_timestamps(turn_data, timestamps, days=60)
-    if len(daily_data) < 10:
-        return None
-
-    # Ensure a single float is returned, not a list
-    pred = ensemble_predict_multistep(material, daily_data, days_ahead)
-    if isinstance(pred, list):
-        return pred[0]  # take the first predicted day
-    return pred
-
-
 def generate_predictions(material, days=30):
+    """FIXED: Generate predictions and save to Supabase"""
     turn_data, timestamps = fetch_columnss("materials", material, last_n=500, with_timestamps=True)
     if not turn_data or not timestamps:
         return [None] * days
+        
     daily_data = turns_to_daily_averages_with_timestamps(turn_data, timestamps, days=60)
     if len(daily_data) < 10:
         return [None] * days
 
-    predictions = []
-    extended_data = daily_data.copy()
+    # Generate all predictions at once for better consistency
+    predictions = ensemble_predict_multistep(material, daily_data, days_ahead=days)
     
-    for day in range(1, days + 1):
-        pred = ensemble_predict_multistep(material, extended_data, days_ahead=1)
+    # Calculate confidence scores based on model performance
+    confidence_scores = []
+    for i, pred in enumerate(predictions):
         if pred is not None:
-            predictions.append(pred)
-            extended_data.append(pred)
+            # Base confidence decreases with distance
+            base_confidence = max(50, 90 - (i * 2))
+            
+            # Adjust based on recent volatility
+            recent_volatility = np.std(daily_data[-10:]) if len(daily_data) >= 10 else np.std(daily_data)
+            volatility_penalty = min(20, recent_volatility * 2)
+            
+            confidence = max(30, base_confidence - volatility_penalty)
+            confidence_scores.append(confidence)
         else:
-            predictions.append(None)
+            confidence_scores.append(0)
+    
+    # Save to Supabase
+    valid_predictions = [p for p in predictions if p is not None]
+    if valid_predictions:
+        save_predictions_to_supabase(material, valid_predictions, confidence_scores, "ensemble")
     
     return predictions
 
@@ -361,15 +489,18 @@ def create_graph(data, avg=None, title="Material Price", view_type="day"):
     return buf
 
 def create_graph_with_predictions(daily_data, material, avg, title="Material Price"):
-    """Create enhanced graph with predictions and trading signals"""
+    """FIXED: Create enhanced graph with predictions and trading signals"""
     # Generate predictions
-    predictions = ensemble_predict_multistep(material, daily_data, days_ahead=30)
+    predictions = generate_predictions(material, days=30)
+    
+    # Filter out None values for signal detection
+    valid_predictions = [p for p in predictions if p is not None]
     
     # Detect trading signals
     hist_buy, hist_sell = detect_trading_signals(daily_data)
-    future_buy, future_sell = predict_trading_signals(material, predictions)
+    future_buy, future_sell = predict_trading_signals(material, valid_predictions)
     
-    plt.figure(figsize=(12, 8))
+    plt.figure(figsize=(14, 8))
     
     # Plot historical data
     days_hist = list(range(1, len(daily_data) + 1))
@@ -377,7 +508,6 @@ def create_graph_with_predictions(daily_data, material, avg, title="Material Pri
              color='blue', label='Historical Prices')
     
     # Plot predictions
-    valid_predictions = [p for p in predictions if p is not None]
     if valid_predictions:
         days_pred = list(range(len(daily_data) + 1, len(daily_data) + len(valid_predictions) + 1))
         plt.plot(days_pred, valid_predictions, marker='s', linewidth=2, markersize=3, 
