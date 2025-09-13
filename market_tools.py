@@ -1012,7 +1012,7 @@ async def on_interaction(interaction: discord.Interaction):
         file = discord.File(buf, filename=f"{mat}_forecast.png")
         
         # Send trading signals via DM
-        await send_trading_signals_dm(interaction, mat, hist_buy, hist_sell, future_buy, future_sell)
+        #await send_trading_signals_dm(interaction, mat, hist_buy, hist_sell, future_buy, future_sell)
         
         # Calculate prediction accuracy
         hist_preds = generate_historical_predictions(mat, daily_data)
