@@ -449,6 +449,74 @@ async def send_trading_signals_dm(interaction, material, hist_buy, hist_sell, fu
         # Other DM sending errors
         pass
 
+async def send_market_digest(interaction: discord.Interaction):
+    all_data = {}
+    for mat in MATERIALS:
+        turn_data, timestamps = fetch_columnss("materials", mat, last_n=360, with_timestamps=True)
+        if turn_data and timestamps:
+            df = pd.DataFrame({"price": turn_data}, index=pd.to_datetime(timestamps))
+            df = df.sort_index()
+            daily_data = df["price"].resample("1D").mean().dropna()
+            if not daily_data.empty:
+                all_data[mat] = daily_data
+
+    if not all_data:
+        await interaction.followup.send("⚠️ No data available for market digest.", ephemeral=True)
+        return
+
+    plt.figure(figsize=(12, 6))
+    colors = plt.cm.get_cmap("tab10", len(all_data))
+    for idx, (mat, series) in enumerate(all_data.items()):
+        plt.plot(series.index, series.values, label=mat.capitalize(), color=colors(idx))
+    plt.title("Market Digest: Last 30 Days")
+    plt.xlabel("Date")
+    plt.ylabel("Average Price")
+    plt.grid(True)
+    plt.legend()
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png", bbox_inches="tight")
+    plt.close()
+    buf.seek(0)
+    file = discord.File(buf, filename="market_digest.png")
+
+    highs, lows, risers, fallers = [], [], [], []
+    for mat, series in all_data.items():
+        high, low = series.max(), series.min()
+        change = series.iloc[-1] - series.iloc[0]
+        highs.append((mat, high))
+        lows.append((mat, low))
+        if change > 0:
+            risers.append((mat, change))
+        elif change < 0:
+            fallers.append((mat, abs(change)))
+
+    top_risers = sorted(risers, key=lambda x: x[1], reverse=True)[:3]
+    top_fallers = sorted(fallers, key=lambda x: x[1], reverse=True)[:3]
+    top_highs = sorted(highs, key=lambda x: x[1], reverse=True)[:3]
+    top_lows = sorted(lows, key=lambda x: x[1])[:3]
+
+    summary = "**Top Risers:** " + ", ".join(f"{mat.capitalize()} (+{chg:.2f})" for mat, chg in top_risers) + "\n"
+    summary += "**Top Fallers:** " + ", ".join(f"{mat.capitalize()} (-{chg:.2f})" for mat, chg in top_fallers) + "\n"
+    summary += "**Highest Prices:** " + ", ".join(f"{mat.capitalize()} ({price:.2f})" for mat, price in top_highs) + "\n"
+    summary += "**Lowest Prices:** " + ", ".join(f"{mat.capitalize()} ({price:.2f})" for mat, price in top_lows)
+
+    embed = discord.Embed(
+        title="📊 Daily Market Digest",
+        description=summary,
+        color=discord.Color.blue()
+    )
+    embed.set_image(url="attachment://market_digest.png")
+    view = View(timeout=None)
+    view.add_item(Button(label="Back", style=discord.ButtonStyle.danger, custom_id="overview"))
+    await interaction.edit_original_response(embed=embed, view=view, attachments=[file])
+
+
+class GraphOverviewView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(Button(label="View Material Graphs", style=discord.ButtonStyle.primary, custom_id="graphs_overview"))
+        self.add_item(Button(label="Market Stats & Top Movers", style=discord.ButtonStyle.success, custom_id="market_stats"))
+        self.add_item(Button(label="Market Digest", style=discord.ButtonStyle.primary, custom_id="market_digest_main"))
 # View Classes
 class MarketStatsView(View):
     def __init__(self):
@@ -521,6 +589,29 @@ async def handle_market_interaction(interaction, custom_id):
     """Handle all market-related button interactions - Complete handler function"""
     
     # Market stats handlers
+    if custom_id == "overview":
+        embed = discord.Embed(
+            title="Market Tools",
+            description="Click below to view all material graphs.",
+            color=discord.Color.blue()
+        )
+        embed.set_image(url=None)
+        await interaction.edit_original_response(embed=embed, view=GraphOverviewView(), attachments=[])
+        return
+
+    if custom_id == "market_digest_main":
+        await send_market_digest(interaction)
+        return
+
+    if custom_id == "market_stats":
+        embed = discord.Embed(
+            title="Market Stats",
+            description="All the stats of the market",
+            color=discord.Color.gold()
+        )
+        await interaction.edit_original_response(embed=embed, view=MarketStatsView())
+        return
+    
     if custom_id == "market_heat":
         embed = discord.Embed(
             title="Market Stats Heatmap",
