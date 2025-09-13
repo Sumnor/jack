@@ -109,87 +109,65 @@ def create_features(data, window=5):
     
     return features
 
-def ensemble_predict(material, history, days_ahead=1):
-    """Advanced ensemble prediction using multiple models"""
+def ensemble_predict_multistep(material, history, days_ahead=1):
+    """Multi-step ensemble prediction for dynamic forecasts"""
     if not history or len(history) < 10:
         return simple_predict(history, days_ahead) if history else None
-    
-    try:
-        # Prepare features for multiple time points
-        X, y = [], []
-        for i in range(10, len(history)):
-            features = create_features(history[:i])
-            X.append(list(features.values()))
-            y.append(history[i])
-        
-        if len(X) < 5:
-            return simple_predict(history, days_ahead)
-        
-        X = np.array(X)
-        y = np.array(y)
-        
-        # Normalize features
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(X)
-        
-        # Train ensemble models
-        models = []
-        
-        # Model 1: Ridge Regression
-        ridge = Ridge(alpha=1.0)
-        ridge.fit(X_scaled, y)
-        models.append(('ridge', ridge, scaler))
-        
-        # Model 2: Random Forest (if enough data)
-        if len(X) >= 10:
-            rf = RandomForestRegressor(n_estimators=50, max_depth=5, random_state=42)
-            rf.fit(X, y)  # RF doesn't need scaling
-            models.append(('rf', rf, None))
-        
-        # Make prediction with current features
-        current_features = create_features(history)
-        current_X = np.array([list(current_features.values())])
-        
-        predictions = []
-        weights = []
-        
-        for name, model, model_scaler in models:
-            if model_scaler:
-                pred_X = model_scaler.transform(current_X)
+
+    extended_history = history.copy()
+    predictions = []
+
+    for day in range(days_ahead):
+        try:
+            # Prepare features
+            features = create_features(extended_history)
+            X_current = np.array([list(features.values())])
+            
+            # Train models on historical data
+            X_train, y_train = [], []
+            for i in range(10, len(extended_history)):
+                f = create_features(extended_history[:i])
+                X_train.append(list(f.values()))
+                y_train.append(extended_history[i])
+            
+            if len(X_train) < 5:
+                pred = simple_predict(extended_history)
             else:
-                pred_X = current_X
+                X_train = np.array(X_train)
+                y_train = np.array(y_train)
+
+                scaler = StandardScaler()
+                X_scaled = scaler.fit_transform(X_train)
+                
+                ridge = Ridge(alpha=1.0).fit(X_scaled, y_train)
+                rf = RandomForestRegressor(n_estimators=50, max_depth=5, random_state=42)
+                rf.fit(X_train, y_train)
+                
+                # Predict
+                X_scaled_current = scaler.transform(X_current)
+                pred_ridge = ridge.predict(X_scaled_current)[0]
+                pred_rf = rf.predict(X_current)[0]
+
+                # Weighted ensemble
+                pred = 0.4 * pred_ridge + 0.6 * pred_rf
+
+                # Add dynamic uncertainty based on recent volatility
+                recent_std = np.std(extended_history[-10:])
+                noise = np.random.normal(0, recent_std * 0.2)  # increase noise for multi-step
+                pred += noise
+
+                # Bound prediction to realistic range
+                recent_mean = np.mean(extended_history[-10:])
+                pred = max(recent_mean * 0.5, min(recent_mean * 2.0, pred))
             
-            pred = model.predict(pred_X)[0]
             predictions.append(pred)
-            
-            # Weight based on model type
-            if name == 'ridge':
-                weights.append(0.4)
-            elif name == 'rf':
-                weights.append(0.6)
-        
-        # Ensemble prediction
-        if predictions:
-            ensemble_pred = np.average(predictions, weights=weights)
-            
-            # Apply bounds and add uncertainty for multi-day predictions
-            recent_std = np.std(history[-10:])
-            uncertainty = recent_std * 0.1 * days_ahead  # Increase uncertainty with time
-            noise = np.random.normal(0, uncertainty)
-            
-            final_pred = ensemble_pred + noise
-            
-            # Bound the prediction
-            recent_mean = np.mean(history[-10:])
-            lower_bound = recent_mean * 0.5
-            upper_bound = recent_mean * 2.0
-            
-            return max(lower_bound, min(upper_bound, final_pred))
-        
-    except Exception as e:
-        return simple_predict(history, days_ahead)
+            extended_history.append(pred)
+
+        except Exception:
+            predictions.append(simple_predict(extended_history))
+            extended_history.append(predictions[-1])
     
-    return simple_predict(history, days_ahead)
+    return predictions
 
 def simple_predict(history, days_ahead=1):
     """Fallback simple prediction method"""
@@ -314,7 +292,7 @@ def predict_next_price(material, days_ahead=1):
     daily_data = turns_to_daily_averages_with_timestamps(turn_data, timestamps, days=60)
     if len(daily_data) < 10:
         return None
-    return ensemble_predict(material, daily_data, days_ahead)
+    return ensemble_predict_multistep(material, daily_data, days_ahead)
 
 def generate_predictions(material, days=30):
     turn_data, timestamps = fetch_columnss("materials", material, last_n=500, with_timestamps=True)
@@ -328,7 +306,7 @@ def generate_predictions(material, days=30):
     extended_data = daily_data.copy()
     
     for day in range(1, days + 1):
-        pred = ensemble_predict(material, extended_data, days_ahead=1)
+        pred = ensemble_predict_multistep(material, extended_data, days_ahead=1)
         if pred is not None:
             predictions.append(pred)
             extended_data.append(pred)
@@ -345,7 +323,7 @@ def generate_historical_predictions(material, daily_data):
     historical_preds = []
     for i in range(10, len(daily_data) - 5):  # Leave some data for validation
         subset = daily_data[:i]
-        pred = ensemble_predict(material, subset, days_ahead=1)
+        pred = ensemble_predict_multistep(material, subset, days_ahead=1)
         historical_preds.append(pred)
     
     return historical_preds
@@ -374,7 +352,7 @@ def create_graph(data, avg=None, title="Material Price", view_type="day"):
 def create_graph_with_predictions(daily_data, material, avg, title="Material Price"):
     """Create enhanced graph with predictions and trading signals"""
     # Generate predictions
-    predictions = generate_predictions(material, days=30)
+    predictions = ensemble_predict_multistep(mat, daily_data, days_ahead=30)
     
     # Detect trading signals
     hist_buy, hist_sell = detect_trading_signals(daily_data)
