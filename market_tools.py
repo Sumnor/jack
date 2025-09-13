@@ -630,10 +630,7 @@ async def on_interaction(interaction: discord.Interaction):
                 forecast_runs.append(sum(valid_preds) / len(valid_preds))
     
         forecast_avg = sum(forecast_runs) / len(forecast_runs) if forecast_runs else None
-    
-        # --- Save to SQL ---
-        if forecast_avg is not None:
-            save_forecast(mat, forecast_avg)
+
     
         forecast_desc = (
             f"**30-Day Forecast (10-run average):**\n"
