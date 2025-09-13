@@ -359,7 +359,7 @@ def create_graph(data, avg=None, title="Material Price", view_type="day"):
 def create_graph_with_predictions(daily_data, material, avg, title="Material Price"):
     """Create enhanced graph with predictions and trading signals"""
     # Generate predictions
-    predictions = ensemble_predict_multistep(mat, daily_data, days_ahead=30)
+    predictions = ensemble_predict_multistep(material, daily_data, days_ahead=30)
     
     # Detect trading signals
     hist_buy, hist_sell = detect_trading_signals(daily_data)
