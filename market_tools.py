@@ -18,21 +18,40 @@ warnings.filterwarnings('ignore')
 TABLE_NAME = "materials"
 MATERIALS = ["food","uranium","iron","coal","bauxite","oil","lead","steel","aluminum","munitions","gasoline"]
 
+def turns_to_daily_averages(data, turns_per_day=12):
+    if len(data) < turns_per_day:
+        return data
+    
+    daily_averages = []
+    for i in range(0, len(data), turns_per_day):
+        day_data = data[i:i+turns_per_day]
+        if len(day_data) == turns_per_day:
+            daily_averages.append(sum(day_data) / len(day_data))
+    
+    return daily_averages
+
+from datetime import datetime, timedelta, timezone
+
 def turns_to_daily_averages_with_timestamps(data, timestamps, days=30, turns_per_day=12):
     parsed_ts = [
         datetime.fromisoformat(ts.replace("Z", "+00:00")) if isinstance(ts, str) else ts
         for ts in timestamps
     ]
+
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
     filtered = [(price, ts) for price, ts in zip(data, parsed_ts) if ts >= cutoff]
+
     if not filtered:
         return []
+
     daily_data = {}
     for price, ts in filtered:
         day_key = ts.date()
         if day_key not in daily_data:
             daily_data[day_key] = []
         daily_data[day_key].append(price)
+
     daily_averages = [sum(prices) / len(prices) for day, prices in sorted(daily_data.items())]
     return daily_averages
 
@@ -983,9 +1002,6 @@ async def on_interaction(interaction: discord.Interaction):
             return
     
         daily_data = turns_to_daily_averages_with_timestamps(turn_data, timestamps, days=30)
-        if not daily_data:
-            await interaction.followup.send(f"Not enough data to create daily averages for {mat}.", ephemeral=True)
-            return
     
         avg = sum(daily_data)/len(daily_data)
         
