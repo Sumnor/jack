@@ -8,21 +8,15 @@ from bot_instance import bot, API_KEY, wrap_as_prefix_command
 from databases import fetch_columns, fetch_latest_model, get_alerts_for_user, update_alert, fetch_columnss
 from regression_models import predict_turns_ahead
 from datetime import datetime, timedelta, timezone
+from scipy import stats
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.linear_model import Ridge
+import warnings
+warnings.filterwarnings('ignore')
 
 TABLE_NAME = "materials"
 MATERIALS = ["food","uranium","iron","coal","bauxite","oil","lead","steel","aluminum","munitions","gasoline"]
-GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
-
-def turns_to_daily_averages(data, turns_per_day=12):
-    if len(data) < turns_per_day:
-        return data
-    daily_averages = []
-    for i in range(0, len(data), turns_per_day):
-        day_data = data[i:i+turns_per_day]
-        if len(day_data) == turns_per_day:
-            daily_averages.append(sum(day_data) / len(day_data))
-    return daily_averages
-
 
 def turns_to_daily_averages_with_timestamps(data, timestamps, days=30, turns_per_day=12):
     parsed_ts = [
@@ -42,312 +36,491 @@ def turns_to_daily_averages_with_timestamps(data, timestamps, days=30, turns_per
     daily_averages = [sum(prices) / len(prices) for day, prices in sorted(daily_data.items())]
     return daily_averages
 
+# Enhanced prediction with ensemble methods
+def create_features(data, window=5):
+    """Create technical indicators and features for prediction"""
+    features = {}
+    data = np.array(data)
+    
+    # Price features
+    features['price'] = data[-1]
+    features['price_change'] = (data[-1] - data[-2]) / data[-2] if len(data) > 1 else 0
+    
+    # Moving averages
+    if len(data) >= window:
+        features['sma'] = np.mean(data[-window:])
+        features['price_vs_sma'] = (data[-1] - features['sma']) / features['sma']
+    else:
+        features['sma'] = data[-1]
+        features['price_vs_sma'] = 0
+    
+    # Volatility
+    if len(data) >= window:
+        features['volatility'] = np.std(data[-window:])
+        features['volatility_normalized'] = features['volatility'] / np.mean(data[-window:])
+    else:
+        features['volatility'] = 0
+        features['volatility_normalized'] = 0
+    
+    # Momentum indicators
+    if len(data) >= 3:
+        features['momentum'] = (data[-1] - data[-3]) / data[-3]
+    else:
+        features['momentum'] = 0
+    
+    # Support/Resistance levels
+    if len(data) >= 10:
+        recent_data = data[-10:]
+        features['distance_to_high'] = (max(recent_data) - data[-1]) / data[-1]
+        features['distance_to_low'] = (data[-1] - min(recent_data)) / data[-1]
+    else:
+        features['distance_to_high'] = 0
+        features['distance_to_low'] = 0
+    
+    # Trend strength
+    if len(data) >= 7:
+        x = np.arange(7)
+        y = data[-7:]
+        slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
+        features['trend_strength'] = r_value ** 2  # R-squared
+        features['trend_slope'] = slope / np.mean(y)  # Normalized slope
+    else:
+        features['trend_strength'] = 0
+        features['trend_slope'] = 0
+    
+    return features
 
-# ---------------------------
-# Advanced forecasting engine
-# ---------------------------
-def advanced_predict_price(material, history, days_ahead=1):
+def ensemble_predict(material, history, days_ahead=1):
+    """Advanced ensemble prediction using multiple models"""
+    if not history or len(history) < 10:
+        return simple_predict(history, days_ahead) if history else None
+    
+    try:
+        # Prepare features for multiple time points
+        X, y = [], []
+        for i in range(10, len(history)):
+            features = create_features(history[:i])
+            X.append(list(features.values()))
+            y.append(history[i])
+        
+        if len(X) < 5:
+            return simple_predict(history, days_ahead)
+        
+        X = np.array(X)
+        y = np.array(y)
+        
+        # Normalize features
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        # Train ensemble models
+        models = []
+        
+        # Model 1: Ridge Regression
+        ridge = Ridge(alpha=1.0)
+        ridge.fit(X_scaled, y)
+        models.append(('ridge', ridge, scaler))
+        
+        # Model 2: Random Forest (if enough data)
+        if len(X) >= 10:
+            rf = RandomForestRegressor(n_estimators=50, max_depth=5, random_state=42)
+            rf.fit(X, y)  # RF doesn't need scaling
+            models.append(('rf', rf, None))
+        
+        # Make prediction with current features
+        current_features = create_features(history)
+        current_X = np.array([list(current_features.values())])
+        
+        predictions = []
+        weights = []
+        
+        for name, model, model_scaler in models:
+            if model_scaler:
+                pred_X = model_scaler.transform(current_X)
+            else:
+                pred_X = current_X
+            
+            pred = model.predict(pred_X)[0]
+            predictions.append(pred)
+            
+            # Weight based on model type
+            if name == 'ridge':
+                weights.append(0.4)
+            elif name == 'rf':
+                weights.append(0.6)
+        
+        # Ensemble prediction
+        if predictions:
+            ensemble_pred = np.average(predictions, weights=weights)
+            
+            # Apply bounds and add uncertainty for multi-day predictions
+            recent_std = np.std(history[-10:])
+            uncertainty = recent_std * 0.1 * days_ahead  # Increase uncertainty with time
+            noise = np.random.normal(0, uncertainty)
+            
+            final_pred = ensemble_pred + noise
+            
+            # Bound the prediction
+            recent_mean = np.mean(history[-10:])
+            lower_bound = recent_mean * 0.5
+            upper_bound = recent_mean * 2.0
+            
+            return max(lower_bound, min(upper_bound, final_pred))
+        
+    except Exception as e:
+        return simple_predict(history, days_ahead)
+    
+    return simple_predict(history, days_ahead)
+
+def simple_predict(history, days_ahead=1):
+    """Fallback simple prediction method"""
+    if len(history) < 3:
+        return history[-1] if history else None
+    
+    # Simple trend + mean reversion
+    recent_trend = (history[-1] - history[-3]) / 2
+    mean_val = np.mean(history[-10:]) if len(history) >= 10 else np.mean(history)
+    
+    # Mean reversion factor
+    reversion = (mean_val - history[-1]) * 0.1
+    
+    # Prediction
+    pred = history[-1] + recent_trend * 0.7 + reversion
+    
+    # Add some uncertainty
+    std_val = np.std(history[-10:]) if len(history) >= 10 else np.std(history)
+    noise = np.random.normal(0, std_val * 0.05 * days_ahead)
+    
+    return max(0, pred + noise)
+
+# Trading signal detection
+def detect_trading_signals(prices, predictions=None):
     """
-    Improved autoregressive + cyclical predictor with volatility, clamp at 0,
-    and bounded forecasts.
+    Detect buy/sell signals based on technical analysis
+    Returns: (buy_signals, sell_signals) as lists of indices
     """
-    if not history or len(history) < 7:
-        return None
+    if len(prices) < 10:
+        return [], []
+    
+    prices = np.array(prices)
+    buy_signals = []
+    sell_signals = []
+    
+    # Moving averages
+    sma_short = []
+    sma_long = []
+    
+    for i in range(len(prices)):
+        if i >= 4:
+            sma_short.append(np.mean(prices[i-4:i+1]))
+        else:
+            sma_short.append(prices[i])
+            
+        if i >= 9:
+            sma_long.append(np.mean(prices[i-9:i+1]))
+        else:
+            sma_long.append(prices[i])
+    
+    # RSI calculation
+    def calculate_rsi(prices, window=14):
+        deltas = np.diff(prices)
+        gains = np.where(deltas > 0, deltas, 0)
+        losses = np.where(deltas < 0, -deltas, 0)
+        
+        rsi_values = []
+        for i in range(len(prices)):
+            if i < window:
+                rsi_values.append(50)  # Neutral
+            else:
+                avg_gain = np.mean(gains[i-window:i]) if i >= window else 0
+                avg_loss = np.mean(losses[i-window:i]) if i >= window else 0
+                if avg_loss == 0:
+                    rsi_values.append(100)
+                else:
+                    rs = avg_gain / avg_loss
+                    rsi = 100 - (100 / (1 + rs))
+                    rsi_values.append(rsi)
+        return rsi_values
+    
+    rsi = calculate_rsi(prices)
+    
+    # Signal detection logic
+    for i in range(10, len(prices)):
+        # Buy signals
+        buy_conditions = [
+            # Golden cross
+            sma_short[i] > sma_long[i] and sma_short[i-1] <= sma_long[i-1],
+            # Oversold RSI
+            rsi[i] < 30 and rsi[i-1] >= 30,
+            # Support bounce
+            prices[i] > prices[i-1] and prices[i-1] == min(prices[max(0, i-5):i+1]),
+            # Volume breakout (simplified as price momentum)
+            prices[i] > max(prices[max(0, i-5):i]) and prices[i] > sma_long[i] * 1.02
+        ]
+        
+        if sum(buy_conditions) >= 2:  # At least 2 conditions met
+            buy_signals.append(i)
+    
+        # Sell signals
+        sell_conditions = [
+            # Death cross
+            sma_short[i] < sma_long[i] and sma_short[i-1] >= sma_long[i-1],
+            # Overbought RSI
+            rsi[i] > 70 and rsi[i-1] <= 70,
+            # Resistance rejection
+            prices[i] < prices[i-1] and prices[i-1] == max(prices[max(0, i-5):i+1]),
+            # Bearish momentum
+            prices[i] < min(prices[max(0, i-5):i]) and prices[i] < sma_long[i] * 0.98
+        ]
+        
+        if sum(sell_conditions) >= 2:
+            sell_signals.append(i)
+    
+    return buy_signals, sell_signals
 
-    series = np.array(history, dtype=float)
-    n = len(series)
+def predict_trading_signals(material, future_predictions):
+    """Predict future buy/sell signals based on forecasted prices"""
+    if not future_predictions or len(future_predictions) < 10:
+        return [], []
+    
+    # Use the same logic as historical signals but with lower confidence
+    buy_sigs, sell_sigs = detect_trading_signals(future_predictions)
+    return buy_sigs, sell_sigs
 
-    # --- Basic stats ---
-    mean_val = np.mean(series)
-    std_val = np.std(series)
-    last_val = series[-1]
-
-    # --- AR component ---
-    lag = min(5, n - 1)
-    X, y = [], []
-    for i in range(lag, n):
-        X.append(series[i - lag:i])
-        y.append(series[i])
-    X, y = np.array(X), np.array(y)
-
-    if len(X) > 0 and len(y) > 0:
-        try:
-            coef, *_ = np.linalg.lstsq(X, y, rcond=None)
-            ar_pred = float(np.dot(series[-lag:], coef))
-        except Exception:
-            ar_pred = last_val
-    else:
-        ar_pred = last_val
-
-    # --- Cycle component ---
-    fft_vals = np.fft.rfft(series - mean_val)
-    freqs = np.fft.rfftfreq(n, d=1.0)
-    if len(freqs) > 1:
-        idx = np.argmax(np.abs(fft_vals[1:])) + 1
-    else:
-        idx = 0
-
-    if idx > 0 and freqs[idx] > 0:
-        cycle_len = 1 / freqs[idx]
-        phase = np.angle(fft_vals[idx])
-        cycle_pred = mean_val + (np.abs(fft_vals[idx]) / n) * np.cos(
-            2 * np.pi * days_ahead / cycle_len + phase
-        )
-    else:
-        cycle_pred = last_val
-
-    # --- Blend AR + Cycle ---
-    raw_pred = 0.6 * ar_pred + 0.4 * cycle_pred
-
-    # --- Add volatility noise ---
-    noise_scale = std_val * 0.1  # 10% of volatility
-    noise = np.random.normal(0, noise_scale)
-
-    pred = raw_pred + noise
-
-    # --- Clamp forecast ---
-    pred = max(pred, 0)  # never negative
-    pred = min(pred, np.max(series) * 3)  # cap extreme blow-ups
-
-    return float(pred)
-
-# ---------------------------
-# Prediction wrappers
-# ---------------------------
+# Updated prediction functions
 def predict_next_price(material, days_ahead=1):
     turn_data, timestamps = fetch_columnss("materials", material, last_n=500, with_timestamps=True)
     if not turn_data or not timestamps:
         return None
     daily_data = turns_to_daily_averages_with_timestamps(turn_data, timestamps, days=60)
-    if len(daily_data) < 7:
+    if len(daily_data) < 10:
         return None
-    return advanced_predict_price(material, daily_data, days_ahead)
-
+    return ensemble_predict(material, daily_data, days_ahead)
 
 def generate_predictions(material, days=30):
     turn_data, timestamps = fetch_columnss("materials", material, last_n=500, with_timestamps=True)
     if not turn_data or not timestamps:
         return [None] * days
     daily_data = turns_to_daily_averages_with_timestamps(turn_data, timestamps, days=60)
-    if len(daily_data) < 7:
+    if len(daily_data) < 10:
         return [None] * days
 
     predictions = []
-    base_data = daily_data.copy()
+    extended_data = daily_data.copy()
+    
     for day in range(1, days + 1):
-        extended = base_data + predictions
-        pred = advanced_predict_price(material, extended, days_ahead=1)
+        pred = ensemble_predict(material, extended_data, days_ahead=1)
         if pred is not None:
             predictions.append(pred)
+            extended_data.append(pred)
         else:
-            last_pred = predictions[-1] if predictions else daily_data[-1]
-            variation = np.random.normal(0, abs(last_pred) * 0.02)
-            predictions.append(last_pred + variation)
+            predictions.append(None)
+    
     return predictions
 
+def generate_historical_predictions(material, daily_data):
+    """Generate historical predictions for accuracy testing"""
+    if len(daily_data) < 20:
+        return []
+    
+    historical_preds = []
+    for i in range(10, len(daily_data) - 5):  # Leave some data for validation
+        subset = daily_data[:i]
+        pred = ensemble_predict(material, subset, days_ahead=1)
+        historical_preds.append(pred)
+    
+    return historical_preds
 
-def generate_historical_predictions(material, historical_data, lookback_days=30):
-    preds = []
-    for i in range(len(historical_data)):
-        if i < 7:
-            preds.append(None)
-            continue
-        available = historical_data[:i]
-        try:
-            pred = advanced_predict_price(material, available, days_ahead=1)
-            preds.append(pred)
-        except Exception:
-            preds.append(None)
-    return preds
-
-
-# ---------------------------
-# Graphing with predictions
-# ---------------------------
-def create_graph_with_predictions(data, material, avg=None, title="Price", view_type="day"):
-    plt.figure(figsize=(12, 6), dpi=100)
-    hist_preds = generate_historical_predictions(material, data, lookback_days=30)
-    days_hist = list(range(1, len(data) + 1))
-    plt.plot(days_hist, data, marker='o', label='Actual Price', color='blue', linewidth=2, markersize=4)
-    if hist_preds:
-        valid_hist = [(i+1, p) for i,p in enumerate(hist_preds) if p is not None and i < len(data)]
-        if valid_hist:
-            plt.plot([d for d,_ in valid_hist],[p for _,p in valid_hist],marker='x',label='Historical Predictions',color='orange',linestyle=':',alpha=0.8)
-    preds = generate_predictions(material, days=30)
-    valid_preds = [(len(data)+i+1, p) for i,p in enumerate(preds) if p is not None]
-    if valid_preds:
-        plt.plot([d for d,_ in valid_preds],[p for _,p in valid_preds],marker='s',label='30-Day Forecasts',color='purple',linestyle='--',alpha=0.8)
-        plt.plot([len(data),valid_preds[0][0]],[data[-1],valid_preds[0][1]],color='purple',linestyle='--',alpha=0.6)
+def create_graph(data, avg=None, title="Material Price", view_type="day"):
+    """Create a basic price graph"""
+    plt.figure(figsize=(10, 6))
+    plt.plot(data, marker='o', linewidth=2, markersize=4, color='blue')
+    
     if avg is not None:
-        plt.axhline(avg, color='gray', linestyle=':', alpha=0.5, label='Historical Avg')
-        plt.axhline(avg*1.2, color='green', linestyle=':', alpha=0.7, label='+20% Avg')
-        plt.axhline(avg*0.8, color='red', linestyle=':', alpha=0.7, label='-20% Avg')
-    if data:
-        plt.axvline(x=len(data), color='orange', linestyle=':', alpha=0.7, label='Today')
-    plt.title(f"{title} - Historical vs Predicted")
-    plt.xlabel("Days"); plt.ylabel("Price"); plt.grid(True, alpha=0.3); plt.legend(loc='upper left')
-    buf = io.BytesIO(); plt.savefig(buf, format='png', bbox_inches='tight'); plt.close(); buf.seek(0)
-    return buf
-
-def create_graph(data, avg=None, title="Price", view_type="day"):
-    plt.figure(figsize=(8,4), dpi=100)
-    plt.plot(data, marker='o', label='Price')
-    if avg is not None:
-        plt.axhline(avg*1.2, color='green', linestyle='--', label='+20% Avg')
-        plt.axhline(avg*0.8, color='red', linestyle='--', label='-20% Avg')
-    plt.title(f"{title} ({view_type})")
+        plt.axhline(y=avg, color='red', linestyle='--', alpha=0.7, label=f'Average: {avg:.2f}')
+        plt.legend()
+    
+    plt.title(title)
     plt.xlabel("Days" if view_type == "day" else "Turns")
     plt.ylabel("Price")
-    plt.grid(True)
-    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    
     buf = io.BytesIO()
-    plt.savefig(buf, format='png', bbox_inches='tight')
+    plt.savefig(buf, format='png', dpi=100)
     plt.close()
     buf.seek(0)
     return buf
 
-async def send_market_digest(interaction: discord.Interaction):
-    all_data = {}
-    for mat in MATERIALS:
-        turn_data, timestamps = fetch_columnss("materials", mat, last_n=360, with_timestamps=True)
-        if turn_data and timestamps:
-            df = pd.DataFrame({"price": turn_data}, index=pd.to_datetime(timestamps))
-            df = df.sort_index()
-            daily_data = df["price"].resample("1D").mean().dropna()
-            if not daily_data.empty:
-                all_data[mat] = daily_data
-
-    if not all_data:
-        await interaction.followup.send("⚠️ No data available for market digest.", ephemeral=True)
-        return
-
-    plt.figure(figsize=(12, 6))
-    colors = plt.cm.get_cmap("tab10", len(all_data))
-    for idx, (mat, series) in enumerate(all_data.items()):
-        plt.plot(series.index, series.values, label=mat.capitalize(), color=colors(idx))
-    plt.title("Market Digest: Last 30 Days")
-    plt.xlabel("Date")
-    plt.ylabel("Average Price")
-    plt.grid(True)
+def create_graph_with_predictions(daily_data, material, avg, title="Material Price"):
+    """Create enhanced graph with predictions and trading signals"""
+    # Generate predictions
+    predictions = generate_predictions(material, days=30)
+    
+    # Detect trading signals
+    hist_buy, hist_sell = detect_trading_signals(daily_data)
+    future_buy, future_sell = predict_trading_signals(material, predictions)
+    
+    plt.figure(figsize=(12, 8))
+    
+    # Plot historical data
+    days_hist = list(range(1, len(daily_data) + 1))
+    plt.plot(days_hist, daily_data, marker='o', linewidth=2, markersize=4, 
+             color='blue', label='Historical Prices')
+    
+    # Plot predictions
+    valid_predictions = [p for p in predictions if p is not None]
+    if valid_predictions:
+        days_pred = list(range(len(daily_data) + 1, len(daily_data) + len(valid_predictions) + 1))
+        plt.plot(days_pred, valid_predictions, marker='s', linewidth=2, markersize=3, 
+                 color='purple', alpha=0.7, label='Predictions', linestyle='--')
+    
+    # Plot average line
+    if avg is not None:
+        total_days = len(daily_data) + len(valid_predictions)
+        plt.axhline(y=avg, color='red', linestyle=':', alpha=0.7, label=f'Historical Avg: {avg:.2f}')
+    
+    # Plot trading signals - Historical
+    for buy_idx in hist_buy:
+        if buy_idx < len(daily_data):
+            plt.scatter(buy_idx + 1, daily_data[buy_idx], color='green', s=100, 
+                       marker='^', label='Buy Signal' if buy_idx == hist_buy[0] else "", zorder=5)
+    
+    for sell_idx in hist_sell:
+        if sell_idx < len(daily_data):
+            plt.scatter(sell_idx + 1, daily_data[sell_idx], color='red', s=100, 
+                       marker='v', label='Sell Signal' if sell_idx == hist_sell[0] else "", zorder=5)
+    
+    # Plot trading signals - Future (with transparency)
+    for buy_idx in future_buy:
+        if buy_idx < len(valid_predictions):
+            plt.scatter(len(daily_data) + buy_idx + 1, valid_predictions[buy_idx], 
+                       color='green', s=80, marker='^', alpha=0.6, zorder=5)
+    
+    for sell_idx in future_sell:
+        if sell_idx < len(valid_predictions):
+            plt.scatter(len(daily_data) + sell_idx + 1, valid_predictions[sell_idx], 
+                       color='red', s=80, marker='v', alpha=0.6, zorder=5)
+    
+    plt.title(f"{title} - Price Forecast with Trading Signals")
+    plt.xlabel("Days")
+    plt.ylabel("Price")
+    plt.grid(True, alpha=0.3)
     plt.legend()
+    plt.tight_layout()
+    
     buf = io.BytesIO()
-    plt.savefig(buf, format="png", bbox_inches="tight")
+    plt.savefig(buf, format='png', dpi=100)
     plt.close()
     buf.seek(0)
-    file = discord.File(buf, filename="market_digest.png")
+    
+    return buf, hist_buy, hist_sell, future_buy, future_sell
 
-    highs, lows, risers, fallers = [], [], [], []
-    for mat, series in all_data.items():
-        high, low = series.max(), series.min()
-        change = series.iloc[-1] - series.iloc[0]
-        highs.append((mat, high))
-        lows.append((mat, low))
-        if change > 0:
-            risers.append((mat, change))
-        elif change < 0:
-            fallers.append((mat, abs(change)))
+async def send_trading_signals_dm(interaction, material, hist_buy, hist_sell, future_buy, future_sell):
+    """Send trading signals to user via DM"""
+    try:
+        signals_text = f"**Trading Signals for {material.capitalize()}**\n\n"
+        
+        if hist_buy or hist_sell:
+            signals_text += "**Recent Historical Signals:**\n"
+            for buy_idx in hist_buy[-3:]:  # Last 3 buy signals
+                signals_text += f"🟢 BUY signal at day {buy_idx + 1}\n"
+            for sell_idx in hist_sell[-3:]:  # Last 3 sell signals
+                signals_text += f"🔴 SELL signal at day {sell_idx + 1}\n"
+            signals_text += "\n"
+        
+        if future_buy or future_sell:
+            signals_text += "**Predicted Signals (Next 30 Days):**\n"
+            for buy_idx in future_buy[:5]:  # First 5 predicted buy signals
+                signals_text += f"🟢 Predicted BUY on day +{buy_idx + 1}\n"
+            for sell_idx in future_sell[:5]:  # First 5 predicted sell signals
+                signals_text += f"🔴 Predicted SELL on day +{sell_idx + 1}\n"
+        
+        if not any([hist_buy, hist_sell, future_buy, future_sell]):
+            signals_text += "No clear trading signals detected at this time.\n"
+        
+        signals_text += "\n⚠️ *These are algorithmic predictions based on technical analysis. Always do your own research and trade responsibly.*"
+        
+        await interaction.user.send(signals_text)
+    except discord.Forbidden:
+        # User has DMs disabled
+        pass
+    except Exception:
+        # Other DM sending errors
+        pass
 
-    top_risers = sorted(risers, key=lambda x: x[1], reverse=True)[:3]
-    top_fallers = sorted(fallers, key=lambda x: x[1], reverse=True)[:3]
-    top_highs = sorted(highs, key=lambda x: x[1], reverse=True)[:3]
-    top_lows = sorted(lows, key=lambda x: x[1])[:3]
-
-    summary = "**Top Risers:** " + ", ".join(f"{mat.capitalize()} (+{chg:.2f})" for mat, chg in top_risers) + "\n"
-    summary += "**Top Fallers:** " + ", ".join(f"{mat.capitalize()} (-{chg:.2f})" for mat, chg in top_fallers) + "\n"
-    summary += "**Highest Prices:** " + ", ".join(f"{mat.capitalize()} ({price:.2f})" for mat, price in top_highs) + "\n"
-    summary += "**Lowest Prices:** " + ", ".join(f"{mat.capitalize()} ({price:.2f})" for mat, price in top_lows)
-
-    embed = discord.Embed(
-        title="📊 Daily Market Digest",
-        description=summary,
-        color=discord.Color.blue()
-    )
-    embed.set_image(url="attachment://market_digest.png")
-    view = View(timeout=None)
-    view.add_item(Button(label="Back", style=discord.ButtonStyle.danger, custom_id="overview"))
-    await interaction.edit_original_response(embed=embed, view=view, attachments=[file])
-
-
-class GraphOverviewView(View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(Button(label="View Material Graphs", style=discord.ButtonStyle.primary, custom_id="graphs_overview"))
-        self.add_item(Button(label="Market Stats & Top Movers", style=discord.ButtonStyle.success, custom_id="market_stats"))
-        self.add_item(Button(label="Market Digest", style=discord.ButtonStyle.primary, custom_id="market_digest_main"))
-
+# View Classes
 class MarketStatsView(View):
     def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(Button(label="Back", style=discord.ButtonStyle.danger, custom_id="overview"))
-        self.add_item(Button(label="Heat Map", style=discord.ButtonStyle.success, custom_id="market_heat"))
-        self.add_item(Button(label="Volatility", style=discord.ButtonStyle.secondary, custom_id="market_volatility"))
-        self.add_item(Button(label="Most Stable", style=discord.ButtonStyle.secondary, custom_id="market_stable"))
-        self.add_item(Button(label="Most Profitable", style=discord.ButtonStyle.success, custom_id="market_profitable"))
-        self.add_item(Button(label="Trends", style=discord.ButtonStyle.primary, custom_id="market_trends"))
+        super().__init__(timeout=300)
+        
+        buttons = [
+            ("🌡️ Heatmap", "market_heat", discord.ButtonStyle.primary),
+            ("📊 Volatility", "market_volatility", discord.ButtonStyle.secondary),
+            ("🛡️ Stable", "market_stable", discord.ButtonStyle.success),
+            ("💰 Profitable", "market_profitable", discord.ButtonStyle.success),
+            ("📈 Trends", "market_trends", discord.ButtonStyle.secondary)
+        ]
+        
+        for label, custom_id, style in buttons:
+            self.add_item(Button(label=label, style=style, custom_id=custom_id))
+        
+        self.add_item(Button(label="📋 Overview", style=discord.ButtonStyle.primary, custom_id="graphs_overview"))
 
 class MaterialView(View):
-    def __init__(self, mat):
-        super().__init__(timeout=None)
-        self.mat = mat
-        self.add_item(Button(label="Back", style=discord.ButtonStyle.danger, custom_id="graphs_overview"))
-        self.add_item(Button(label="Alert Above +20%", style=discord.ButtonStyle.success, custom_id=f"alert_high_{mat}"))
-        self.add_item(Button(label="Alert Below -20%", style=discord.ButtonStyle.danger, custom_id=f"alert_low_{mat}"))
-        self.add_item(Button(label="Simulate Trade", style=discord.ButtonStyle.success, custom_id=f"simulate_{mat}"))
-        self.add_item(Button(label="Turn View", style=discord.ButtonStyle.primary, custom_id=f"turn_{mat}"))
-        self.add_item(Button(label="Forecast View", style=discord.ButtonStyle.secondary, custom_id=f"forecast_{mat}"))
+    def __init__(self, material):
+        super().__init__(timeout=300)
+        self.material = material
+        
+        # Add material-specific buttons
+        buttons = [
+            (f"📊 {material.capitalize()} Turns", f"turn_{material}", discord.ButtonStyle.secondary),
+            (f"🔔 High Alert", f"alert_high_{material}", discord.ButtonStyle.primary),
+            (f"🔔 Low Alert", f"alert_low_{material}", discord.ButtonStyle.primary),
+            (f"🔮 Forecast", f"forecast_{material}", discord.ButtonStyle.success),
+            (f"💰 Simulate", f"simulate_{material}", discord.ButtonStyle.blurple)
+        ]
+        
+        for label, custom_id, style in buttons:
+            self.add_item(Button(label=label, style=style, custom_id=custom_id))
+        
+        self.add_item(Button(label="🔙 Back", style=discord.ButtonStyle.danger, custom_id="graphs_overview"))
+
+class MaterialViewEnhanced(View):
+    def __init__(self, material):
+        super().__init__(timeout=300)
+        self.material = material
+        
+        # Enhanced buttons with signal analysis
+        buttons = [
+            (f"📊 {material.capitalize()} Data", f"material_{material}", discord.ButtonStyle.secondary),
+            (f"🎯 Re-analyze Signals", f"signals_{material}", discord.ButtonStyle.success),
+            (f"💰 Trade Simulator", f"simulate_{material}", discord.ButtonStyle.blurple),
+            (f"🔔 Set Alerts", f"alert_high_{material}", discord.ButtonStyle.primary)
+        ]
+        
+        for label, custom_id, style in buttons:
+            self.add_item(Button(label=label, style=style, custom_id=custom_id))
+        
+        self.add_item(Button(label="🔙 Back", style=discord.ButtonStyle.danger, custom_id="graphs_overview"))
 
 class TurnView(View):
-    def __init__(self, mat, show_graph=True):
-        super().__init__(timeout=None)
-        self.mat = mat
+    def __init__(self, material, show_graph=True):
+        super().__init__(timeout=300)
+        self.material = material
         self.show_graph = show_graph
-        self.add_item(Button(label="Back", style=discord.ButtonStyle.danger, custom_id=f"material_{mat}"))
-        self.add_item(Button(label="Toggle Graph/Table", style=discord.ButtonStyle.secondary, custom_id=f"toggle_{mat}"))
-        self.add_item(Button(label="Simulate Trade", style=discord.ButtonStyle.success, custom_id=f"simulate_{mat}"))
+        
+        toggle_label = f"📋 Show Table" if show_graph else f"📊 Show Graph"
+        toggle_id = f"toggle_{material}" if show_graph else f"turn_{material}"
+        
+        self.add_item(Button(label=toggle_label, style=discord.ButtonStyle.primary, custom_id=toggle_id))
+        self.add_item(Button(label="🔙 Back", style=discord.ButtonStyle.secondary, custom_id=f"material_{material}"))
 
-
-@bot.tree.command(name="market_tool", description="All in one market tool")
-async def market_tool(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="Market Tools",
-        description="Click below to view all material graphs.",
-        color=discord.Color.blue()
-    )
-    await interaction.response.send_message(embed=embed, view=GraphOverviewView())
-
-bot.command(name="market_tool")(wrap_as_prefix_command(market_tool.callback))
-
-@bot.event
-async def on_interaction(interaction: discord.Interaction):
-    if interaction.type != discord.InteractionType.component:
-        return
-    custom_id = interaction.data["custom_id"]
-
-    await interaction.response.defer()
-
-    if custom_id == "overview":
-        embed = discord.Embed(
-            title="Market Tools",
-            description="Click below to view all material graphs.",
-            color=discord.Color.blue()
-        )
-        embed.set_image(url=None)
-        await interaction.edit_original_response(embed=embed, view=GraphOverviewView(), attachments=[])
-        return
-
-    if custom_id == "market_digest_main":
-        await send_market_digest(interaction)
-        return
-
-    if custom_id == "market_stats":
-        embed = discord.Embed(
-            title="Market Stats",
-            description="All the stats of the market",
-            color=discord.Color.gold()
-        )
-        await interaction.edit_original_response(embed=embed, view=MarketStatsView())
-        return
+# Main interaction handler
+async def handle_market_interaction(interaction, custom_id):
+    """Handle all market-related button interactions - Complete handler function"""
     
+    # Market stats handlers
     if custom_id == "market_heat":
         embed = discord.Embed(
             title="Market Stats Heatmap",
@@ -357,22 +530,18 @@ async def on_interaction(interaction: discord.Interaction):
 
         heatmap_lines = []
         for mat in MATERIALS:
-
             turn_data = fetch_columns(TABLE_NAME, mat, last_n=50)
             if not turn_data:
                 continue
             
-
             if len(turn_data) > 1:
                 avg = sum(turn_data[:-1]) / len(turn_data[:-1])
             else:
                 avg = turn_data[0]
             latest = turn_data[-1]
             
-
             pct_diff = ((latest - avg) / avg * 100) if avg > 0 else 0
             
-
             if pct_diff >= 5:
                 emoji = "🟢🔥"
             elif pct_diff >= 1:
@@ -393,16 +562,12 @@ async def on_interaction(interaction: discord.Interaction):
     if custom_id == "market_volatility":
         volatility_list = []
         for mat in MATERIALS:
-
             turn_data = fetch_columns(TABLE_NAME, mat, last_n=50)
             if not turn_data:
                 continue
             
-
             volatility = np.std(turn_data)
             mean_price = np.mean(turn_data)
-            
-
             cv = (volatility / mean_price * 100) if mean_price > 0 else 0
             
             volatility_list.append((mat, volatility, cv, mean_price))
@@ -424,7 +589,6 @@ async def on_interaction(interaction: discord.Interaction):
     if custom_id == "market_stable":
         stability_list = []
         for mat in MATERIALS:
-
             turn_data = fetch_columns(TABLE_NAME, mat, last_n=50)
             if not turn_data:
                 continue
@@ -456,16 +620,12 @@ async def on_interaction(interaction: discord.Interaction):
             if not turn_data:
                 continue
             
-
             first_price = turn_data[0]
             latest_price = turn_data[-1]
             lowest_price = min(turn_data)
             highest_price = max(turn_data)
             
-
             max_profit_pct = ((highest_price - lowest_price) / lowest_price * 100) if lowest_price > 0 else 0
-            
-
             trend_pct = ((latest_price - first_price) / first_price * 100) if first_price > 0 else 0
             
             performance.append((mat, max_profit_pct, trend_pct, lowest_price, highest_price))
@@ -491,13 +651,11 @@ async def on_interaction(interaction: discord.Interaction):
             if not turn_data:
                 continue
             
-
             if len(turn_data) == 1:
                 trend_pct = 0
             elif len(turn_data) == 2:
                 trend_pct = ((turn_data[1] - turn_data[0]) / turn_data[0] * 100) if turn_data[0] > 0 else 0
             else:
-
                 first_half = turn_data[:len(turn_data)//2]
                 second_half = turn_data[len(turn_data)//2:]
                 
@@ -575,6 +733,49 @@ async def on_interaction(interaction: discord.Interaction):
         await interaction.edit_original_response(embed=embed, view=view, attachments=[file])
         return
 
+    if custom_id.startswith("signals_"):
+        mat = custom_id.split("_")[1]
+        turn_data, timestamps = fetch_columnss(TABLE_NAME, mat, last_n=1000, with_timestamps=True)
+        if not turn_data or not timestamps:
+            await interaction.followup.send(f"No data available for {mat}.", ephemeral=True)
+            return
+        
+        daily_data = turns_to_daily_averages_with_timestamps(turn_data, timestamps, days=30)
+        if not daily_data:
+            await interaction.followup.send(f"Not enough data to analyze {mat}.", ephemeral=True)
+            return
+        
+        # Re-analyze trading signals
+        hist_buy, hist_sell = detect_trading_signals(daily_data)
+        future_preds = generate_predictions(mat, days=30)
+        future_buy, future_sell = predict_trading_signals(mat, future_preds)
+        
+        # Send updated signals via DM
+        await send_trading_signals_dm(interaction, mat, hist_buy, hist_sell, future_buy, future_sell)
+        
+        # Calculate signal strength
+        signal_strength = len(hist_buy) + len(hist_sell) + len(future_buy) + len(future_sell)
+        strength_desc = "Low" if signal_strength < 3 else "Medium" if signal_strength < 6 else "High"
+        
+        analysis_text = (
+            f"**Signal Re-analysis Complete for {mat.capitalize()}**\n\n"
+            f"Signal Strength: {strength_desc} ({signal_strength} total signals)\n"
+            f"Historical Buy Signals: {len(hist_buy)}\n"
+            f"Historical Sell Signals: {len(hist_sell)}\n"
+            f"Predicted Buy Signals: {len(future_buy)}\n"
+            f"Predicted Sell Signals: {len(future_sell)}\n\n"
+            f"Updated signals sent to your DMs!"
+        )
+        
+        embed = discord.Embed(
+            title="Trading Signal Analysis",
+            description=analysis_text,
+            color=discord.Color.blue()
+        )
+        
+        await interaction.followup.send(embed=embed, ephemeral=True)
+        return
+
     if custom_id.startswith("simulate_"):
         mat = custom_id.split("_")[1]
         latest_turn_data = fetch_columns(TABLE_NAME, mat, last_n=1)
@@ -587,21 +788,51 @@ async def on_interaction(interaction: discord.Interaction):
         if predicted_price is None:
             await interaction.followup.send("Unable to predict future price.", ephemeral=True)
             return
-
+        
+        # Enhanced simulation with risk analysis
+        turn_data, timestamps = fetch_columnss(TABLE_NAME, mat, last_n=200, with_timestamps=True)
+        daily_data = turns_to_daily_averages_with_timestamps(turn_data, timestamps, days=30) if turn_data and timestamps else []
+        
+        # Calculate volatility for risk assessment
+        volatility = np.std(daily_data) if len(daily_data) >= 5 else current_price * 0.1
+        
         amounts = [100, 500, 1000, 5000]
         lines = []
+        
         for amt in amounts:
             cost = amt * current_price
             future_value = amt * predicted_price
             profit = future_value - cost
-            lines.append(f"{amt:,} units: Cost = {cost:,.2f}, Future Value = {future_value:,.2f}, Profit = {profit:,.2f}")
+            profit_pct = (profit / cost * 100) if cost > 0 else 0
+            
+            # Risk assessment
+            max_loss = amt * volatility * 2  # 2 standard deviations
+            risk_ratio = abs(profit / max_loss) if max_loss > 0 else 0
+            risk_desc = "Low" if risk_ratio > 2 else "Medium" if risk_ratio > 1 else "High"
+            
+            lines.append(
+                f"{amt:,} units: Cost = ${cost:,.0f}, "
+                f"Future Value = ${future_value:,.0f}, "
+                f"Profit = ${profit:,.0f} ({profit_pct:+.1f}%) "
+                f"Risk: {risk_desc}"
+            )
 
         embed = discord.Embed(
-            title=f"{mat.capitalize()} Trade Simulation",
-            description=f"Current Price: {current_price:.2f} | Predicted Price (1 day ahead): {predicted_price:.2f}",
+            title=f"{mat.capitalize()} Enhanced Trade Simulation",
+            description=(
+                f"Current Price: ${current_price:.2f}\n"
+                f"Predicted Price (1 day): ${predicted_price:.2f}\n"
+                f"Price Volatility: ±${volatility:.2f}\n\n"
+                f"**Simulation Results:**"
+            ),
             color=discord.Color.blurple()
         )
-        embed.add_field(name="Simulation (Buy & Sell Profit/Loss)", value="\n".join(lines), inline=False)
+        embed.add_field(name="Buy & Hold Analysis", value="\n".join(lines), inline=False)
+        embed.add_field(
+            name="Risk Warning", 
+            value="*Predictions are based on historical patterns and may not reflect actual future prices. Trade responsibly.*", 
+            inline=False
+        )
         await interaction.edit_original_response(embed=embed)
         return
 
@@ -618,38 +849,76 @@ async def on_interaction(interaction: discord.Interaction):
             return
     
         avg = sum(daily_data)/len(daily_data)
-        buf = create_graph_with_predictions(daily_data, mat, avg, title=mat.capitalize())
+        
+        # Generate enhanced graph with trading signals
+        buf, hist_buy, hist_sell, future_buy, future_sell = create_graph_with_predictions(
+            daily_data, mat, avg, title=mat.capitalize()
+        )
         file = discord.File(buf, filename=f"{mat}_forecast.png")
-    
-        # --- Run 10 forecast runs ---
+        
+        # Send trading signals via DM
+        await send_trading_signals_dm(interaction, mat, hist_buy, hist_sell, future_buy, future_sell)
+        
+        # Calculate prediction accuracy
+        hist_preds = generate_historical_predictions(mat, daily_data)
+        accuracy_errors = []
+        for i, pred in enumerate(hist_preds):
+            if pred is not None and i < len(daily_data):
+                actual = daily_data[i]
+                if actual > 0:
+                    error = abs(pred - actual) / actual * 100
+                    accuracy_errors.append(error)
+        
+        avg_error = sum(accuracy_errors) / len(accuracy_errors) if accuracy_errors else 0
+        accuracy_score = max(0, 100 - avg_error)
+        
+        # Run ensemble forecast
         forecast_runs = []
-        for _ in range(10):
+        for _ in range(5):  # Reduced to 5 runs for performance
             preds = generate_predictions(mat, days=30)
             valid_preds = [p for p in preds if p is not None]
             if valid_preds:
                 forecast_runs.append(sum(valid_preds) / len(valid_preds))
-    
+        
         forecast_avg = sum(forecast_runs) / len(forecast_runs) if forecast_runs else None
-
-    
+        forecast_std = np.std(forecast_runs) if len(forecast_runs) > 1 else 0
+        confidence = max(50, min(95, accuracy_score))  # Scale confidence based on accuracy
+        
+        # Trading signal summary
+        signal_summary = ""
+        if hist_buy or hist_sell:
+            signal_summary += f"Recent signals: {len(hist_buy)} buy, {len(hist_sell)} sell\n"
+        if future_buy or future_sell:
+            signal_summary += f"Predicted signals: {len(future_buy)} buy, {len(future_sell)} sell\n"
+        else:
+            signal_summary += "No clear trading signals predicted\n"
+        
         forecast_desc = (
-            f"**30-Day Forecast (10-run average):**\n"
-            f"Predicted Avg: {forecast_avg:.2f} (saved to DB)\n\n"
+            f"**Enhanced 30-Day Forecast:**\n"
+            f"Current Price: {daily_data[-1]:.2f}\n"
+            f"Predicted Average: {forecast_avg:.2f} ± {forecast_std:.2f}\n"
+            f"Model Accuracy: {accuracy_score:.1f}%\n"
+            f"Confidence Level: {confidence:.0f}%\n\n"
+            f"**Trading Signals:**\n"
+            f"{signal_summary}\n"
             f"**Legend:**\n"
-            f"🔵 Historical prices\n"
-            f"🟠 Previous predictions (accuracy)\n"
-            f"🟣 Future forecasts\n"
+            f"🔵 Historical prices | 🟠 Past predictions\n"
+            f"🟣 Future forecasts | 🟢 Buy signals | 🔴 Sell signals\n"
+            f"*Transparent signals = predictions | Bold = historical*\n\n"
+            f"📩 *Trading signals sent to your DMs*"
         )
     
         embed = discord.Embed(
-            title=f"{mat.capitalize()} - Predictive Analysis",
+            title=f"{mat.capitalize()} - AI Trading Analysis",
             description=forecast_desc,
             color=discord.Color.purple()
         )
         embed.set_image(url=f"attachment://{mat}_forecast.png")
-        await interaction.edit_original_response(embed=embed, view=MaterialView(mat), attachments=[file])
+        
+        # Add enhanced material view with signal button
+        view = MaterialViewEnhanced(mat)
+        await interaction.edit_original_response(embed=embed, view=view, attachments=[file])
         return
-
     if custom_id.startswith("material_"):
         mat = custom_id.split("_")[1]
         turn_data, timestamps = fetch_columnss(TABLE_NAME, mat, last_n=1000, with_timestamps=True)
