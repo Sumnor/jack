@@ -306,99 +306,228 @@ def simple_predict(history, days_ahead=1):
     return predictions[0] if days_ahead == 1 else predictions
 
 
-# Trading signal detection
 def detect_trading_signals(prices, predictions=None):
-    """FIXED: Detect buy/sell signals based on technical analysis"""
-    if len(prices) < 10:
+    if len(prices) < 15:
         return [], []
     
     prices = np.array(prices)
     buy_signals = []
     sell_signals = []
     
-    # Moving averages
-    sma_short = []
-    sma_long = []
+    # Calculate multiple moving averages
+    sma_5 = []
+    sma_10 = []
+    sma_20 = []
+    ema_12 = []
+    ema_26 = []
     
+    # Simple Moving Averages
     for i in range(len(prices)):
         if i >= 4:
-            sma_short.append(np.mean(prices[max(0, i-4):i+1]))
+            sma_5.append(np.mean(prices[max(0, i-4):i+1]))
         else:
-            sma_short.append(prices[i])
+            sma_5.append(prices[i])
             
         if i >= 9:
-            sma_long.append(np.mean(prices[max(0, i-9):i+1]))
+            sma_10.append(np.mean(prices[max(0, i-9):i+1]))
         else:
-            sma_long.append(prices[i])
+            sma_10.append(prices[i])
+            
+        if i >= 19:
+            sma_20.append(np.mean(prices[max(0, i-19):i+1]))
+        else:
+            sma_20.append(prices[i])
     
-    # RSI calculation
+    # Exponential Moving Averages for MACD
+    multiplier_12 = 2 / (12 + 1)
+    multiplier_26 = 2 / (26 + 1)
+    
+    ema_12.append(prices[0])
+    ema_26.append(prices[0])
+    
+    for i in range(1, len(prices)):
+        ema_12.append((prices[i] * multiplier_12) + (ema_12[i-1] * (1 - multiplier_12)))
+        ema_26.append((prices[i] * multiplier_26) + (ema_26[i-1] * (1 - multiplier_26)))
+    
+    # MACD calculation
+    macd_line = np.array(ema_12) - np.array(ema_26)
+    signal_line = []
+    signal_multiplier = 2 / (9 + 1)
+    signal_line.append(macd_line[0])
+    
+    for i in range(1, len(macd_line)):
+        signal_line.append((macd_line[i] * signal_multiplier) + (signal_line[i-1] * (1 - signal_multiplier)))
+    
+    signal_line = np.array(signal_line)
+    macd_histogram = macd_line - signal_line
+    
+    # Enhanced RSI calculation
     def calculate_rsi(prices, window=14):
         deltas = np.diff(prices)
         gains = np.where(deltas > 0, deltas, 0)
         losses = np.where(deltas < 0, -deltas, 0)
+        
+        # Use exponential smoothing instead of simple average
+        alpha = 1.0 / window
+        avg_gains = []
+        avg_losses = []
+        
+        # Initialize with simple averages
+        if len(gains) >= window:
+            avg_gains.append(np.mean(gains[:window]))
+            avg_losses.append(np.mean(losses[:window]))
+        else:
+            avg_gains.append(np.mean(gains) if len(gains) > 0 else 0)
+            avg_losses.append(np.mean(losses) if len(losses) > 0 else 0)
+        
+        # Continue with exponential smoothing
+        for i in range(1, len(gains)):
+            if i < window:
+                continue
+            avg_gain = alpha * gains[i] + (1 - alpha) * avg_gains[-1]
+            avg_loss = alpha * losses[i] + (1 - alpha) * avg_losses[-1]
+            avg_gains.append(avg_gain)
+            avg_losses.append(avg_loss)
         
         rsi_values = []
         for i in range(len(prices)):
             if i < window:
                 rsi_values.append(50)  # Neutral
             else:
-                start_idx = max(0, i-window)
-                avg_gain = np.mean(gains[start_idx:i]) if start_idx < i else 0
-                avg_loss = np.mean(losses[start_idx:i]) if start_idx < i else 0
-                
-                if avg_loss == 0:
+                idx = min(i - window, len(avg_gains) - 1)
+                if avg_losses[idx] == 0:
                     rsi_values.append(100)
                 else:
-                    rs = avg_gain / avg_loss
+                    rs = avg_gains[idx] / avg_losses[idx]
                     rsi = 100 - (100 / (1 + rs))
                     rsi_values.append(rsi)
         return rsi_values
     
     rsi = calculate_rsi(prices)
     
-    # Signal detection logic with improved conditions
-    for i in range(10, len(prices)):
-        # Buy signals
-        buy_conditions = [
-            # Golden cross
-            len(sma_short) > i and len(sma_long) > i and i > 0 and 
-            sma_short[i] > sma_long[i] and sma_short[i-1] <= sma_long[i-1],
-            
-            # Oversold RSI with momentum
-            len(rsi) > i and rsi[i] < 30 and (i == 0 or rsi[i] > rsi[i-1]),
-            
-            # Support bounce
-            i >= 5 and prices[i] > prices[i-1] and 
-            prices[i-1] == min(prices[max(0, i-5):i]),
-            
-            # Breakout with volume (approximated by momentum)
-            i >= 5 and prices[i] > max(prices[max(0, i-5):i-1]) and 
-            len(sma_long) > i and prices[i] > sma_long[i] * 1.02
-        ]
-        
-        if sum(buy_conditions) >= 2:  # At least 2 conditions met
-            buy_signals.append(i)
+    # Bollinger Bands
+    bb_upper = []
+    bb_lower = []
+    bb_middle = sma_20
     
-        # Sell signals
-        sell_conditions = [
-            # Death cross
-            len(sma_short) > i and len(sma_long) > i and i > 0 and
-            sma_short[i] < sma_long[i] and sma_short[i-1] >= sma_long[i-1],
-            
-            # Overbought RSI with reversal
-            len(rsi) > i and rsi[i] > 70 and (i == 0 or rsi[i] < rsi[i-1]),
-            
-            # Resistance rejection
-            i >= 5 and prices[i] < prices[i-1] and 
-            prices[i-1] == max(prices[max(0, i-5):i]),
-            
-            # Bearish momentum
-            i >= 5 and prices[i] < min(prices[max(0, i-5):i-1]) and 
-            len(sma_long) > i and prices[i] < sma_long[i] * 0.98
-        ]
+    for i in range(len(prices)):
+        if i >= 19:
+            std = np.std(prices[max(0, i-19):i+1])
+            bb_upper.append(bb_middle[i] + (2 * std))
+            bb_lower.append(bb_middle[i] - (2 * std))
+        else:
+            bb_upper.append(prices[i] * 1.02)
+            bb_lower.append(prices[i] * 0.98)
+    
+    # Volume-like momentum indicator
+    def calculate_momentum_strength(prices, window=5):
+        momentum = []
+        for i in range(len(prices)):
+            if i < window:
+                momentum.append(0)
+            else:
+                price_change = prices[i] - prices[i-window]
+                volatility = np.std(prices[max(0, i-window):i+1])
+                strength = abs(price_change) / volatility if volatility > 0 else 0
+                momentum.append(strength)
+        return momentum
+    
+    momentum_strength = calculate_momentum_strength(prices)
+    
+    # Signal detection with multiple confirmations
+    min_gap = 3  # Minimum gap between signals
+    last_buy_signal = -min_gap
+    last_sell_signal = -min_gap
+    
+    for i in range(20, len(prices)):  # Start from 20 to have enough data
         
-        if sum(sell_conditions) >= 2:
+        # BUY SIGNAL CONDITIONS
+        buy_conditions = []
+        buy_strength = 0
+        
+        # 1. Golden Cross (SMA5 crosses above SMA10)
+        if (len(sma_5) > i and len(sma_10) > i and i > 0 and 
+            sma_5[i] > sma_10[i] and sma_5[i-1] <= sma_10[i-1]):
+            buy_conditions.append("golden_cross")
+            buy_strength += 2
+        
+        # 2. MACD bullish crossover
+        if i > 0 and macd_line[i] > signal_line[i] and macd_line[i-1] <= signal_line[i-1]:
+            buy_conditions.append("macd_bullish")
+            buy_strength += 2
+        
+        # 3. RSI oversold recovery (was oversold, now recovering)
+        if (len(rsi) > i and i >= 2 and 
+            rsi[i-2] < 30 and rsi[i-1] < 35 and rsi[i] > rsi[i-1] and rsi[i] < 50):
+            buy_conditions.append("rsi_recovery")
+            buy_strength += 2
+        
+        # 4. Bollinger Band bounce
+        if i >= 1 and prices[i-1] <= bb_lower[i-1] and prices[i] > bb_lower[i]:
+            buy_conditions.append("bb_bounce")
+            buy_strength += 1
+        
+        # 5. Strong upward momentum with low volatility
+        if (momentum_strength[i] > 1.5 and prices[i] > prices[i-1] and 
+            sma_5[i] > sma_10[i]):
+            buy_conditions.append("momentum_up")
+            buy_strength += 1
+        
+        # 6. Price above all moving averages (trend confirmation)
+        if (prices[i] > sma_5[i] and sma_5[i] > sma_10[i] and 
+            sma_10[i] > sma_20[i]):
+            buy_conditions.append("trend_up")
+            buy_strength += 1
+        
+        # Confirm buy signal
+        if (len(buy_conditions) >= 3 and buy_strength >= 4 and 
+            i - last_buy_signal >= min_gap):
+            buy_signals.append(i)
+            last_buy_signal = i
+        
+        # SELL SIGNAL CONDITIONS
+        sell_conditions = []
+        sell_strength = 0
+        
+        # 1. Death Cross (SMA5 crosses below SMA10)
+        if (len(sma_5) > i and len(sma_10) > i and i > 0 and
+            sma_5[i] < sma_10[i] and sma_5[i-1] >= sma_10[i-1]):
+            sell_conditions.append("death_cross")
+            sell_strength += 2
+        
+        # 2. MACD bearish crossover
+        if i > 0 and macd_line[i] < signal_line[i] and macd_line[i-1] >= signal_line[i-1]:
+            sell_conditions.append("macd_bearish")
+            sell_strength += 2
+        
+        # 3. RSI overbought reversal
+        if (len(rsi) > i and i >= 2 and 
+            rsi[i-2] > 70 and rsi[i-1] > 65 and rsi[i] < rsi[i-1] and rsi[i] > 50):
+            sell_conditions.append("rsi_reversal")
+            sell_strength += 2
+        
+        # 4. Bollinger Band rejection
+        if i >= 1 and prices[i-1] >= bb_upper[i-1] and prices[i] < bb_upper[i]:
+            sell_conditions.append("bb_rejection")
+            sell_strength += 1
+        
+        # 5. Strong downward momentum
+        if (momentum_strength[i] > 1.5 and prices[i] < prices[i-1] and 
+            sma_5[i] < sma_10[i]):
+            sell_conditions.append("momentum_down")
+            sell_strength += 1
+        
+        # 6. Price below all moving averages (trend confirmation)
+        if (prices[i] < sma_5[i] and sma_5[i] < sma_10[i] and 
+            sma_10[i] < sma_20[i]):
+            sell_conditions.append("trend_down")
+            sell_strength += 1
+        
+        # Confirm sell signal
+        if (len(sell_conditions) >= 3 and sell_strength >= 4 and 
+            i - last_sell_signal >= min_gap):
             sell_signals.append(i)
+            last_sell_signal = i
     
     return buy_signals, sell_signals
 
