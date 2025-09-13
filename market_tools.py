@@ -990,44 +990,37 @@ async def on_interaction(interaction: discord.Interaction):
             await interaction.followup.send(f"No data available for {mat}.", ephemeral=True)
             return
     
+        # Convert to daily averages
         daily_data = turns_to_daily_averages_with_timestamps(turn_data, timestamps, days=30)
+        if not daily_data:
+            await interaction.followup.send(f"Not enough data to create daily averages for {mat}.", ephemeral=True)
+            return
     
-        avg = sum(daily_data)/len(daily_data)
-        
+        avg = sum(daily_data) / len(daily_data)
+    
         # Generate enhanced graph with trading signals
         buf, hist_buy, hist_sell, future_buy, future_sell = create_graph_with_predictions(
             daily_data, mat, avg, title=mat.capitalize()
         )
         file = discord.File(buf, filename=f"{mat}_forecast.png")
-        
-        # Send trading signals via DM
-        #await send_trading_signals_dm(interaction, mat, hist_buy, hist_sell, future_buy, future_sell)
-        
-        # Calculate prediction accuracy
+    
+        # Generate a single 30-day forecast
+        forecast_preds = generate_predictions(mat, days=30)
+        # Flatten any lists to single numbers
+        forecast_preds_flat = [p[0] if isinstance(p, list) else p for p in forecast_preds if p is not None]
+        forecast_avg = sum(forecast_preds_flat) / len(forecast_preds_flat) if forecast_preds_flat else None
+        forecast_std = np.std(forecast_preds_flat) if len(forecast_preds_flat) > 1 else 0
+    
+        # Model accuracy
         hist_preds = generate_historical_predictions(mat, daily_data)
-        accuracy_errors = []
-        for i, pred in enumerate(hist_preds):
-            if pred is not None and i < len(daily_data):
-                actual = daily_data[i]
-                if actual > 0:
-                    error = abs(pred - actual) / actual * 100
-                    accuracy_errors.append(error)
-        
-        avg_error = sum(accuracy_errors) / len(accuracy_errors) if accuracy_errors else 0
-        accuracy_score = max(0, 100 - avg_error)
-        
-        # Run ensemble forecast
-        forecast_runs = []
-        for _ in range(5):  # Reduced to 5 runs for performance
-            preds = generate_predictions(mat, days=30)
-            valid_preds = [p for p in preds if p is not None]
-            if valid_preds:
-                forecast_runs.append(sum(valid_preds) / len(valid_preds))
-        
-        forecast_avg = sum(forecast_runs) / len(forecast_runs) if forecast_runs else None
-        forecast_std = np.std(forecast_runs) if len(forecast_runs) > 1 else 0
-        confidence = max(50, min(95, accuracy_score))  # Scale confidence based on accuracy
-        
+        errors = [
+            abs(pred - actual) / actual * 100
+            for pred, actual in zip(hist_preds, daily_data[10:10+len(hist_preds)])
+            if pred is not None and actual > 0
+        ]
+        accuracy_score = max(0, 100 - (sum(errors) / len(errors) if errors else 0))
+        confidence = max(50, min(95, accuracy_score))
+    
         # Trading signal summary
         signal_summary = ""
         if hist_buy or hist_sell:
@@ -1036,7 +1029,7 @@ async def on_interaction(interaction: discord.Interaction):
             signal_summary += f"Predicted signals: {len(future_buy)} buy, {len(future_sell)} sell\n"
         else:
             signal_summary += "No clear trading signals predicted\n"
-        
+    
         forecast_desc = (
             f"**Enhanced 30-Day Forecast:**\n"
             f"Current Price: {daily_data[-1]:.2f}\n"
@@ -1058,11 +1051,10 @@ async def on_interaction(interaction: discord.Interaction):
             color=discord.Color.purple()
         )
         embed.set_image(url=f"attachment://{mat}_forecast.png")
-        
-        # Add enhanced material view with signal button
+    
         view = MaterialView(mat)
         await interaction.edit_original_response(embed=embed, view=view, attachments=[file])
-        return
+
     if custom_id.startswith("material_"):
         mat = custom_id.split("_")[1]
         turn_data, timestamps = fetch_columnss(TABLE_NAME, mat, last_n=1000, with_timestamps=True)
