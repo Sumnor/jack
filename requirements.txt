@@ -8,4 +8,3 @@ oauth2client
 matplotlib
 httpx
 scikit-learn
-mysql
