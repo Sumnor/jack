@@ -517,72 +517,36 @@ class GraphOverviewView(View):
         self.add_item(Button(label="View Material Graphs", style=discord.ButtonStyle.primary, custom_id="graphs_overview"))
         self.add_item(Button(label="Market Stats & Top Movers", style=discord.ButtonStyle.success, custom_id="market_stats"))
         self.add_item(Button(label="Market Digest", style=discord.ButtonStyle.primary, custom_id="market_digest_main"))
-# View Classes
+
 class MarketStatsView(View):
     def __init__(self):
-        super().__init__(timeout=300)
-        
-        buttons = [
-            ("🌡️ Heatmap", "market_heat", discord.ButtonStyle.primary),
-            ("📊 Volatility", "market_volatility", discord.ButtonStyle.secondary),
-            ("🛡️ Stable", "market_stable", discord.ButtonStyle.success),
-            ("💰 Profitable", "market_profitable", discord.ButtonStyle.success),
-            ("📈 Trends", "market_trends", discord.ButtonStyle.secondary)
-        ]
-        
-        for label, custom_id, style in buttons:
-            self.add_item(Button(label=label, style=style, custom_id=custom_id))
-        
-        self.add_item(Button(label="📋 Overview", style=discord.ButtonStyle.primary, custom_id="graphs_overview"))
+        super().__init__(timeout=None)
+        self.add_item(Button(label="Back", style=discord.ButtonStyle.danger, custom_id="overview"))
+        self.add_item(Button(label="Heat Map", style=discord.ButtonStyle.success, custom_id="market_heat"))
+        self.add_item(Button(label="Volatility", style=discord.ButtonStyle.secondary, custom_id="market_volatility"))
+        self.add_item(Button(label="Most Stable", style=discord.ButtonStyle.secondary, custom_id="market_stable"))
+        self.add_item(Button(label="Most Profitable", style=discord.ButtonStyle.success, custom_id="market_profitable"))
+        self.add_item(Button(label="Trends", style=discord.ButtonStyle.primary, custom_id="market_trends"))
 
 class MaterialView(View):
-    def __init__(self, material):
-        super().__init__(timeout=300)
-        self.material = material
-        
-        # Add material-specific buttons
-        buttons = [
-            (f"📊 {material.capitalize()} Turns", f"turn_{material}", discord.ButtonStyle.secondary),
-            (f"🔔 High Alert", f"alert_high_{material}", discord.ButtonStyle.primary),
-            (f"🔔 Low Alert", f"alert_low_{material}", discord.ButtonStyle.primary),
-            (f"🔮 Forecast", f"forecast_{material}", discord.ButtonStyle.success),
-            (f"💰 Simulate", f"simulate_{material}", discord.ButtonStyle.blurple)
-        ]
-        
-        for label, custom_id, style in buttons:
-            self.add_item(Button(label=label, style=style, custom_id=custom_id))
-        
-        self.add_item(Button(label="🔙 Back", style=discord.ButtonStyle.danger, custom_id="graphs_overview"))
-
-class MaterialViewEnhanced(View):
-    def __init__(self, material):
-        super().__init__(timeout=300)
-        self.material = material
-        
-        # Enhanced buttons with signal analysis
-        buttons = [
-            (f"📊 {material.capitalize()} Data", f"material_{material}", discord.ButtonStyle.secondary),
-            (f"🎯 Re-analyze Signals", f"signals_{material}", discord.ButtonStyle.success),
-            (f"💰 Trade Simulator", f"simulate_{material}", discord.ButtonStyle.blurple),
-            (f"🔔 Set Alerts", f"alert_high_{material}", discord.ButtonStyle.primary)
-        ]
-        
-        for label, custom_id, style in buttons:
-            self.add_item(Button(label=label, style=style, custom_id=custom_id))
-        
-        self.add_item(Button(label="🔙 Back", style=discord.ButtonStyle.danger, custom_id="graphs_overview"))
+    def __init__(self, mat):
+        super().__init__(timeout=None)
+        self.mat = mat
+        self.add_item(Button(label="Back", style=discord.ButtonStyle.danger, custom_id="graphs_overview"))
+        self.add_item(Button(label="Alert Above +20%", style=discord.ButtonStyle.success, custom_id=f"alert_high_{mat}"))
+        self.add_item(Button(label="Alert Below -20%", style=discord.ButtonStyle.danger, custom_id=f"alert_low_{mat}"))
+        self.add_item(Button(label="Simulate Trade", style=discord.ButtonStyle.success, custom_id=f"simulate_{mat}"))
+        self.add_item(Button(label="Turn View", style=discord.ButtonStyle.primary, custom_id=f"turn_{mat}"))
 
 class TurnView(View):
-    def __init__(self, material, show_graph=True):
-        super().__init__(timeout=300)
-        self.material = material
+    def __init__(self, mat, show_graph=True):
+        super().__init__(timeout=None)
+        self.mat = mat
         self.show_graph = show_graph
-        
-        toggle_label = f"📋 Show Table" if show_graph else f"📊 Show Graph"
-        toggle_id = f"toggle_{material}" if show_graph else f"turn_{material}"
-        
-        self.add_item(Button(label=toggle_label, style=discord.ButtonStyle.primary, custom_id=toggle_id))
-        self.add_item(Button(label="🔙 Back", style=discord.ButtonStyle.secondary, custom_id=f"material_{material}"))
+        self.add_item(Button(label="Back", style=discord.ButtonStyle.danger, custom_id=f"material_{mat}"))
+        self.add_item(Button(label="Toggle Graph/Table", style=discord.ButtonStyle.secondary, custom_id=f"toggle_{mat}"))
+        self.add_item(Button(label="Simulate Trade", style=discord.ButtonStyle.success, custom_id=f"simulate_{mat}"))
+
 
 @bot.tree.command(name="market_tool", description="All in one market tool")
 async def market_tool(interaction: discord.Interaction):
@@ -595,12 +559,14 @@ async def market_tool(interaction: discord.Interaction):
 
 bot.command(name="market_tool")(wrap_as_prefix_command(market_tool.callback))
 
-# Main interaction handler
-async def handle_market_interaction(interaction, custom_id):
-    """Handle all market-related button interactions - Complete handler function"""
+@bot.event
+async def on_interaction(interaction: discord.Interaction):
+    if interaction.type != discord.InteractionType.component:
+        return
+    custom_id = interaction.data["custom_id"]
+
     await interaction.response.defer()
-    
-    # Market stats handlers
+
     if custom_id == "overview":
         embed = discord.Embed(
             title="Market Tools",
@@ -633,18 +599,22 @@ async def handle_market_interaction(interaction, custom_id):
 
         heatmap_lines = []
         for mat in MATERIALS:
+
             turn_data = fetch_columns(TABLE_NAME, mat, last_n=50)
             if not turn_data:
                 continue
             
+
             if len(turn_data) > 1:
                 avg = sum(turn_data[:-1]) / len(turn_data[:-1])
             else:
                 avg = turn_data[0]
             latest = turn_data[-1]
             
+
             pct_diff = ((latest - avg) / avg * 100) if avg > 0 else 0
             
+
             if pct_diff >= 5:
                 emoji = "🟢🔥"
             elif pct_diff >= 1:
@@ -665,12 +635,16 @@ async def handle_market_interaction(interaction, custom_id):
     if custom_id == "market_volatility":
         volatility_list = []
         for mat in MATERIALS:
+
             turn_data = fetch_columns(TABLE_NAME, mat, last_n=50)
             if not turn_data:
                 continue
             
+
             volatility = np.std(turn_data)
             mean_price = np.mean(turn_data)
+            
+
             cv = (volatility / mean_price * 100) if mean_price > 0 else 0
             
             volatility_list.append((mat, volatility, cv, mean_price))
@@ -692,6 +666,7 @@ async def handle_market_interaction(interaction, custom_id):
     if custom_id == "market_stable":
         stability_list = []
         for mat in MATERIALS:
+
             turn_data = fetch_columns(TABLE_NAME, mat, last_n=50)
             if not turn_data:
                 continue
@@ -723,12 +698,16 @@ async def handle_market_interaction(interaction, custom_id):
             if not turn_data:
                 continue
             
+
             first_price = turn_data[0]
             latest_price = turn_data[-1]
             lowest_price = min(turn_data)
             highest_price = max(turn_data)
             
+
             max_profit_pct = ((highest_price - lowest_price) / lowest_price * 100) if lowest_price > 0 else 0
+            
+
             trend_pct = ((latest_price - first_price) / first_price * 100) if first_price > 0 else 0
             
             performance.append((mat, max_profit_pct, trend_pct, lowest_price, highest_price))
@@ -754,11 +733,13 @@ async def handle_market_interaction(interaction, custom_id):
             if not turn_data:
                 continue
             
+
             if len(turn_data) == 1:
                 trend_pct = 0
             elif len(turn_data) == 2:
                 trend_pct = ((turn_data[1] - turn_data[0]) / turn_data[0] * 100) if turn_data[0] > 0 else 0
             else:
+
                 first_half = turn_data[:len(turn_data)//2]
                 second_half = turn_data[len(turn_data)//2:]
                 
@@ -836,6 +817,120 @@ async def handle_market_interaction(interaction, custom_id):
         await interaction.edit_original_response(embed=embed, view=view, attachments=[file])
         return
 
+    if custom_id.startswith("simulate_"):
+        mat = custom_id.split("_")[1]
+        latest_turn_data = fetch_columns(TABLE_NAME, mat, last_n=1)
+        if not latest_turn_data:
+            await interaction.followup.send("No recent price data available.", ephemeral=True)
+            return
+        current_price = latest_turn_data[-1]
+
+        predicted_price = predict_next_price(mat, days_ahead=1)
+        if predicted_price is None:
+            await interaction.followup.send("Unable to predict future price.", ephemeral=True)
+            return
+
+        amounts = [100, 500, 1000, 5000]
+        lines = []
+        for amt in amounts:
+            cost = amt * current_price
+            future_value = amt * predicted_price
+            profit = future_value - cost
+            lines.append(f"{amt:,} units: Cost = {cost:,.2f}, Future Value = {future_value:,.2f}, Profit = {profit:,.2f}")
+
+        embed = discord.Embed(
+            title=f"{mat.capitalize()} Trade Simulation",
+            description=f"Current Price: {current_price:.2f} | Predicted Price (1 day ahead): {predicted_price:.2f}",
+            color=discord.Color.blurple()
+        )
+        embed.add_field(name="Simulation (Buy & Sell Profit/Loss)", value="\n".join(lines), inline=False)
+        await interaction.edit_original_response(embed=embed)
+        return
+
+    if custom_id.startswith("material_"):
+        mat = custom_id.split("_")[1]
+        turn_data, timestamps = fetch_columnss(TABLE_NAME, mat, last_n=1000, with_timestamps=True)
+        if not turn_data or not timestamps:
+            await interaction.followup.send(f"No data available for {mat}.", ephemeral=True)
+            return
+
+        daily_data = turns_to_daily_averages_with_timestamps(turn_data, timestamps, days=30)
+        if not daily_data:
+            await interaction.followup.send(f"Not enough data to create daily averages for {mat}.", ephemeral=True)
+            return
+
+        avg = sum(daily_data)/len(daily_data)
+        buf = create_graph(daily_data, avg, title=mat.capitalize(), view_type="day")
+        file = discord.File(buf, filename=f"{mat}_30d.png")
+
+        predicted_price = predict_next_price(mat, days_ahead=1)
+        predicted_next_turn = predict_turns_ahead(mat, turns=3)
+
+        embed = discord.Embed(
+            title=f"{mat.capitalize()} Market Data (Last 30 Days)",
+            description=(
+                f"Highest: {max(daily_data):.2f}\n"
+                f"Lowest: {min(daily_data):.2f}\n"
+                f"Average: {avg:.2f}\n"
+                f"Predicted 1 day ahead: {predicted_price:.2f}\n"
+                f"Predicted next turn: {predicted_next_turn}"
+            ),
+            color=discord.Color.gold()
+        )
+        embed.set_image(url=f"attachment://{mat}_30d.png")
+        await interaction.edit_original_response(embed=embed, view=MaterialView(mat), attachments=[file])
+        return
+
+    if custom_id.startswith("alert_high_") or custom_id.startswith("alert_low_"):
+        mat = custom_id.split("_")[2]
+        user_alerts = get_alerts_for_user(interaction.user.id)
+        current_mode = user_alerts.get(mat, 0)
+
+        if custom_id.startswith("alert_high_"):
+            if current_mode in (0,2):
+                new_mode = current_mode + 1
+            elif current_mode in (1,3):
+                new_mode = current_mode - 1
+        else:
+            if current_mode in (0,1):
+                new_mode = current_mode + 2
+            elif current_mode in (2,3):
+                new_mode = current_mode - 2
+
+        update_alert(interaction.user.id, mat, new_mode)
+        msg = f"🔔 {mat.capitalize()} alert updated: `{new_mode}` (0=Off, 1=Rise, 2=Fall, 3=Both)"
+        await interaction.followup.send(msg, ephemeral=True)
+        return
+
+    if custom_id.startswith("turn_") or custom_id.startswith("toggle_"):
+        mat = custom_id.split("_")[1]
+        show_graph = not custom_id.startswith("toggle_")
+        data_12 = fetch_columns(TABLE_NAME, mat, last_n=12)
+        if not data_12:
+            await interaction.followup.send(f"No turn data available for {mat}.", ephemeral=True)
+            return
+            
+        highest, lowest, avg = max(data_12), min(data_12), sum(data_12)/len(data_12)
+        if show_graph:
+            buf = create_graph(data_12, title=f"{mat.capitalize()} Turn View", view_type="turn")
+            file = discord.File(buf, filename=f"{mat}_turns.png")
+            embed = discord.Embed(
+                title=f"{mat.capitalize()} Turn View (Graph)",
+                description=f"Highest: {highest:.2f}\nLowest: {lowest:.2f}\nAverage: {avg:.2f}",
+                color=discord.Color.orange()
+            )
+            embed.set_image(url=f"attachment://{mat}_turns.png")
+            await interaction.edit_original_response(embed=embed, view=TurnView(mat, show_graph=True), attachments=[file])
+        else:
+            table_text = "Turn | Price\n" + "\n".join(f"{i+1:2d} | {val:.2f}" for i, val in enumerate(data_12))
+            embed = discord.Embed(
+                title=f"{mat.capitalize()} Turn View (Table)",
+                description=f"Highest: {highest:.2f}\nLowest: {lowest:.2f}\nAverage: {avg:.2f}\n\n```\n{table_text}\n```",
+                color=discord.Color.orange()
+            )
+            await interaction.edit_original_response(embed=embed, view=TurnView(mat, show_graph=False), attachments=[])
+        return
+
     if custom_id.startswith("signals_"):
         mat = custom_id.split("_")[1]
         turn_data, timestamps = fetch_columnss(TABLE_NAME, mat, last_n=1000, with_timestamps=True)
@@ -877,66 +972,6 @@ async def handle_market_interaction(interaction, custom_id):
         )
         
         await interaction.followup.send(embed=embed, ephemeral=True)
-        return
-
-    if custom_id.startswith("simulate_"):
-        mat = custom_id.split("_")[1]
-        latest_turn_data = fetch_columns(TABLE_NAME, mat, last_n=1)
-        if not latest_turn_data:
-            await interaction.followup.send("No recent price data available.", ephemeral=True)
-            return
-        current_price = latest_turn_data[-1]
-
-        predicted_price = predict_next_price(mat, days_ahead=1)
-        if predicted_price is None:
-            await interaction.followup.send("Unable to predict future price.", ephemeral=True)
-            return
-        
-        # Enhanced simulation with risk analysis
-        turn_data, timestamps = fetch_columnss(TABLE_NAME, mat, last_n=200, with_timestamps=True)
-        daily_data = turns_to_daily_averages_with_timestamps(turn_data, timestamps, days=30) if turn_data and timestamps else []
-        
-        # Calculate volatility for risk assessment
-        volatility = np.std(daily_data) if len(daily_data) >= 5 else current_price * 0.1
-        
-        amounts = [100, 500, 1000, 5000]
-        lines = []
-        
-        for amt in amounts:
-            cost = amt * current_price
-            future_value = amt * predicted_price
-            profit = future_value - cost
-            profit_pct = (profit / cost * 100) if cost > 0 else 0
-            
-            # Risk assessment
-            max_loss = amt * volatility * 2  # 2 standard deviations
-            risk_ratio = abs(profit / max_loss) if max_loss > 0 else 0
-            risk_desc = "Low" if risk_ratio > 2 else "Medium" if risk_ratio > 1 else "High"
-            
-            lines.append(
-                f"{amt:,} units: Cost = ${cost:,.0f}, "
-                f"Future Value = ${future_value:,.0f}, "
-                f"Profit = ${profit:,.0f} ({profit_pct:+.1f}%) "
-                f"Risk: {risk_desc}"
-            )
-
-        embed = discord.Embed(
-            title=f"{mat.capitalize()} Enhanced Trade Simulation",
-            description=(
-                f"Current Price: ${current_price:.2f}\n"
-                f"Predicted Price (1 day): ${predicted_price:.2f}\n"
-                f"Price Volatility: ±${volatility:.2f}\n\n"
-                f"**Simulation Results:**"
-            ),
-            color=discord.Color.blurple()
-        )
-        embed.add_field(name="Buy & Hold Analysis", value="\n".join(lines), inline=False)
-        embed.add_field(
-            name="Risk Warning", 
-            value="*Predictions are based on historical patterns and may not reflect actual future prices. Trade responsibly.*", 
-            inline=False
-        )
-        await interaction.edit_original_response(embed=embed)
         return
 
     if custom_id.startswith("forecast_"):
