@@ -584,6 +584,17 @@ class TurnView(View):
         self.add_item(Button(label=toggle_label, style=discord.ButtonStyle.primary, custom_id=toggle_id))
         self.add_item(Button(label="🔙 Back", style=discord.ButtonStyle.secondary, custom_id=f"material_{material}"))
 
+@bot.tree.command(name="market_tool", description="All in one market tool")
+async def market_tool(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="Market Tools",
+        description="Click below to view all material graphs.",
+        color=discord.Color.blue()
+    )
+    await interaction.response.send_message(embed=embed, view=GraphOverviewView())
+
+bot.command(name="market_tool")(wrap_as_prefix_command(market_tool.callback))
+
 # Main interaction handler
 async def handle_market_interaction(interaction, custom_id):
     """Handle all market-related button interactions - Complete handler function"""
