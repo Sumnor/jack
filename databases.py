@@ -1,6 +1,7 @@
 import requests
 import time
 from discord.ext import tasks
+from datetime import datetime, timezone
 import json
 from bot_instance import SUPABASE_URL, SUPABASE_KEY
 
@@ -8,6 +9,66 @@ TABLE_NAME = "materials"
 ALERTS_TABLE = "alerts"
 MATERIALS = ["food","uranium","iron","coal","bauxite","oil","lead","steel","aluminum","munitions","gasoline"]
 
+def execute_query(query, params=None):
+    """Execute a query that doesn't return results (INSERT, UPDATE, DELETE)"""
+    try:
+        # For INSERT operations with predictions
+        if "INSERT INTO predictions" in query and params:
+            material, target_date, predicted_price, confidence_score, model_used = params
+            
+            # Convert date to string format
+            target_date_str = target_date.isoformat() if hasattr(target_date, 'isoformat') else str(target_date)
+            
+            payload = {
+                "material": material,
+                "target_date": target_date_str,
+                "predicted_price": float(predicted_price),
+                "confidence_score": float(confidence_score),
+                "model_used": model_used
+            }
+            
+            url = f"{SUPABASE_URL}/predictions"
+            headers = {
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal"
+            }
+            
+            response = requests.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+            return True
+            
+        return False
+    except Exception as e:
+        print(f"Execute query error: {e}")
+        return False
+
+def fetch_query(query, params=None):
+    """Execute a query that returns results (SELECT)"""
+    try:
+        # For SELECT operations with predictions
+        if "SELECT" in query and "FROM predictions" in query and params:
+            material, days_limit = params
+            
+            url = f"{SUPABASE_URL}/predictions?select=target_date,predicted_price,confidence_score&material=eq.{material}&target_date=gte.{datetime.now(timezone.utc).date().isoformat()}&order=target_date&limit={days_limit}"
+            
+            headers = {
+                "apikey": SUPABASE_KEY,
+                "Authorization": f"Bearer {SUPABASE_KEY}"
+            }
+            
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Return tuples of (target_date, predicted_price, confidence_score)
+            return [(row['target_date'], row['predicted_price'], row['confidence_score']) for row in data]
+            
+        return None
+    except Exception as e:
+        print(f"Fetch query error: {e}")
+        return None
 
 def fetch_column(table_name, column_name, limit=100):
     """
@@ -43,30 +104,6 @@ def fetch_columns(table_name, column_name, last_n=None):
 
     values = [row[column_name] for row in reversed(data)]
     return values
-
-FORECASTS_TABLE = "forecasts"
-
-def save_forecast(material: str, forecast_avg: float):
-    """
-    Saves or updates a forecast in the Supabase 'forecasts' table.
-    """
-    url = f"{SUPABASE_URL}/{FORECASTS_TABLE}?material=eq.{material}"
-    payload = {
-        "material": material,
-        "forecast_avg": forecast_avg,
-        "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    }
-
-    # Try update first
-    resp = requests.patch(url, headers=headers, json=payload)
-    if resp.status_code == 200 and resp.json():
-        return resp.json()[0]
-
-    # If no existing row, insert
-    resp = requests.post(f"{SUPABASE_URL}/{FORECASTS_TABLE}", headers=headers, json=payload)
-    resp.raise_for_status()
-    return resp.json()[0]
-
 
 def fetch_columnss(table_name, column_name, last_n=None, with_timestamps=False):
     """
