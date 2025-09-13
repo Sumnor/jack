@@ -13,25 +13,6 @@ TABLE_NAME = "materials"
 MATERIALS = ["food","uranium","iron","coal","bauxite","oil","lead","steel","aluminum","munitions","gasoline"]
 GRAPHQL_URL = f"https://api.politicsandwar.com/graphql?api_key={API_KEY}"
 
-
-# ---------------------------
-# Utility: daily averaging
-# ---------------------------
-import mysql.connector
-
-def save_forecast(material, forecast_avg):
-    conn = mysql.connector.connect(
-        host="localhost", user="youruser", password="yourpass", database="yourdb"
-    )
-    cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO material_forecasts (material, forecast_avg) VALUES (%s, %s)",
-        (material, forecast_avg)
-    )
-    conn.commit()
-    cur.close()
-    conn.close()
-
 def turns_to_daily_averages(data, turns_per_day=12):
     if len(data) < turns_per_day:
         return data
