@@ -537,6 +537,7 @@ class MaterialView(View):
         self.add_item(Button(label="Alert Below -20%", style=discord.ButtonStyle.danger, custom_id=f"alert_low_{mat}"))
         self.add_item(Button(label="Simulate Trade", style=discord.ButtonStyle.success, custom_id=f"simulate_{mat}"))
         self.add_item(Button(label="Turn View", style=discord.ButtonStyle.primary, custom_id=f"turn_{mat}"))
+        self.add_item(Button(label="Forecast", style=discord.ButtonStyle.primary, custom_id=f"forecast_{mat}"))
 
 class TurnView(View):
     def __init__(self, mat, show_graph=True):
