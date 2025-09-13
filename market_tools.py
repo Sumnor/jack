@@ -1071,7 +1071,7 @@ async def on_interaction(interaction: discord.Interaction):
         embed.set_image(url=f"attachment://{mat}_forecast.png")
         
         # Add enhanced material view with signal button
-        view = MaterialViewEnhanced(mat)
+        view = MaterialView(mat)
         await interaction.edit_original_response(embed=embed, view=view, attachments=[file])
         return
     if custom_id.startswith("material_"):
