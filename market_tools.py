@@ -170,25 +170,29 @@ def ensemble_predict_multistep(material, history, days_ahead=1):
     return predictions
 
 def simple_predict(history, days_ahead=1):
-    """Fallback simple prediction method"""
+    # Ensure history is a flat list of floats
+    flat_history = []
+    for h in history:
+        if isinstance(h, list):
+            flat_history.extend(h)
+        else:
+            flat_history.append(h)
+    history = flat_history
+
     if len(history) < 3:
         return history[-1] if history else None
-    
-    # Simple trend + mean reversion
+
     recent_trend = (history[-1] - history[-3]) / 2
     mean_val = np.mean(history[-10:]) if len(history) >= 10 else np.mean(history)
-    
-    # Mean reversion factor
+
     reversion = (mean_val - history[-1]) * 0.1
-    
-    # Prediction
     pred = history[-1] + recent_trend * 0.7 + reversion
-    
-    # Add some uncertainty
+
     std_val = np.std(history[-10:]) if len(history) >= 10 else np.std(history)
     noise = np.random.normal(0, std_val * 0.05 * days_ahead)
-    
+
     return max(0, pred + noise)
+
 
 # Trading signal detection
 def detect_trading_signals(prices, predictions=None):
