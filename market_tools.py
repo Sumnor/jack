@@ -295,7 +295,7 @@ def predict_next_price(material, days_ahead=1):
         return None
 
     # Ensure a single float is returned, not a list
-    pred = ensemble_predict(material, daily_data, days_ahead)
+    pred = ensemble_predict_multistep(material, daily_data, days_ahead)
     if isinstance(pred, list):
         return pred[0]  # take the first predicted day
     return pred
