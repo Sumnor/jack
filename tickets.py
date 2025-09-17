@@ -38,11 +38,9 @@ async def create_ticket_message(interaction: discord.Interaction, embed_descript
         try:
             data = {
                 'message_id': str(sent_message.id),
-                'embed_description': welcome_message_decrypt,
+                'message': welcome_message_decrypt,
                 'category_id': category.id,
-                'embed_title': embed_title,
-                'register': veri,
-                'guild_id': str(interaction.guild.id)
+                'register': veri
             }
             supabase.insert('ticket_configs', data)
             
