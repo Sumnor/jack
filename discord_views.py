@@ -888,7 +888,7 @@ class TicketButtonView(View):
                     if category and not isinstance(category, discord.CategoryChannel):
                         category = None
                 
-                welcome_message = ticket_config['message']
+                welcome_message = ticket_config.get('message')
             
             if not category or not isinstance(category, discord.CategoryChannel):
                 await interaction.followup.send("❌ Ticket category not found.", ephemeral=True)
