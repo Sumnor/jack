@@ -72,7 +72,7 @@ def get_ticket_config(message_id: int) -> Optional[dict]:
         row = response[0]
         return {
             'message': row.get("message", ""),
-            'category': int(row["category"]) if row.get("category") else None,
+            'category': int(row["category_id"]) if row.get("category_id") else None,
             'register': row.get("register", False)
         }
 
