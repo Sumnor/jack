@@ -930,6 +930,9 @@ class TicketButtonView(View):
 
             if welcome_message:
                 await ticket_channel.send(f"{welcome_message}\n ||@everyone||")
+            else:
+                # Fallback message or debug
+                await ticket_channel.send("Welcome to your ticket! ||@everyone||")
             if verify == "True":
                 await ticket_channel.send(f"NATION LINK: https://politicsandwar.com/nation/id={nation_id}")
             await interaction.followup.send(
