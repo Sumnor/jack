@@ -88,13 +88,22 @@ async def resolve_arg(ctx, arg):
     return arg
 
 def wrap_as_prefix_command(app_command_func):
-    sig = inspect.signature(app_command_func)
+    # Get the original function's signature
+    original_signature = inspect.signature(app_command_func)
+    
+    # We need to check if the function has a parameter for our custom flag.
+    # We also check for **kwargs to see if it can accept arbitrary keyword arguments.
+    has_custom_param = '_called_with_prefix' in original_signature.parameters
+    can_accept_kwargs = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in original_signature.parameters.values())
 
     async def wrapper(ctx, *args, **kwargs):
+        # We create our custom interaction object
         fake = FakeInteraction(ctx)
 
+        # Check for the prefix usage
         is_prefix = ctx.message.content.strip().startswith("!")
 
+        # Add the disclaimer only if it was a prefix command
         if is_prefix:
             disclaimer = (
                 "⚠️ **Note:** You're using the `!` version of this command.\n"
@@ -105,29 +114,26 @@ def wrap_as_prefix_command(app_command_func):
             )
             await ctx.send(disclaimer)
 
-        params = [p.name for p in sig.parameters.values() if p.name != "interaction"]
-
+        # The logic to parse args from a prefix command remains the same
+        params_to_parse = [p.name for p in original_signature.parameters.values() if p.name != "interaction"]
         parsed_kwargs = {}
         dup_counters = {}
 
         for idx, raw in enumerate(args):
-            if idx >= len(params):
+            if idx >= len(params_to_parse):
                 break
             if not str(raw).startswith("-"):
-                parsed_kwargs[params[idx]] = await resolve_arg(ctx, raw)
+                parsed_kwargs[params_to_parse[idx]] = await resolve_arg(ctx, raw)
 
         i = 0
         while i < len(args):
             raw = str(args[i])
-
             if raw.startswith("-"):
                 flag_match = re.match(r"^-([a-z])(\d+)?$", raw, re.I)
                 if flag_match:
                     flag, num = flag_match.groups()
                     flag = flag.lower()
-
-                    match = next((p for p in params if p[0].lower() == flag), None)
-
+                    match = next((p for p in params_to_parse if p[0].lower() == flag), None)
                     if match:
                         key = match
                         if num:
@@ -141,11 +147,15 @@ def wrap_as_prefix_command(app_command_func):
                             i += 1
                         else:
                             parsed_kwargs[key] = "1"
-
             i += 1
-
-        parsed_kwargs["_called_with_prefix"] = is_prefix
+            
+        # The key fix: only add the custom flag if the function's signature supports it.
+        if has_custom_param or can_accept_kwargs:
+            kwargs['_called_with_prefix'] = is_prefix
+        
+        # Merge parsed arguments with existing kwargs
         kwargs.update(parsed_kwargs)
+
         return await app_command_func(fake, **kwargs)
 
     return wrapper
