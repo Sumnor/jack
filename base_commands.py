@@ -197,7 +197,7 @@ async def bot_info(interaction: discord.Interaction):
     "- Bugs Dashboard: [Jack's Dashboard](https://jack-support.streamlit.app)\n"
     "- Help Server: [Jack Support](https://discord.gg/qqtb3kccjv)\n"
     "- Script: [Github](https://github.com/Sumnor/jack/tree/main)\n"
-    "- Invite: [Jack](https://discord.com/oauth2/authorize?client_id=1367997847978377247&permissions=201444368&scope=bot%20applications.commands)"
+    "- Invite: [Jack](https://discord.com/oauth2/authorize?client_id=1367997847978377247&permissions=8&scope=bot%20applications.commands)"
 )
     embed = discord.Embed(
         title="BOT INFO",
