@@ -776,11 +776,11 @@ async def update_war_room_access(guild: discord.Guild, war_id: str, current_part
 async def run_node_listener():
     
     try:
-        
+        project_root = os.path.dirname(os.path.abspath(__file__))
         print("Installing Node.js packages...")
         install_process = await asyncio.create_subprocess_exec(
             "npm", "install", "--verbose",
-            cwd="/Users/rodion/Projects/jack",
+            cwd=project_root,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -807,17 +807,7 @@ async def run_node_listener():
             print(f"Package installation failed with code {install_process.returncode}")
             
         
-        import os
-        node_modules_path = "./node_modules"
-        if os.path.exists(node_modules_path):
-            print(f"node_modules directory exists at {node_modules_path}")
-            pusher_path = os.path.join(node_modules_path, "pusher-js")
-            if os.path.exists(pusher_path):
-                print("pusher-js package found")
-            else:
-                print("pusher-js package NOT found")
-        else:
-            print("node_modules directory does NOT exist")
+        
         
         
         print("Starting Node.js listener process...")
@@ -825,7 +815,7 @@ async def run_node_listener():
             "node", "pnw_listener.mjs",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd="/Users/rodion/Projects/jack",
+            cwd=project_root,
             limit=1024*1024 
         )
         
