@@ -4,10 +4,9 @@ from discord.ui import View, button
 from discord import Button, ButtonStyle
 from datetime import datetime
 from collections import defaultdict
-from utils import get_registration_sheet, get_verify_conf
+from utils import get_registration_sheet, get_verify_conf, get_ticket_config
 from settings_multi import get_banking_role, get_api_key_for_interaction, get_gov_role, get_grant_channel
 from graphql_requests import graphql_cities, get_military, get_general_data, get_resources
-from tickets import get_all_ticket_configs, get_ticket_config
 
 BUILD_CATEGORIES = {
     "Power Plants": [
