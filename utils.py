@@ -232,8 +232,8 @@ def get_ticket_config(message_id: int) -> Optional[dict]:
         if records:
             row = records[0]
             return {
-                'embed_description': row.get("embed_description", ""),
-                'category_id': int(row["category_id"]) if row.get("category_id") else None
+                'message': row.get("message", ""),
+                'category': int(row["category_id"]) if row.get("category_id") else None
             }
         return None
     except Exception as e:
@@ -257,9 +257,9 @@ def save_ticket_config(message_id: int, embed_description: str, category_id: int
     try:
         data = {
             'message_id': str(message_id),
-            'embed_description': embed_description,
+            'message': embed_description,
             'category_id': category_id,
-            'embed_title': embed_title
+            'register': embed_title
         }
         supabase.insert('ticket_configs', data)
         print("✅ Ticket config saved to Supabase")
