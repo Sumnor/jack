@@ -1,0 +1,22 @@
+{
+    "name": "jack",
+    "version": "1.0.0",
+    "description": "",
+    "main": "pnw_listener.mjs",
+    "type": "module",
+    "scripts": {
+      "start": "node pnw_listener.mjs",
+      "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "dependencies": {
+      "node-fetch": "^3.3.2",
+      "pusher-js": "^8.4.0",
+      "ws": "^8.18.3"
+    },
+    "engines": {
+      "node": ">=16.0.0"
+    }
+  }
