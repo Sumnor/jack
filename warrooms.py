@@ -1070,9 +1070,15 @@ async def handle_pnw_events():
                                 print(f"DEBUG: Attacker {attacker_id} in members: {attacker_id in aa_member_map}")
                                 print(f"DEBUG: Defender {defender_id} in members: {defender_id in aa_member_map}")
                                 
-                                if attacker_id not in aa_member_map and defender_id not in aa_member_map:
+                                # Check if ANY of our alliance members are involved (attacker OR defender)
+                                our_attacker = attacker_id in aa_member_map
+                                our_defender = defender_id in aa_member_map
+                                
+                                if not our_attacker and not our_defender:
                                     print(f"DEBUG: Skipping war {war_id} (no alliance members involved)")
                                     continue
+                                    
+                                print(f"DEBUG: WAR INVOLVES US! Attacker is ours: {our_attacker}, Defender is ours: {our_defender}")
 
                                 # Check if war has ended
                                 war_end_reason = await check_war_status(war_id, api_key)
@@ -1106,9 +1112,12 @@ async def handle_pnw_events():
                                 )
 
                                 
-                                current_participants = {
-                                    pid for pid in (attacker_id, defender_id) if pid in aa_member_map
-                                }
+                                current_participants = set()
+                                if attacker_id in aa_member_map:
+                                    current_participants.add(attacker_id)
+                                if defender_id in aa_member_map:
+                                    current_participants.add(defender_id)
+                                    
                                 await update_war_room_access(guild, war_id, current_participants)
 
                             except Exception as e:
