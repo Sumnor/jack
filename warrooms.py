@@ -143,18 +143,23 @@ async def get_nation_info(nation_id: str, api_key: str) -> Dict:
 async def get_alliance_members(guild_id: int) -> List[Dict]:
     try:    
         aa_name = get_aa_name_guild(guild_id)
+        print(f"DEBUG: Looking for alliance members with AA name: '{aa_name}'")
+        
         alliance_members = []
         for discord_id, data in cached_users.items():
-            if data.get("AA", "").strip().lower() == aa_name.strip().lower():
+            user_aa = data.get("AA", "").strip().lower()
+            if user_aa == aa_name.strip().lower():
                 nation_id = data.get("NationID")
                 if nation_id:
                     alliance_members.append({
-                        "NationID": str(nation_id),
+                        "NationID": nation_id,  # Keep original format
                         "DiscordID": str(discord_id)
                     })
+                    print(f"DEBUG: Added member - Nation ID: {nation_id} (type: {type(nation_id)}), Discord: {discord_id}")
         
         if not alliance_members:
             print(f"No members found in AA: {aa_name}")
+            print(f"DEBUG: Available AAs in cache: {set(data.get('AA', '').strip() for data in cached_users.values() if data.get('AA'))}")
             return []
         
         print(f"Found {len(alliance_members)} alliance members for guild {guild_id}")
@@ -590,9 +595,10 @@ async def create_war_room(
 ) -> Optional[discord.TextChannel]:
     
     try:
+        print(f"DEBUG: Attempting to create war room for war {war_id}")
         war_id = war_data.get("id")
         if not war_id:
-            print("War ID is missing from war data")
+            print("DEBUG: ❌ War ID is missing from war data")
             return None
             
         attacker_id = str(war_data.get("att_id", "Unknown"))
@@ -600,14 +606,16 @@ async def create_war_room(
         category_id = get_warroom_id(guild.id)
         war_type = war_data.get("war_type", "Unknown")
 
+        print(f"DEBUG: Category ID: {category_id}")
         
         try:
             category = await bot.fetch_channel(category_id)
+            print(f"DEBUG: ✅ Found category: {category.name}")
         except discord.NotFound:
-            print(f"Category {category_id} not found in guild {guild.id}")
+            print(f"DEBUG: ❌ Category {category_id} not found in guild {guild.id}")
             return None
         except discord.Forbidden:
-            print(f"Bot does not have permissions to fetch category {category_id} in guild {guild.id}.")
+            print(f"DEBUG: ❌ Bot does not have permissions to fetch category {category_id} in guild {guild.id}")
             return None
         
         
@@ -827,6 +835,7 @@ async def delete_war_room(guild: discord.Guild, war_id: str, reason: str = "War 
 async def check_war_status(war_id: str, api_key: str) -> Optional[str]:
     """Check if a war has ended and return the reason"""
     try:
+        print(f"DEBUG: Checking war status for {war_id}")
         url = f"https://api.politicsandwar.com/graphql?api_key={api_key}"
         query = """
         query($id: [Int]) {
@@ -853,33 +862,40 @@ async def check_war_status(war_id: str, api_key: str) -> Optional[str]:
                 'variables': {'id': int(war_id)}
             }) as response:
                 if response.status != 200:
+                    print(f"DEBUG: API request failed with status {response.status}")
                     return None
                     
                 data = await response.json()
                 wars = data.get('data', {}).get('wars', {}).get('data', [])
                 
                 if not wars:
+                    print(f"DEBUG: War {war_id} not found (possibly deleted)")
                     return "War not found (possibly deleted)"
                     
                 war = wars[0]
+                print(f"DEBUG: War {war_id} status - Winner: {war.get('winner')}, Turns left: {war.get('turns_left')}, Peace: {war.get('att_peace')}/{war.get('def_peace')}")
                 
                 # Check if war ended
                 if war.get('winner'):
                     winner_name = war['winner'].get('nation_name', 'Unknown')
+                    print(f"DEBUG: War {war_id} ended - Winner: {winner_name}")
                     return f"War ended - Winner: {winner_name}"
                     
                 # Check if turns ran out
                 if war.get('turns_left', 999) <= 0:
+                    print(f"DEBUG: War {war_id} ended - Turn limit reached")
                     return "War ended - Turn limit reached"
                     
                 # Check for peace
                 if war.get('att_peace') and war.get('def_peace'):
+                    print(f"DEBUG: War {war_id} ended - Peace agreement")
                     return "War ended - Peace agreement"
-                    
+                
+                print(f"DEBUG: War {war_id} is still active")
                 return None  # War is still active
                 
     except Exception as e:
-        print(f"Error checking war status for {war_id}: {e}")
+        print(f"DEBUG: Error checking war status for {war_id}: {e}")
         return None
 
 
@@ -1066,26 +1082,35 @@ async def handle_pnw_events():
                                 defender_id = str(war.get("def_id", "Unknown"))
 
                                 print(f"DEBUG: Processing war {war_id} - Attacker: {attacker_id}, Defender: {defender_id}")
-                                print(f"DEBUG: Alliance member IDs: {list(aa_member_map.keys())[:10]}...")  # Show first 10
-                                print(f"DEBUG: Attacker {attacker_id} in members: {attacker_id in aa_member_map}")
-                                print(f"DEBUG: Defender {defender_id} in members: {defender_id in aa_member_map}")
+                                print(f"DEBUG: Alliance member IDs sample: {list(aa_member_map.keys())[:5]}")
+                                print(f"DEBUG: Type of attacker_id: {type(attacker_id)}, Type of first member ID: {type(list(aa_member_map.keys())[0]) if aa_member_map else 'No members'}")
                                 
-                                # Check if ANY of our alliance members are involved (attacker OR defender)
-                                our_attacker = attacker_id in aa_member_map
-                                our_defender = defender_id in aa_member_map
+                                # Check both string and int versions explicitly
+                                our_attacker = (attacker_id in aa_member_map or 
+                                              int(attacker_id) in aa_member_map if attacker_id.isdigit() else False)
+                                our_defender = (defender_id in aa_member_map or 
+                                              int(defender_id) in aa_member_map if defender_id.isdigit() else False)
+                                
+                                print(f"DEBUG: Attacker {attacker_id} in members: {our_attacker}")
+                                print(f"DEBUG: Defender {defender_id} in members: {our_defender}")
                                 
                                 if not our_attacker and not our_defender:
                                     print(f"DEBUG: Skipping war {war_id} (no alliance members involved)")
                                     continue
                                     
-                                print(f"DEBUG: WAR INVOLVES US! Attacker is ours: {our_attacker}, Defender is ours: {our_defender}")
+                                print(f"DEBUG: ✅ WAR INVOLVES US! Attacker is ours: {our_attacker}, Defender is ours: {our_defender}")
 
+                                # TEMPORARILY DISABLE WAR STATUS CHECK TO TEST
                                 # Check if war has ended
-                                war_end_reason = await check_war_status(war_id, api_key)
-                                if war_end_reason:
-                                    if war_id in active_war_rooms:
-                                        await delete_war_room(guild, war_id, war_end_reason)
-                                    continue
+                                # print(f"DEBUG: Checking if war {war_id} has ended...")
+                                # war_end_reason = await check_war_status(war_id, api_key)
+                                # if war_end_reason:
+                                #     print(f"DEBUG: War {war_id} has ended: {war_end_reason}")
+                                #     if war_id in active_war_rooms:
+                                #         await delete_war_room(guild, war_id, war_end_reason)
+                                #     continue
+                                # else:
+                                #     print(f"DEBUG: War {war_id} is still active")
 
                                 
                                 if war_id not in active_war_rooms:
@@ -1093,17 +1118,19 @@ async def handle_pnw_events():
                                     war_channel = await create_war_room(guild, war, alliance_members, api_key)
                                     is_new_turn = False
                                     if not war_channel:
-                                        print(f"DEBUG: Failed to create war room for war {war_id}")
+                                        print(f"DEBUG: ❌ Failed to create war room for war {war_id}")
                                         continue
                                     else:
-                                        print(f"DEBUG: Successfully created war room for war {war_id}")
+                                        print(f"DEBUG: ✅ Successfully created war room for war {war_id}: {war_channel.name}")
                                 else:
                                     print(f"DEBUG: War room already exists for war {war_id}")
                                     war_room_data = active_war_rooms[war_id]
                                     if war_room_data.get("guild_id") != guild.id:
+                                        print(f"DEBUG: War room belongs to different guild")
                                         continue
                                     war_channel = guild.get_channel(war_room_data["channel_id"])
                                     if not war_channel:
+                                        print(f"DEBUG: War room channel not found")
                                         continue
 
                                 
