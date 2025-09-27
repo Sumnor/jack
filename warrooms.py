@@ -808,7 +808,7 @@ async def run_node_listener():
             
         
         import os
-        node_modules_path = "/Users/rodion/Projects/jack/node_modules"
+        node_modules_path = "./node_modules"
         if os.path.exists(node_modules_path):
             print(f"node_modules directory exists at {node_modules_path}")
             pusher_path = os.path.join(node_modules_path, "pusher-js")
