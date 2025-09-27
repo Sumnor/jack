@@ -264,6 +264,7 @@ SETTING_CHOICES = [
     app_commands.Choice(name="COLOUR_BLOC", value="COLOUR_BLOC"),
     app_commands.Choice(name="AA_NAME", value="AA_NAME"),
     app_commands.Choice(name="BANKING_ROLE", value="BANKING_ROLE"),
+    app_commands.Choice(name="WAR_ROOMS(optional)", value="WAR_ROOMS"),
 ]
 
 @bot.tree.command(name="set_setting", description="Set a server setting (e.g. GRANT_REQUEST_CHANNEL_ID).")
