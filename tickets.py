@@ -97,7 +97,7 @@ def get_all_ticket_configs():
             formatted.append({
                 'message_id': record.get('message_id', ''),
                 'message': record.get('message', ''),
-                'category': record.get('category', ''),
+                'category': record.get('category_id', ''),
                 'register': record.get('register', False)
             })
         return formatted
