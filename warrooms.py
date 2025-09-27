@@ -114,6 +114,12 @@ async def get_nation_info(nation_id: str, api_key: str) -> Dict:
                 tanks
                 aircraft
                 ships
+                cities {
+                    id
+                    resistance
+                }
+                military_action_points
+                military_action_points_max
             }
         }
         """
@@ -268,7 +274,38 @@ def get_blockade_status(naval_blockade_id: int, att_id: int, def_id: int, our_si
     else:
         return "🟡 **Unknown Blockade Status**"
 
-
+async def get_combined_nation_stats(nation_ids: List[str], api_key: str) -> Dict:
+    """Get combined statistics for multiple nations"""
+    total_stats = {
+        'resistance': 0.0,
+        'map_points': 0,
+        'cities': 0,
+        'soldiers': 0,
+        'tanks': 0,
+        'aircraft': 0,
+        'ships': 0
+    }
+    
+    for nation_id in nation_ids:
+        nation_info = await get_nation_info(nation_id, api_key)
+        if nation_info:
+            # Calculate average resistance across all cities
+            cities = nation_info.get('cities', [])
+            if cities:
+                avg_resistance = sum(city.get('resistance', 100) for city in cities) / len(cities)
+                total_stats['resistance'] += avg_resistance
+                total_stats['cities'] += len(cities)
+            
+            # Add MAP points
+            total_stats['map_points'] += nation_info.get('military_action_points', 0)
+            
+            # Add military units
+            total_stats['soldiers'] += nation_info.get('soldiers', 0)
+            total_stats['tanks'] += nation_info.get('tanks', 0)
+            total_stats['aircraft'] += nation_info.get('aircraft', 0)
+            total_stats['ships'] += nation_info.get('ships', 0)
+    
+    return total_stats
 
 async def send_detailed_war_update(war_channel, war, alliance_members, is_new_turn, api_key):
     
@@ -279,14 +316,18 @@ async def send_detailed_war_update(war_channel, war, alliance_members, is_new_tu
         
         
         aa_member_ids = {str(member["NationID"]) for member in alliance_members}
-        our_side_is_attacker = attacker_id in aa_member_ids
-        our_side_is_defender = defender_id in aa_member_ids
+        our_attacker_ids = [attacker_id] if attacker_id in aa_member_ids else []
+        our_defender_ids = [defender_id] if defender_id in aa_member_ids else []
         
-        if our_side_is_attacker and our_side_is_defender:
+        # Handle multiple alliance members on same side
+        our_side_attackers = [aid for aid in [attacker_id] if aid in aa_member_ids]
+        our_side_defenders = [did for did in [defender_id] if did in aa_member_ids]
+        
+        if our_side_attackers and our_side_defenders:
             our_side = "both"
-        elif our_side_is_attacker:
+        elif our_side_attackers:
             our_side = "attacker"
-        elif our_side_is_defender:
+        elif our_side_defenders:
             our_side = "defender"
         else:
             our_side = "unknown"
@@ -406,7 +447,21 @@ async def send_detailed_war_update(war_channel, war, alliance_members, is_new_tu
                 turn_embed.set_footer(text=f"Turn Update | War ID: {war_id}")
                 await war_channel.send(embed=turn_embed)
 
+        # Get combined stats for our alliance members
+        our_all_nation_ids = our_side_attackers + our_side_defenders
+        our_combined_stats = await get_combined_nation_stats(our_all_nation_ids, api_key) if our_all_nation_ids else {}
         
+        # Get enemy stats
+        enemy_ids = []
+        if our_side == "attacker":
+            enemy_ids = [defender_id]
+        elif our_side == "defender":
+            enemy_ids = [attacker_id]
+        elif our_side == "both":
+            # In civil war, show both sides separately
+            pass
+        
+        enemy_combined_stats = await get_combined_nation_stats(enemy_ids, api_key) if enemy_ids else {}
         
         
         total_losses = {
@@ -434,22 +489,27 @@ async def send_detailed_war_update(war_channel, war, alliance_members, is_new_tu
             color=get_war_color(war.get("war_type", ""))
         )
 
-        
-        att_resistance = war.get("att_resistance", 100.0)
-        def_resistance = war.get("def_resistance", 100.0)
-        
-        if our_side == "attacker":
-            our_resistance = att_resistance
-            enemy_resistance = def_resistance
-        elif our_side == "defender":
-            our_resistance = def_resistance
-            enemy_resistance = att_resistance
-        else:
-            our_resistance = att_resistance if our_side == "both" else 0
-            enemy_resistance = def_resistance if our_side == "both" else 0
+        # Show combined resistance and MAPs for our side
+        if our_combined_stats:
+            our_resistance = our_combined_stats.get('resistance', 0)
+            our_maps = our_combined_stats.get('map_points', 0)
             
-        resistance_bar = format_resistance_bar(our_resistance, enemy_resistance)
-        summary_embed.add_field(name="💪 Resistance", value=resistance_bar, inline=False)
+            if our_side == "attacker":
+                enemy_resistance = war.get("def_resistance", 100.0)
+            elif our_side == "defender":  
+                enemy_resistance = war.get("att_resistance", 100.0)
+            else:
+                enemy_resistance = enemy_combined_stats.get('resistance', 0) if enemy_combined_stats else 0
+                
+            resistance_bar = format_resistance_bar(our_resistance, enemy_resistance)
+            summary_embed.add_field(name="💪 Combined Resistance", value=resistance_bar, inline=False)
+            
+            # Show our combined MAPs
+            summary_embed.add_field(
+                name="🎯 Our Alliance MAPs", 
+                value=f"**{our_maps}** total action points",
+                inline=True
+            )
 
         
         att_points = war.get("att_points", 0)
@@ -626,6 +686,9 @@ async def create_war_room(
             reason=f"War room for war ID {war_id}"
         )
         
+        # Get combined stats for our alliance members in this war
+        our_combined_stats = await get_combined_nation_stats(our_side, api_key)
+        
         
         embed = discord.Embed(
             title=f"⚔️ **NEW WAR ROOM** - ID {war_id}",
@@ -642,6 +705,19 @@ async def create_war_room(
         att_resistance = war_data.get("att_resistance", 100.0)
         def_resistance = war_data.get("def_resistance", 100.0)
         embed.add_field(name="💪 Starting Resistance", value=f"Attacker: **{att_resistance:.1f}%**\nDefender: **{def_resistance:.1f}%**", inline=False)
+        
+        # Show our combined alliance stats
+        if our_combined_stats and len(our_side) > 1:
+            embed.add_field(
+                name="🏘️ Our Alliance Combined Stats",
+                value=f"**Resistance:** {our_combined_stats['resistance']:.1f}% avg\n**MAPs:** {our_combined_stats['map_points']}\n**Cities:** {our_combined_stats['cities']}",
+                inline=True
+            )
+            embed.add_field(
+                name="🎯 Combined Military",
+                value=f"**Soldiers:** {our_combined_stats['soldiers']:,}\n**Tanks:** {our_combined_stats['tanks']:,}\n**Aircraft:** {our_combined_stats['aircraft']:,}\n**Ships:** {our_combined_stats['ships']:,}",
+                inline=True
+            )
         
         
         control_info = []
@@ -706,8 +782,104 @@ async def create_war_room(
         return None
 
 
+async def delete_war_room(guild: discord.Guild, war_id: str, reason: str = "War ended"):
+    """Safely delete a war room and clean up data"""
+    try:
+        if str(war_id) not in active_war_rooms:
+            print(f"War room {war_id} not found in active rooms")
+            return
+            
+        war_room_data = active_war_rooms[str(war_id)]
+        channel = guild.get_channel(war_room_data['channel_id'])
+        
+        if channel:
+            try:
+                # Send final message before deletion
+                embed = discord.Embed(
+                    title="⚔️ War Room Closing",
+                    description=f"**{reason}**\n\nThis channel will be deleted in 30 seconds.",
+                    color=discord.Color.orange()
+                )
+                embed.set_footer(text="Thank you for using the war room system!")
+                
+                await channel.send(embed=embed)
+                await asyncio.sleep(30)  # Give users time to see the message
+                
+                await channel.delete(reason=reason)
+                print(f"Deleted war room for war {war_id}: {reason}")
+            except discord.NotFound:
+                print(f"Channel for war {war_id} was already deleted")
+            except discord.Forbidden:
+                print(f"No permission to delete channel for war {war_id}")
+        else:
+            print(f"Channel for war {war_id} not found")
+            
+        # Clean up the data
+        del active_war_rooms[str(war_id)]
+        
+    except Exception as e:
+        print(f"Error deleting war room for war {war_id}: {e}")
+        import traceback
+        traceback.print_exc()
 
 
+async def check_war_status(war_id: str, api_key: str) -> Optional[str]:
+    """Check if a war has ended and return the reason"""
+    try:
+        url = f"https://api.politicsandwar.com/graphql?api_key={api_key}"
+        query = """
+        query($id: [Int]) {
+            wars(id: $id) {
+                data {
+                    id
+                    date
+                    reason
+                    turns_left
+                    winner {
+                        id
+                        nation_name
+                    }
+                    att_peace
+                    def_peace
+                }
+            }
+        }
+        """
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json={
+                'query': query,
+                'variables': {'id': int(war_id)}
+            }) as response:
+                if response.status != 200:
+                    return None
+                    
+                data = await response.json()
+                wars = data.get('data', {}).get('wars', {}).get('data', [])
+                
+                if not wars:
+                    return "War not found (possibly deleted)"
+                    
+                war = wars[0]
+                
+                # Check if war ended
+                if war.get('winner'):
+                    winner_name = war['winner'].get('nation_name', 'Unknown')
+                    return f"War ended - Winner: {winner_name}"
+                    
+                # Check if turns ran out
+                if war.get('turns_left', 999) <= 0:
+                    return "War ended - Turn limit reached"
+                    
+                # Check for peace
+                if war.get('att_peace') and war.get('def_peace'):
+                    return "War ended - Peace agreement"
+                    
+                return None  # War is still active
+                
+    except Exception as e:
+        print(f"Error checking war status for {war_id}: {e}")
+        return None
 
 
 async def update_war_room_access(guild: discord.Guild, war_id: str, current_participants: Set[str]):
@@ -763,9 +935,7 @@ async def update_war_room_access(guild: discord.Guild, war_id: str, current_part
         
         
         if not current_participants:
-            await channel.delete(reason=f"No alliance members left in war {war_id}")
-            del active_war_rooms[str(war_id)]
-            print(f"Deleted war room for war {war_id} - no alliance members remaining")
+            await delete_war_room(guild, war_id, "No alliance members remaining in war")
         
     except discord.HTTPException as e:
         print(f"Discord API error updating war room access for war {war_id}: {e}")
@@ -891,6 +1061,13 @@ async def handle_pnw_events():
                                 
                                 if attacker_id not in aa_member_map and defender_id not in aa_member_map:
                                     print(f"DEBUG: Skipping war {war_id} (no alliance members involved)")
+                                    continue
+
+                                # Check if war has ended
+                                war_end_reason = await check_war_status(war_id, api_key)
+                                if war_end_reason:
+                                    if war_id in active_war_rooms:
+                                        await delete_war_room(guild, war_id, war_end_reason)
                                     continue
 
                                 
