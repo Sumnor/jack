@@ -48,6 +48,390 @@ PROJECT_KEYS = [
     "military_doctrine"
 ]
 
+# participant_view.py
+import discord
+from typing import List
+import aiohttp
+
+async def get_nation_info(nation_id: str, api_key: str) -> dict:
+    """Get nation information from PnW API"""
+    try:
+        url = f"https://api.politicsandwar.com/graphql?api_key={api_key}"
+        query = """
+        query($id: ID!) {
+            nation(id: $id) {
+                id
+                nation_name
+                leader_name
+                alliance {
+                    id
+                    name
+                }
+                soldiers
+                tanks
+                aircraft
+                ships
+                military_power
+                resistance
+                wars(active: true) {
+                    data {
+                        id
+                        att_points
+                        def_points
+                        att_resistance
+                        def_resistance
+                        turns_left
+                        war_type
+                    }
+                }
+            }
+        }
+        """
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json={
+                'query': query,
+                'variables': {'id': nation_id}
+            }) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data.get('data', {}).get('nation', {})
+                else:
+                    print(f"API request failed with status {response.status}")
+                    return {}
+    except Exception as e:
+        print(f"Error fetching nation info for {nation_id}: {e}")
+        return {}
+
+class ParticipantView(discord.ui.View):
+    """View for scrolling through multiple participants' detailed war stats"""
+    
+    def __init__(self, participants: List[str], api_key: str, war_id: str):
+        super().__init__(timeout=None)
+        self.participants = participants
+        self.api_key = api_key
+        self.war_id = war_id
+        self.current_index = 0
+        
+    async def get_current_embed(self) -> discord.Embed:
+        """Get detailed embed for current participant"""
+        try:
+            current_nation_id = self.participants[self.current_index]
+            nation_info = await get_nation_info(current_nation_id, self.api_key)
+            
+            embed = discord.Embed(
+                title=f"👤 Participant {self.current_index + 1}/{len(self.participants)} - War {self.war_id}",
+                description=f"**{nation_info.get('nation_name', 'Unknown Nation')}**\n*Leader: {nation_info.get('leader_name', 'Unknown')}*",
+                color=discord.Color.blue()
+            )
+            
+            # Current resistance and military power
+            resistance = nation_info.get('resistance', 0)
+            military_power = nation_info.get('military_power', 0)
+            
+            embed.add_field(
+                name="💪 Military Readiness",
+                value=f"**Resistance:** {resistance:.1f}%\n**Military Power:** {military_power:,}",
+                inline=True
+            )
+            
+            # Current military forces
+            soldiers = nation_info.get('soldiers', 0)
+            tanks = nation_info.get('tanks', 0)
+            aircraft = nation_info.get('aircraft', 0)
+            ships = nation_info.get('ships', 0)
+            
+            embed.add_field(
+                name="🏗️ Current Forces",
+                value=(
+                    f"👥 Soldiers: **{soldiers:,}**\n"
+                    f"🚛 Tanks: **{tanks:,}**\n"
+                    f"✈️ Aircraft: **{aircraft:,}**\n"
+                    f"🚢 Ships: **{ships:,}**"
+                ),
+                inline=True
+            )
+            
+            embed.add_field(name="\u200b", value="\u200b", inline=True)
+            
+            # War-specific stats
+            wars = nation_info.get('wars', {}).get('data', [])
+            current_war = None
+            for war in wars:
+                if str(war.get('id')) == str(self.war_id):
+                    current_war = war
+                    break
+            
+            if current_war:
+                # Determine if this nation is attacker or defender
+                is_attacker = str(current_war.get('att_id', '')) == current_nation_id
+                
+                if is_attacker:
+                    war_resistance = current_war.get('att_resistance', resistance)
+                    war_points = current_war.get('att_points', 0)
+                    role = "🗡️ Attacker"
+                else:
+                    war_resistance = current_war.get('def_resistance', resistance)
+                    war_points = current_war.get('def_points', 0)
+                    role = "🛡️ Defender"
+                
+                embed.add_field(
+                    name=f"⚔️ War Stats - {role}",
+                    value=(
+                        f"**Resistance:** {war_resistance:.1f}%\n"
+                        f"**MAP Score:** {war_points}\n"
+                        f"**Turns Left:** {current_war.get('turns_left', 'Unknown')}\n"
+                        f"**War Type:** {current_war.get('war_type', 'Unknown').title()}"
+                    ),
+                    inline=True
+                )
+            else:
+                embed.add_field(
+                    name="⚔️ War Stats",
+                    value="War data not found",
+                    inline=True
+                )
+            
+            # Alliance info
+            alliance = nation_info.get('alliance', {})
+            alliance_name = alliance.get('name', 'None')
+            alliance_id = alliance.get('id', 'N/A')
+            
+            embed.add_field(
+                name="🏛️ Alliance",
+                value=f"**{alliance_name}** (ID: {alliance_id})",
+                inline=True
+            )
+            
+            embed.add_field(name="\u200b", value="\u200b", inline=True)
+            
+            # Military efficiency calculation
+            total_military = soldiers + (tanks * 40) + (aircraft * 3) + (ships * 4)
+            efficiency = (military_power / total_military * 100) if total_military > 0 else 0
+            
+            embed.add_field(
+                name="📊 Military Efficiency",
+                value=f"**{efficiency:.1f}%** efficiency rating\n*Based on unit composition*",
+                inline=False
+            )
+            
+            # Color coding based on resistance
+            if resistance >= 75:
+                embed.color = discord.Color.green()
+            elif resistance >= 50:
+                embed.color = discord.Color.yellow()
+            elif resistance >= 25:
+                embed.color = discord.Color.orange()
+            else:
+                embed.color = discord.Color.red()
+            
+            embed.set_footer(
+                text=f"Use buttons to navigate • Nation ID: {current_nation_id} • Updated: {discord.utils.utcnow().strftime('%H:%M UTC')}"
+            )
+            
+            return embed
+            
+        except Exception as e:
+            print(f"Error creating participant embed: {e}")
+            return discord.Embed(
+                title="❌ Error",
+                description="Failed to load participant information",
+                color=discord.Color.red()
+            )
+    
+    @discord.ui.button(label="◀️ Previous", style=discord.ButtonStyle.secondary)
+    async def previous_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Navigate to previous participant"""
+        if self.current_index > 0:
+            self.current_index -= 1
+        else:
+            self.current_index = len(self.participants) - 1
+            
+        embed = await self.get_current_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    @discord.ui.button(label="▶️ Next", style=discord.ButtonStyle.secondary)
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Navigate to next participant"""
+        if self.current_index < len(self.participants) - 1:
+            self.current_index += 1
+        else:
+            self.current_index = 0
+            
+        embed = await self.get_current_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    @discord.ui.button(label="🔄 Refresh", style=discord.ButtonStyle.primary)
+    async def refresh_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Refresh current participant data"""
+        await interaction.response.defer()
+        embed = await self.get_current_embed()
+        await interaction.edit_original_response(embed=embed, view=self)
+    
+    @discord.ui.button(label="📊 All Stats", style=discord.ButtonStyle.success)
+    async def all_stats_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Show summary of all participants"""
+        await interaction.response.defer()
+        
+        embed = discord.Embed(
+            title=f"📊 All Participants Summary - War {self.war_id}",
+            description=f"Overview of all {len(self.participants)} participants",
+            color=discord.Color.purple()
+        )
+        
+        try:
+            for i, nation_id in enumerate(self.participants):
+                nation_info = await get_nation_info(nation_id, self.api_key)
+                name = nation_info.get('nation_name', f'Nation {nation_id}')
+                resistance = nation_info.get('resistance', 0)
+                military_power = nation_info.get('military_power', 0)
+                
+                # Resistance status emoji
+                if resistance >= 75:
+                    status = "🟢"
+                elif resistance >= 50:
+                    status = "🟡"
+                elif resistance >= 25:
+                    status = "🟠"
+                else:
+                    status = "🔴"
+                
+                embed.add_field(
+                    name=f"{status} {name}",
+                    value=f"**Res:** {resistance:.1f}%\n**MP:** {military_power:,}",
+                    inline=True
+                )
+                
+                # Add spacer every 3 participants
+                if (i + 1) % 3 == 0:
+                    embed.add_field(name="\u200b", value="\u200b", inline=False)
+        
+        except Exception as e:
+            embed.add_field(
+                name="❌ Error",
+                value="Failed to load summary data",
+                inline=False
+            )
+        
+        embed.set_footer(text="Click Previous/Next to view individual details")
+        await interaction.edit_original_response(embed=embed, view=self)
+
+
+class MultiWarParticipantView(discord.ui.View):
+    """Enhanced view for participants involved in multiple wars"""
+    
+    def __init__(self, participants: List[str], api_key: str, all_war_ids: List[str]):
+        super().__init__(timeout=None)
+        self.participants = participants
+        self.api_key = api_key
+        self.all_war_ids = all_war_ids
+        self.current_participant = 0
+        self.current_war = 0
+        
+    async def get_current_embed(self) -> discord.Embed:
+        """Get embed showing current participant's status across all their wars"""
+        try:
+            current_nation_id = self.participants[self.current_participant]
+            nation_info = await get_nation_info(current_nation_id, self.api_key)
+            
+            embed = discord.Embed(
+                title=f"🌟 Multi-War Participant {self.current_participant + 1}/{len(self.participants)}",
+                description=f"**{nation_info.get('nation_name', 'Unknown Nation')}**\n*All active wars overview*",
+                color=discord.Color.gold()
+            )
+            
+            # Overall stats
+            resistance = nation_info.get('resistance', 0)
+            military_power = nation_info.get('military_power', 0)
+            
+            embed.add_field(
+                name="💪 Overall Status",
+                value=f"**Resistance:** {resistance:.1f}%\n**Military Power:** {military_power:,}",
+                inline=True
+            )
+            
+            # Wars this nation is involved in
+            wars = nation_info.get('wars', {}).get('data', [])
+            relevant_wars = [w for w in wars if str(w.get('id')) in self.all_war_ids]
+            
+            if relevant_wars:
+                war_summary = []
+                total_maps = 0
+                
+                for war in relevant_wars[:5]:  # Show up to 5 wars
+                    war_id = war.get('id')
+                    turns_left = war.get('turns_left', 'Unknown')
+                    
+                    # Determine role and get appropriate stats
+                    if str(war.get('att_id', '')) == current_nation_id:
+                        role = "🗡️"
+                        points = war.get('att_points', 0)
+                        war_resistance = war.get('att_resistance', resistance)
+                    else:
+                        role = "🛡️"
+                        points = war.get('def_points', 0)
+                        war_resistance = war.get('def_resistance', resistance)
+                    
+                    total_maps += points
+                    status = "🟢" if war_resistance > 50 else "🔴" if war_resistance < 25 else "🟡"
+                    
+                    war_summary.append(f"{role} **War {war_id}**: {points} MAPs {status}")
+                
+                embed.add_field(
+                    name=f"⚔️ Active Wars ({len(relevant_wars)})",
+                    value="\n".join(war_summary) + f"\n\n**Total MAPs:** {total_maps}",
+                    inline=False
+                )
+            else:
+                embed.add_field(
+                    name="⚔️ Wars",
+                    value="No active wars found",
+                    inline=False
+                )
+            
+            embed.set_footer(
+                text=f"Multi-war overview • Use buttons to navigate • Updated: {discord.utils.utcnow().strftime('%H:%M UTC')}"
+            )
+            
+            return embed
+            
+        except Exception as e:
+            print(f"Error creating multi-war participant embed: {e}")
+            return discord.Embed(
+                title="❌ Error",
+                description="Failed to load multi-war participant information",
+                color=discord.Color.red()
+            )
+    
+    @discord.ui.button(label="◀️ Prev Nation", style=discord.ButtonStyle.secondary)
+    async def previous_nation(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Navigate to previous nation"""
+        if self.current_participant > 0:
+            self.current_participant -= 1
+        else:
+            self.current_participant = len(self.participants) - 1
+            
+        embed = await self.get_current_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    @discord.ui.button(label="▶️ Next Nation", style=discord.ButtonStyle.secondary)
+    async def next_nation(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Navigate to next nation"""
+        if self.current_participant < len(self.participants) - 1:
+            self.current_participant += 1
+        else:
+            self.current_participant = 0
+            
+        embed = await self.get_current_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    @discord.ui.button(label="🔄 Refresh", style=discord.ButtonStyle.primary)
+    async def refresh_data(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Refresh current data"""
+        await interaction.response.defer()
+        embed = await self.get_current_embed()
+        await interaction.edit_original_response(embed=embed, view=self)
+
 class HelpView(discord.ui.View):
     def __init__(self, user_id: str, is_gov: bool, called_with_prefix: bool = False):
         super().__init__(timeout=300)
