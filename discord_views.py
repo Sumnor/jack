@@ -879,8 +879,8 @@ class TicketButtonView(View):
             if self.message_id:
                 ticket_config = get_ticket_config(message_id)
             
-            if ticket_config and ticket_config.get('category_id'):
-                category_id = ticket_config['category_id']
+            if ticket_config and ticket_config.get('category'):
+                category_id = ticket_config['category']
                 
                 category = discord.utils.get(guild.categories, id=category_id)
                 if not category:
