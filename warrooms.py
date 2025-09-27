@@ -1073,7 +1073,7 @@ async def handle_pnw_events():
                             is_new_turn=True
                             try:
                                 print(f"DEBUG: Raw war data keys: {list(war.keys())}")
-                                war_id = str(war.get("id"))
+                                war_id = war.get("id")
                                 if not war_id or war_id == "None":
                                     continue
 
