@@ -624,6 +624,7 @@ async def create_war_room(
                 enemy_id = attacker_id
             
         if not our_side:
+            print(f"No alliance members involved in war {war_id} - attacker: {attacker_id}, defender: {defender_id}, AA members: {list(aa_member_ids)}")
             return None  
         
         
@@ -1033,7 +1034,10 @@ async def handle_pnw_events():
 
                 for guild in bot.guilds:
                     try:
+                        print(f"DEBUG: Checking guild {guild.id} ({guild.name})")
+                        
                         if not war_rooms_active.get(guild.id, False):
+                            print(f"DEBUG: War rooms disabled for guild {guild.id}")
                             continue
 
                         api_key = get_api_key_for_guild(guild.id)
@@ -1046,18 +1050,25 @@ async def handle_pnw_events():
                             print(f"DEBUG: Guild {guild.id} has no alliance members")
                             continue
 
+                        print(f"DEBUG: Guild {guild.id} has {len(alliance_members)} alliance members")
                         aa_member_map = {str(m["NationID"]): m["DiscordID"] for m in alliance_members}
 
                         for war in wars:
                             is_new_turn=True
                             try:
+                                print(f"DEBUG: Raw war data keys: {list(war.keys())}")
                                 war_id = str(war.get("id"))
                                 if not war_id or war_id == "None":
                                     continue
 
+                                # Convert to strings and handle potential None values
                                 attacker_id = str(war.get("att_id", "Unknown"))
                                 defender_id = str(war.get("def_id", "Unknown"))
 
+                                print(f"DEBUG: Processing war {war_id} - Attacker: {attacker_id}, Defender: {defender_id}")
+                                print(f"DEBUG: Alliance member IDs: {list(aa_member_map.keys())[:10]}...")  # Show first 10
+                                print(f"DEBUG: Attacker {attacker_id} in members: {attacker_id in aa_member_map}")
+                                print(f"DEBUG: Defender {defender_id} in members: {defender_id in aa_member_map}")
                                 
                                 if attacker_id not in aa_member_map and defender_id not in aa_member_map:
                                     print(f"DEBUG: Skipping war {war_id} (no alliance members involved)")
@@ -1072,11 +1083,16 @@ async def handle_pnw_events():
 
                                 
                                 if war_id not in active_war_rooms:
+                                    print(f"DEBUG: Creating new war room for war {war_id}")
                                     war_channel = await create_war_room(guild, war, alliance_members, api_key)
                                     is_new_turn = False
                                     if not war_channel:
+                                        print(f"DEBUG: Failed to create war room for war {war_id}")
                                         continue
+                                    else:
+                                        print(f"DEBUG: Successfully created war room for war {war_id}")
                                 else:
+                                    print(f"DEBUG: War room already exists for war {war_id}")
                                     war_room_data = active_war_rooms[war_id]
                                     if war_room_data.get("guild_id") != guild.id:
                                         continue
