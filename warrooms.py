@@ -805,19 +805,6 @@ async def run_node_listener():
             print("Node.js packages installed successfully")
         else:
             print(f"Package installation failed with code {install_process.returncode}")
-            
-        
-        import os
-        node_modules_path = "./node_modules"
-        if os.path.exists(node_modules_path):
-            print(f"node_modules directory exists at {node_modules_path}")
-            pusher_path = os.path.join(node_modules_path, "pusher-js")
-            if os.path.exists(pusher_path):
-                print("pusher-js package found")
-            else:
-                print("pusher-js package NOT found")
-        else:
-            print("node_modules directory does NOT exist")
         
         
         print("Starting Node.js listener process...")
