@@ -9,7 +9,7 @@ import aiohttp
 from typing import Dict, List, Optional, Set
 from bot_instance import bot, wrap_as_prefix_command    
 from utils import cached_users
-from settings_multi import get_warroom_id, get_api_key_for_guild, get_aa_name_guild, get_settings_value, get_toggle_setting
+from settings_multi import get_warroom_id, get_api_key_for_guild, get_aa_name_guild, get_settings_value
 import requests
 from settings_multi import SUPABASE_URL, SUPABASE_KEY
 from discord_views import ParticipantView, MultiWarParticipantView
@@ -1202,7 +1202,7 @@ async def handle_pnw_events():
                 for guild in bot.guilds:
                     try:
                         # Check if war rooms are enabled for this guild
-                        if not await get_toggle_setting_db("war_rooms", guild.id):
+                        if not await get_toggle_setting_db("war_rooms_toggle", guild.id):
                             continue
 
                         api_key = get_api_key_for_guild(guild.id)
@@ -1293,11 +1293,11 @@ async def toggle_war_rooms(interaction: discord.Interaction):
     try:
         await interaction.response.defer()
         guild_id = interaction.guild.id
-        current_status = await get_toggle_setting_db("war_rooms", guild_id)
+        current_status = await get_toggle_setting_db("war_rooms_toggle", guild_id)
         
         # Toggle the setting
         new_status = not current_status
-        await update_toggle_setting_db("war_rooms", guild_id, new_status)
+        await update_toggle_setting_db("war_rooms_toggle", guild_id, new_status)
         
         status_text = "enabled" if new_status else "disabled"
         embed = discord.Embed(
