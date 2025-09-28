@@ -9,7 +9,7 @@ import aiohttp
 from typing import Dict, List, Optional, Set
 from bot_instance import bot, wrap_as_prefix_command, SUPABASE_URL, SUPABASE_KEY
 from utils import cached_users
-from settings_multi import get_warroom_id, get_api_key_for_guild, get_aa_name_guild, get_settings_value
+from settings_multi import get_warroom_id, get_api_key_for_guild, get_aa_name_guild, get_toggle_value_gd, set_server_setting
 import requests
 from discord_views import ParticipantView, MultiWarParticipantView
 
@@ -91,26 +91,6 @@ async def delete_war_room_from_db(war_id: str):
             print(f"Error deleting war room {war_id}: {response.status_code}")
     except Exception as e:
         print(f"Error deleting war room {war_id} from database: {e}")
-
-async def get_toggle_setting_db(setting_name: str, guild_id: int) -> bool:
-    """Get toggle setting from database using existing settings table structure"""
-    try:
-        url = f"{SUPABASE_URL}/server_settings?guild_id=eq.{guild_id}&key=eq.{setting_name}&select=value"
-        headers = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}"
-        }
-        
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        data = response.json()
-        
-        if data:
-            return data[0]['value'].lower() == 'true'
-        return False
-    except Exception as e:
-        print(f"Error getting toggle setting {setting_name} for guild {guild_id}: {e}")
-        return False
 
 async def update_toggle_setting_db(setting_name: str, guild_id: int, value: bool):
     """Update toggle setting in database using existing settings table structure"""
@@ -1201,7 +1181,7 @@ async def handle_pnw_events():
                 for guild in bot.guilds:
                     try:
                         # Check if war rooms are enabled for this guild
-                        if not await get_toggle_setting_db("war_rooms_toggle", guild.id):
+                        if not get_toggle_value_gd("war_rooms_toggle", guild.id):
                             continue
 
                         api_key = get_api_key_for_guild(guild.id)
@@ -1292,11 +1272,11 @@ async def toggle_war_rooms(interaction: discord.Interaction):
     try:
         await interaction.response.defer()
         guild_id = interaction.guild.id
-        current_status = await get_toggle_setting_db("war_rooms_toggle", guild_id)
+        current_status = get_toggle_value_gd("war_rooms_toggle", guild_id)
         
         # Toggle the setting
         new_status = not current_status
-        await update_toggle_setting_db("war_rooms_toggle", guild_id, new_status)
+        set_server_setting(guild_id, "war_rooms_toggle", new_status)
         
         status_text = "enabled" if new_status else "disabled"
         embed = discord.Embed(
