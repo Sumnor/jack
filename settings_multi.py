@@ -300,6 +300,9 @@ async def set_setting(interaction: discord.Interaction, key: app_commands.Choice
         await interaction.followup.send(f"✅ {key_value} set to `{value}`.", ephemeral=True)
         return
 
+    if key_value == "war_rooms":
+        set_server_setting(guild_id, "war_rooms_toggle", "false")
+
     if not any(role.name == gov_role_id for role in member.roles):
         await interaction.followup.send("❌ You do not have permission to use this command. Only members with the GOV_ROLE can set settings.", ephemeral=True)
         return
