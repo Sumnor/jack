@@ -159,40 +159,43 @@ async def get_alliance_members(guild_id: int) -> List[Dict]:
         traceback.print_exc()
         return []
 
-async def check_and_cleanup_war_rooms(guild_id: int, api_key: str):
-    """Check if any wars with the same opponent have ended and cleanup rooms"""
+async def check_and_cleanup_war_rooms(guild_id: int, wars: list):
+    """Check if wars have ended and cleanup rooms based on end_date"""
     try:
-        # Get all active wars for the alliance
         alliance_members = await get_alliance_members(guild_id)
         aa_member_ids = {str(member["NationID"]) for member in alliance_members}
         
-        # Group war rooms by enemy
-        enemy_rooms = {}
-        rooms_to_delete = []
-        
-        for war_id, room_data in list(active_war_rooms.items()):
-            if room_data.get('guild_id') != guild_id:
-                continue
+        for war in wars:
+            war_id = str(war.get("id"))
+            end_date = war.get("end_date")
+            
+            # If war has ended (has end_date)
+            if end_date and war_id in active_war_rooms:
+                room_data = active_war_rooms[war_id]
+                if room_data.get('guild_id') != guild.id:
+                    continue
                 
-            enemy_id = room_data.get('enemy_id')
-            if enemy_id not in enemy_rooms:
-                enemy_rooms[enemy_id] = []
-            enemy_rooms[enemy_id].append((war_id, room_data))
-        
-        # Check each enemy group
-        for enemy_id, rooms in enemy_rooms.items():
-            # Get all active wars with this enemy
-            active_wars_with_enemy = await get_active_wars_with_enemy(enemy_id, aa_member_ids, api_key)
-            
-            if not active_wars_with_enemy:
-                # No active wars with this enemy, delete all rooms
-                for war_id, room_data in rooms:
-                    rooms_to_delete.append((war_id, room_data))
-        
-        # Delete the rooms
-        for war_id, room_data in rooms_to_delete:
-            await delete_war_room(guild_id, war_id, room_data)
-            
+                attacker_id = str(war.get("att_id"))
+                defender_id = str(war.get("def_id"))
+                
+                # Remove the participant who was in this ended war
+                current_participants = set(room_data.get('participants', []))
+                if attacker_id in aa_member_ids:
+                    current_participants.discard(attacker_id)
+                if defender_id in aa_member_ids:
+                    current_participants.discard(defender_id)
+                
+                # If no participants left, delete the room
+                if not current_participants:
+                    await delete_war_room(guild_id, war_id, room_data)
+                else:
+                    # Update participants and room access
+                    room_data['participants'] = list(current_participants)
+                    guild = bot.get_guild(guild_id)
+                    if guild:
+                        await update_war_room_access(guild, war_id, current_participants)
+                    await save_war_room_to_db(war_id, room_data)
+                    
     except Exception as e:
         print(f"Error in war room cleanup: {e}")
 
@@ -1137,7 +1140,7 @@ async def handle_pnw_events():
                                 import traceback; traceback.print_exc()
 
                         # Check for war cleanup after processing all wars
-                        await check_and_cleanup_war_rooms(guild.id, api_key)
+                        await check_and_cleanup_war_rooms(guild.id, wars)
 
                     except Exception as e:
                         print(f"❌ Error processing events for guild {guild.id}: {e}")
