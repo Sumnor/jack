@@ -95,7 +95,7 @@ async def delete_war_room_from_db(war_id: str):
 async def get_toggle_setting_db(setting_name: str, guild_id: int) -> bool:
     """Get toggle setting from database using existing settings table structure"""
     try:
-        url = f"{SUPABASE_URL}/settings?guild_id=eq.{guild_id}&key=eq.{setting_name}&select=value"
+        url = f"{SUPABASE_URL}/server_settings?guild_id=eq.{guild_id}&key=eq.{setting_name}&select=value"
         headers = {
             "apikey": SUPABASE_KEY,
             "Authorization": f"Bearer {SUPABASE_KEY}"
