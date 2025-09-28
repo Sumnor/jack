@@ -56,6 +56,9 @@ def get_api_key_for_guild(guild_id: int) -> str | None:
 def get_banking_role(interaction: discord.Interaction):
     return get_settings_value("BANKING_ROLE", interaction.guild.id)
 
+def get_toggle_value_gd(key, guild_id):
+    return get_settings_value(key, guild_id)
+
 def get_gov_role(interaction: discord.Interaction):
     return get_settings_value("GOV_ROLE", interaction.guild.id)
 
