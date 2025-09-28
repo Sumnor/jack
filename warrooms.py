@@ -1181,7 +1181,7 @@ async def handle_pnw_events():
                 for guild in bot.guilds:
                     try:
                         # Check if war rooms are enabled for this guild
-                        if not get_toggle_value_gd("war_rooms_toggle", guild.id):
+                        if not get_toggle_value_gd("WAR_ROOMS_TOGGLE", guild.id):
                             continue
 
                         api_key = get_api_key_for_guild(guild.id)
@@ -1272,11 +1272,11 @@ async def toggle_war_rooms(interaction: discord.Interaction):
     try:
         await interaction.response.defer()
         guild_id = interaction.guild.id
-        current_status = get_toggle_value_gd("war_rooms_toggle", guild_id)
+        current_status = get_toggle_value_gd("WAR_ROOMS_TOGGLE", guild_id)
         
         # Toggle the setting
         new_status = not current_status
-        set_server_setting(guild_id, "war_rooms_toggle", new_status)
+        set_server_setting(guild_id, "WAR_ROOMS_TOGGLE", new_status)
         
         status_text = "enabled" if new_status else "disabled"
         embed = discord.Embed(
