@@ -1274,13 +1274,13 @@ async def toggle_war_rooms(interaction: discord.Interaction):
         guild_id = interaction.guild.id
         current_status = get_toggle_value_gd("WAR_ROOMS_TOGGLE", guild_id)
         
-        if current_status == "True":
-            new_status = "False"
-        elif current_status == "False":
-            new_status = "True"
+        if current_status == True:
+            new_status = False
+        elif current_status == False:
+            new_status = True
         set_server_setting(guild_id, "WAR_ROOMS_TOGGLE", new_status)
         
-        status_text = "enabled" if new_status else "disabled"
+        status_text = "enabled" if new_status == True else "disabled"
         embed = discord.Embed(
             title="War Rooms Toggle",
             description=f"War rooms have been **{status_text}** for this server.",
