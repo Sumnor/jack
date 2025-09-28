@@ -111,6 +111,84 @@ def load_sheet_data():
         import traceback
         print(traceback.format_exc())
 
+active_war_rooms: Dict[str, Dict] = {}
+
+
+async def load_active_war_rooms():
+    """Populate active_war_rooms from Supabase"""
+    global active_war_rooms
+    try:
+        records = supabase.select("war_rooms")  # depends on your supabase wrapper
+        active_war_rooms = {}
+
+        for record in records:
+            war_id = str(record.get("war_id", "")).strip()
+            if not war_id:
+                continue
+
+            active_war_rooms[war_id] = {
+                "channel_id": str(record.get("channel_id", "")).strip(),
+                "participants": record.get("participants", {}),
+                "guild_id": str(record.get("guild_id", "")).strip(),
+                "enemy_id": str(record.get("enemy_id", "")).strip(),
+                "main_embed_id": record.get("main_embed_id"),
+                "total_losses": record.get("total_losses") or {
+                    'att_soldiers': 0, 'att_tanks': 0, 'att_aircraft': 0, 'att_ships': 0,
+                    'def_soldiers': 0, 'def_tanks': 0, 'def_aircraft': 0, 'def_ships': 0
+                },
+                "last_action": record.get("last_action") or {},
+                "peace_offered": record.get("peace_offered", False),
+            }
+
+        print(f"✅ Loaded {len(active_war_rooms)} active war rooms from Supabase.")
+
+    except Exception as e:
+        print(f"❌ Error loading war rooms from database: {e}")
+
+async def delete_war_room_from_db(war_id: str):
+    """Delete a war room from Supabase"""
+    try:
+        response = supabase.table("war_rooms").delete().eq("war_id", str(war_id).strip()).execute()
+
+        if hasattr(response, "error") and response.error:
+            print(f"❌ Error deleting war room {war_id}: {response.error}")
+        else:
+            print(f"🗑️ Deleted war room {war_id} from database")
+
+    except Exception as e:
+        print(f"❌ Error deleting war room {war_id} from database: {e}")
+
+        
+async def save_war_room_to_db(war_id: str, war_room_data: Dict):
+    """Save or update a war room in Supabase"""
+    try:
+        # Shape matches what load_active_war_rooms expects
+        data = {
+            "war_id": str(war_id).strip(),
+            "guild_id": str(war_room_data.get("guild_id", "")).strip(),
+            "channel_id": str(war_room_data.get("channel_id", "")).strip(),
+            "participants": war_room_data.get("participants", {}),
+            "enemy_id": str(war_room_data.get("enemy_id", "")).strip(),
+            "main_embed_id": war_room_data.get("main_embed_id"),
+            "total_losses": war_room_data.get("total_losses") or {
+                'att_soldiers': 0, 'att_tanks': 0, 'att_aircraft': 0, 'att_ships': 0,
+                'def_soldiers': 0, 'def_tanks': 0, 'def_aircraft': 0, 'def_ships': 0
+            },
+            "last_action": war_room_data.get("last_action") or {},
+            "peace_offered": war_room_data.get("peace_offered", False),
+        }
+
+        # Upsert via Supabase client (same style as load)
+        response = supabase.table("war_rooms").upsert(data).execute()
+
+        if hasattr(response, "error") and response.error:
+            print(f"❌ Error saving war room {war_id}: {response.error}")
+        else:
+            print(f"💾 Saved war room {war_id} to database")
+
+    except Exception as e:
+        print(f"❌ Error saving war room {war_id} to database: {e}")
+
 def load_registration_data() -> Dict[str, Dict]:
     try:
         records = supabase.select('users')
