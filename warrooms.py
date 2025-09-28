@@ -8,114 +8,10 @@ import threading
 import aiohttp
 from typing import Dict, List, Optional, Set
 from bot_instance import bot, wrap_as_prefix_command, SUPABASE_URL, SUPABASE_KEY
-from utils import cached_users
+from utils import cached_users, save_war_room_to_db, delete_war_room_from_db, load_active_war_rooms
 from settings_multi import get_warroom_id, get_api_key_for_guild, get_aa_name_guild, get_toggle_value_gd, set_server_setting
 import requests
 from discord_views import ParticipantView, MultiWarParticipantView
-
-async def load_active_war_rooms():
-    """Load active war rooms from Supabase into memory"""
-    try:
-        url = f"{SUPABASE_URL}/war_rooms?select=*"
-        headers = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}"
-        }
-        
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        rooms = response.json()
-        
-        for room in rooms:
-            war_id = room['war_id']
-            active_war_rooms[war_id] = {
-                'channel_id': room['channel_id'],
-                'participants': room['participants'],
-                'guild_id': room['guild_id'],
-                'enemy_id': room['enemy_id'],
-                'main_embed_id': room['main_embed_id'],
-                'total_losses': room['total_losses'] or {},
-                'last_action': room['last_action'] or {},
-                'peace_offered': room['peace_offered']
-            }
-        print(f"Loaded {len(active_war_rooms)} active war rooms from database")
-    except Exception as e:
-        print(f"Error loading war rooms from database: {e}")
-
-async def save_war_room_to_db(war_id: str, war_room_data: Dict):
-    """Save or update a war room in Supabase"""
-    try:
-        data = {
-            'war_id': war_id,
-            'guild_id': war_room_data['guild_id'],
-            'channel_id': war_room_data['channel_id'],
-            'participants': war_room_data['participants'],
-            'enemy_id': war_room_data['enemy_id'],
-            'main_embed_id': war_room_data.get('main_embed_id'),
-            'total_losses': war_room_data.get('total_losses', {}),
-            'last_action': war_room_data.get('last_action', {}),
-            'peace_offered': war_room_data.get('peace_offered', False),
-            'updated_at': 'NOW()'
-        }
-        
-        # Use upsert approach - try to update first, if not exists then insert
-        url = f"{SUPABASE_URL}/war_rooms"
-        headers = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}",
-            "Content-Type": "application/json",
-            "Prefer": "resolution=merge-duplicates"
-        }
-        
-        response = requests.post(url, json=data, headers=headers)
-        if response.status_code not in [200, 201]:
-            print(f"Error saving war room {war_id}: {response.status_code} - {response.text}")
-        else:
-            print(f"Saved war room {war_id} to database")
-    except Exception as e:
-        print(f"Error saving war room {war_id} to database: {e}")
-
-async def delete_war_room_from_db(war_id: str):
-    """Delete a war room from Supabase"""
-    try:
-        url = f"{SUPABASE_URL}/war_rooms?war_id=eq.{war_id}"
-        headers = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}"
-        }
-        
-        response = requests.delete(url, headers=headers)
-        if response.status_code == 204:
-            print(f"Deleted war room {war_id} from database")
-        else:
-            print(f"Error deleting war room {war_id}: {response.status_code}")
-    except Exception as e:
-        print(f"Error deleting war room {war_id} from database: {e}")
-
-async def update_toggle_setting_db(setting_name: str, guild_id: int, value: bool):
-    """Update toggle setting in database using existing settings table structure"""
-    try:
-        data = {
-            'guild_id': guild_id,
-            'key': setting_name,
-            'value': str(value).lower()
-        }
-        
-        url = f"{SUPABASE_URL}/settings"
-        headers = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}",
-            "Content-Type": "application/json",
-            "Prefer": "resolution=merge-duplicates"
-        }
-        
-        response = requests.post(url, json=data, headers=headers)
-        if response.status_code not in [200, 201]:
-            print(f"Error updating setting {setting_name}: {response.status_code}")
-        else:
-            print(f"Updated setting {setting_name} to {value} for guild {guild_id}")
-    except Exception as e:
-        print(f"Error updating toggle setting {setting_name}: {e}")
 
 async def get_attack_data(war_id: str, api_key: str) -> dict:
     
@@ -1285,10 +1181,10 @@ async def toggle_war_rooms(interaction: discord.Interaction):
         embed = discord.Embed(
             title="War Rooms Toggle",
             description=f"War rooms have been **{status_text}** for this server.",
-            color=0x00ff00 if new_status else 0xff0000
+            color=0x00ff00 if new_status == "true" else 0xff0000
         )
         
-        if new_status:
+        if new_status == "true":
             embed.add_field(
                 name="What happens now?", 
                 value="• War rooms will be created when alliance members are involved in wars\n• Rooms will auto-delete when all wars with an opponent end\n• Only involved members get access",
