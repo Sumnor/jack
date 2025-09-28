@@ -9,7 +9,7 @@ import aiohttp
 from typing import Dict, List, Optional, Set
 from bot_instance import bot, wrap_as_prefix_command, SUPABASE_URL, SUPABASE_KEY
 from utils import cached_users, save_war_room_to_db, delete_war_room_from_db, load_active_war_rooms, active_war_rooms
-from settings_multi import get_warroom_id, get_api_key_for_guild, get_aa_name_guild, get_toggle_value_gd, set_server_setting
+from settings_multi import get_warroom_id, get_api_key_for_guild, get_aa_name_guild, get_toggle_value_gd, set_server_setting, get_settings_value
 import requests
 from discord_views import ParticipantView, MultiWarParticipantView
 
