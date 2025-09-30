@@ -522,8 +522,7 @@ async def send_detailed_war_update(war_channel, war, alliance_members, is_new_tu
                 turn_embed.add_field(name="🚢 Blockade Status", value=blockade_status, inline=False)
 
                 
-                # Control gain is only calculated and displayed if a new action has occurred.
-                # last_action_data contains the *previous* state due to the update above.
+                # Control gain logic now runs inside the if block based on stored vs current state
                 last_action_data = active_war_rooms[str(war_id)].get('last_action', {}) # Get the state *before* this action
                 ground_gained = (war.get('ground_control', 0) != last_action_data.get('ground_control', 0) and war.get('ground_control', 0) in [int(attacker_id), int(defender_id)])
                 air_gained = (war.get('air_superiority', 0) != last_action_data.get('air_superiority', 0) and war.get('air_superiority', 0) in [int(attacker_id), int(defender_id)])
@@ -598,7 +597,6 @@ async def send_detailed_war_update(war_channel, war, alliance_members, is_new_tu
             active_war_rooms[str(war_id)]['main_embed_id'] = main_message.id
 
         # Update last_action with control state for next comparison (always runs to keep state fresh)
-        # This is necessary because the main summary embed updates on every tick.
         if str(war_id) in active_war_rooms:
             # Preserve existing last attack data (if set by is_new_turn_action)
             current_last_action = active_war_rooms[str(war_id)].get('last_action', {})
@@ -1164,6 +1162,46 @@ async def handle_pnw_events():
 
                                 
                                 if war_id not in active_war_rooms:
+                                    
+                                    # Determine the enemy ID
+                                    if attacker_id in aa_member_map:
+                                        enemy_id = defender_id
+                                    else:
+                                        enemy_id = attacker_id
+                                        
+                                    # --- FIX: Do not create a new war room if one exists for the enemy ---
+                                    room_exists_for_enemy = False
+                                    for existing_war_id, room_data in active_war_rooms.items():
+                                        # Check if it's the right guild and the right enemy
+                                        if (room_data.get('guild_id') == guild.id and 
+                                            room_data.get('enemy_id') == enemy_id and
+                                            room_data.get('channel_id') is not None):
+                                            
+                                            room_exists_for_enemy = True
+                                            
+                                            # Add the NEW war ID to the existing room data's 'war_ids' list
+                                            if war_id not in room_data.get('war_ids', []):
+                                                room_data['war_ids'] = room_data.get('war_ids', []) + [war_id]
+                                                
+                                                # Update participants if necessary
+                                                new_participants = set(room_data.get('participants', []))
+                                                if attacker_id in aa_member_map:
+                                                    new_participants.add(attacker_id)
+                                                if defender_id in aa_member_map:
+                                                    new_participants.add(defender_id)
+                                                room_data['participants'] = list(new_participants)
+                                                
+                                                # Update DB and channel access
+                                                await save_war_room_to_db(existing_war_id, room_data)
+                                                await update_war_room_access(guild, existing_war_id, room_data['participants'])
+                                                
+                                            break # Stop searching, room found
+                                            
+                                    if room_exists_for_enemy:
+                                        # Skip creation, room already exists for this enemy. 
+                                        continue
+                                    # --- END FIX ---
+                                    
                                     war_channel = await create_war_room(guild, war, alliance_members, api_key)
                                     is_new_turn = False
                                     if not war_channel:
