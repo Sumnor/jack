@@ -172,7 +172,9 @@ async def check_and_cleanup_war_rooms(guild_id: int, wars: list):
             # If war has ended (has end_date)
             if end_date and war_id in active_war_rooms:
                 room_data = active_war_rooms[war_id]
-                if room_data.get('guild_id') != guild.id:
+                # Fix for Issue #1: Ensure cleanup is only done for rooms belonging to the current guild.
+                guild = bot.get_guild(guild_id)
+                if room_data.get('guild_id') != guild_id:
                     continue
                 
                 attacker_id = str(war.get("att_id"))
@@ -191,7 +193,6 @@ async def check_and_cleanup_war_rooms(guild_id: int, wars: list):
                 else:
                     # Update participants and room access
                     room_data['participants'] = list(current_participants)
-                    guild = bot.get_guild(guild_id)
                     if guild:
                         await update_war_room_access(guild, war_id, current_participants)
                     await save_war_room_to_db(war_id, room_data)
@@ -402,9 +403,44 @@ async def send_detailed_war_update(war_channel, war, alliance_members, is_new_tu
 
         
         attack_data = await get_attack_data(war_id, api_key)
-        if is_new_turn:
+        
+        # --- FIX for Issue #3: Check if a new player action has occurred (ignore ticks) ---
+        
+        # Prepare the unique identifier for the latest attack
+        current_action_signature = {
+            'city_id': attack_data.get('city_id'),
+            'type': attack_data.get('type'),
+            # Including resistance_lost helps distinguish subsequent attacks on the same target
+            'resistance_lost': attack_data.get('resistance_lost') 
+        }
+
+        last_action_stored = war_data.get('last_action', {})
+        
+        # Determine if a new player action has occurred:
+        # 1. Ensure attack_data is not empty (i.e., there is at least one attack)
+        # 2. Check if the signature of the last attack is different from the one we last stored,
+        #    or if we don't have a stored action type (first run).
+        is_new_turn_action = (
+            current_action_signature.get('type') and 
+            (
+                not last_action_stored.get('type') or
+                last_action_stored.get('city_id') != current_action_signature.get('city_id') or
+                last_action_stored.get('type') != current_action_signature.get('type') or
+                last_action_stored.get('resistance_lost') != current_action_signature.get('resistance_lost')
+            )
+        )
+        
+        # Only proceed with the detailed turn embed if a new player action occurred
+        if is_new_turn_action:
+            
+            # Update last_action with the current attack data for the next comparison
+            active_war_rooms[str(war_id)]['last_action'] = attack_data
+            war_data = active_war_rooms.get(str(war_id), {}) # Re-fetch updated war_data
+            last_action_data = war_data.get('last_action', {}) # This is used for control gain text
+            
             action_name, success_text = await get_action_data(war_id, api_key)
             color = get_war_color(action_name)
+            
             if action_name in ["🕊️ Peace Offer", "🛡️ Fortify"]:
                 if success_text == "⚠️ **PYRRHIC VICTORY**":
                     if action_name == "🕊️ Peace Offer":
@@ -486,7 +522,9 @@ async def send_detailed_war_update(war_channel, war, alliance_members, is_new_tu
                 turn_embed.add_field(name="🚢 Blockade Status", value=blockade_status, inline=False)
 
                 
-                last_action_data = war_data.get('last_action', {})
+                # Control gain is only calculated and displayed if a new action has occurred.
+                # last_action_data contains the *previous* state due to the update above.
+                last_action_data = active_war_rooms[str(war_id)].get('last_action', {}) # Get the state *before* this action
                 ground_gained = (war.get('ground_control', 0) != last_action_data.get('ground_control', 0) and war.get('ground_control', 0) in [int(attacker_id), int(defender_id)])
                 air_gained = (war.get('air_superiority', 0) != last_action_data.get('air_superiority', 0) and war.get('air_superiority', 0) in [int(attacker_id), int(defender_id)])
                 naval_gained = (war.get('naval_blockade', 0) != last_action_data.get('naval_blockade', 0) and war.get('naval_blockade', 0) in [int(attacker_id), int(defender_id)])
@@ -558,6 +596,20 @@ async def send_detailed_war_update(war_channel, war, alliance_members, is_new_tu
             
             main_message = await war_channel.send(embed=embed, view=view)
             active_war_rooms[str(war_id)]['main_embed_id'] = main_message.id
+
+        # Update last_action with control state for next comparison (always runs to keep state fresh)
+        # This is necessary because the main summary embed updates on every tick.
+        if str(war_id) in active_war_rooms:
+            # Preserve existing last attack data (if set by is_new_turn_action)
+            current_last_action = active_war_rooms[str(war_id)].get('last_action', {})
+            
+            # Update with the *current* war control status
+            active_war_rooms[str(war_id)]['last_action'] = {
+                **current_last_action,
+                'ground_control': war.get('ground_control', 0),
+                'air_superiority': war.get('air_superiority', 0),
+                'naval_blockade': war.get('naval_blockade', 0),
+            }
 
         # Save to database
         await save_war_room_to_db(str(war_id), active_war_rooms[str(war_id)])
@@ -1209,4 +1261,3 @@ async def toggle_war_rooms(interaction: discord.Interaction):
             await interaction.followup.send("An error occurred while toggling war rooms.", ephemeral=True)
 
 bot.command(name="toggle_war_rooms")(wrap_as_prefix_command(toggle_war_rooms.callback))
-                
