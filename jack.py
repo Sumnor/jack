@@ -16,7 +16,7 @@ from utils import get_registration_sheet, load_registration_data, save_to_allian
 from databases import get_all_alerts, fetch_latest_model, fetch_latest_price, MATERIALS, SUPABASE_KEY, SUPABASE_URL
 from regression_models import fetch_material_data, train_model_for_resource
 from warrooms import handle_pnw_events
-from conversational import setup_database, generate_response, is_message_targeting_bot, get_funny_comeback, save_observation, curate_memories
+from conversational import setup_database, generate_response, is_message_targeting_bot, get_funny_comeback, save_observation, curate_memories, save_short_memory
 
 UNIT_PRICES = {
     "soldiers": 5,
