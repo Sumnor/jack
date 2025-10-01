@@ -855,7 +855,7 @@ async def on_message(message: discord.Message):
     # Bot was mentioned
     if bot_mentioned:
         # Check if actually targeted
-        if not is_message_targeting_bot(message.content, bot_mentioned, bot.user):
+        if not is_message_targeting_bot(message.content, bot_mentioned):
             await message.reply(get_funny_comeback())
             await bot.process_commands(message)
             return
