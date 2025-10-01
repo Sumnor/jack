@@ -838,49 +838,56 @@ async def on_message(message: discord.Message):
                 print(f"Error handling DM logging: {e}")
 
         await message.channel.send(default_reply)
-        await bot.process_commands(message)
-        return
-
-    # Conversational AI handling (only in guilds)
-    channel_id = message.channel.id
-    bot_mentioned = bot.user in message.mentions
+# Save the user's message to short-term memory (even if not a direct ping)
+    # The 'response' will be None here, and 'is_pinged' will be False.
+    await save_short_memory(
+        channel_id=channel_id,
+        user_id=message.author.id,
+        username=message.author.name,
+        message=message.content,
+        is_pinged=False
+    )
     
-    # Passive observation (not pinged)
+    # Check for keywords for passive long-term observation
     if not bot_mentioned and len(message.content) > 20:
+        # Check if any important keywords are in the message (case-insensitive)
         if any(keyword in message.content.lower() for keyword in ['important', 'remember', 'note', 'document', 'announcement']):
-            await save_observation(supabase, channel_id, message.content, context=f"Posted by {message.author.name}")
-        await bot.process_commands(message)
-        return
+            await save_observation(channel_id, message.content, context=f"Posted by {message.author.name}")
     
-    # Bot was mentioned
+    # Bot was mentioned - Process the conversation
     if bot_mentioned:
         # Check if actually targeted
         if not is_message_targeting_bot(message.content, bot_mentioned):
-            await message.reply(get_funny_comeback())
-            await bot.process_commands(message)
-            return
-        
-        # Remove bot mention
-        content = message.content
-        for mention in message.mentions:
-            content = content.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
-        content = content.strip()
-        
-        if not content:
-            await message.reply("yeah?")
-            await bot.process_commands(message)
-            return
-        
-        async with message.channel.typing():
-            response = await generate_response(message, content)
+            comeback = get_funny_comeback()
+            await message.reply(comeback)
+            # NOTE: We rely on the initial save_short_memory for the user message.
+            # No need to process commands here, it will be done at the end.
+        else:
+            # Bot is the target - clean up the message content
+            content = message.content
+            for mention in message.mentions:
+                # Replace bot mention with an empty string
+                content = content.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
+            content = content.strip()
             
-            if len(response) > 2000:
-                chunks = [response[i:i+2000] for i in range(0, len(response), 2000)]
-                for chunk in chunks:
-                    await message.reply(chunk)
+            if not content:
+                # User just mentioned the bot without any text
+                await message.reply("yeah?")
             else:
-                await message.reply(response)
+                # Generate the full AI response
+                async with message.channel.typing():
+                    # generate_response handles saving the full interaction (user message + bot response)
+                    response = await generate_response(message, content)
+                    
+                    # Discord message character limit is 2000
+                    if len(response) > 2000:
+                        chunks = [response[i:i+2000] for i in range(0, len(response), 2000)]
+                        for chunk in chunks:
+                            await message.reply(chunk)
+                    else:
+                        await message.reply(response)
 
+    # --- 5. Process Discord commands (must be last) ---
     await bot.process_commands(message)
 
 @tasks.loop(hours=6)
