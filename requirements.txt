@@ -8,4 +8,5 @@ oauth2client
 matplotlib
 httpx
 scikit-learn
-google.generativeai'
+google-generativeai
+supabase
