@@ -148,7 +148,7 @@ async def get_alliance_members(guild_id: int) -> List[Dict]:
             print(f"No members found in AA: {aa_name}")
             return []
         
-        print(f"Found {len(alliance_members)} alliance members for guild {guild.id}")
+        print(f"Found {len(alliance_members)} alliance members for guild {guild_id}")
         return alliance_members
     except Exception as e:
         print(f"Error getting alliance members for guild {guild_id}: {e}")
