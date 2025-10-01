@@ -8,7 +8,7 @@ import threading
 import aiohttp
 from typing import Dict, List, Optional, Set
 from bot_instance import bot, wrap_as_prefix_command, SUPABASE_URL, SUPABASE_KEY
-from utils import cached_users, save_war_room_to_db, delete_war_room_from_db, load_active_war_rooms, active_war_rooms
+from utils import cached_users
 from settings_multi import get_warroom_id, get_api_key_for_guild, get_aa_name_guild, get_toggle_value_gd, set_server_setting, get_settings_value
 import requests
 from discord_views import MultiWarParticipantView
@@ -159,56 +159,46 @@ async def get_alliance_members(guild_id: int) -> List[Dict]:
 async def check_and_cleanup_war_rooms(guild_id: int, wars: list):
     """Check if wars have ended and cleanup rooms based on end_date"""
     try:
+        guild = bot.get_guild(guild_id)
+        if not guild:
+            return
+            
+        category_id = get_warroom_id(guild_id)
+        try:
+            category = await bot.fetch_channel(category_id)
+        except (discord.NotFound, discord.Forbidden):
+            return
+        
         alliance_members = await get_alliance_members(guild_id)
         aa_member_ids = {str(member["NationID"]) for member in alliance_members}
         
+        # Track active enemies (enemies we still have wars with)
+        active_enemies = set()
         for war in wars:
-            war_id = str(war.get("id"))
-            end_date = war.get("end_date")
-            
-            if end_date and war_id in active_war_rooms:
-                room_data = active_war_rooms[war_id]
-                guild = bot.get_guild(guild_id)
-                if room_data.get('guild_id') != guild_id:
-                    continue
-                
+            if not war.get("end_date"):  # Only count active wars
                 attacker_id = str(war.get("att_id"))
                 defender_id = str(war.get("def_id"))
                 
-                current_participants = set(room_data.get('participants', []))
                 if attacker_id in aa_member_ids:
-                    current_participants.discard(attacker_id)
+                    active_enemies.add(defender_id)
                 if defender_id in aa_member_ids:
-                    current_participants.discard(defender_id)
-                
-                if not current_participants:
-                    await delete_war_room(guild_id, war_id, room_data)
-                else:
-                    room_data['participants'] = list(current_participants)
-                    if guild:
-                        await update_war_room_access(guild, war_id, current_participants)
-                    await save_war_room_to_db(war_id, room_data)
+                    active_enemies.add(attacker_id)
+        
+        # Check all war room channels
+        for channel in category.channels:
+            if isinstance(channel, discord.TextChannel) and channel.name.startswith("war-"):
+                # Extract enemy ID from channel name (format: war-{id}-vs-nation-{enemy_id})
+                parts = channel.name.split("-")
+                if len(parts) >= 2:
+                    enemy_id = parts[-1]  # Last part is enemy nation ID
+                    
+                    # If this enemy is no longer active, delete the room
+                    if enemy_id not in active_enemies:
+                        await channel.delete(reason=f"No more active wars with enemy {enemy_id}")
+                        print(f"Deleted war room {channel.name} - no active wars remaining")
                     
     except Exception as e:
         print(f"Error in war room cleanup: {e}")
-
-async def delete_war_room(guild_id: int, war_id: str, room_data: Dict):
-    """Delete a war room and clean up database"""
-    try:
-        guild = bot.get_guild(guild_id)
-        if guild:
-            channel = guild.get_channel(room_data['channel_id'])
-            if channel:
-                await channel.delete(reason=f"No more active wars with enemy {room_data['enemy_id']}")
-                print(f"Deleted war room for war {war_id}")
-        
-        if war_id in active_war_rooms:
-            del active_war_rooms[war_id]
-        
-        await delete_war_room_from_db(war_id)
-        
-    except Exception as e:
-        print(f"Error deleting war room {war_id}: {e}")
 
 def get_war_color(war_type: str) -> int:
     war_type = war_type.lower()
@@ -329,9 +319,7 @@ async def send_detailed_war_update(war_channel, war, alliance_members, is_new_tu
             our_side = "defender"
         else:
             our_side = "unknown"
-            
-        war_data = active_war_rooms.get(str(war_id), {})
-
+        
         attacker_info = await get_nation_info(attacker_id, api_key)
         defender_info = await get_nation_info(defender_id, api_key)
         attacker_name = attacker_info.get("nation_name", f"Nation {attacker_id}")
@@ -339,29 +327,38 @@ async def send_detailed_war_update(war_channel, war, alliance_members, is_new_tu
 
         attack_data = await get_attack_data(war_id, api_key)
         
+        # Try to get last action from channel topic
+        last_action_signature = {}
+        if war_channel.topic:
+            try:
+                last_action_signature = json.loads(war_channel.topic)
+            except:
+                pass
+        
         current_action_signature = {
             'city_id': attack_data.get('city_id'),
             'type': attack_data.get('type'),
             'resistance_lost': attack_data.get('resistance_lost') 
         }
 
-        last_action_stored = war_data.get('last_action', {})
-        
         is_new_turn_action = (
             current_action_signature.get('type') and 
             (
-                not last_action_stored.get('type') or
-                last_action_stored.get('city_id') != current_action_signature.get('city_id') or
-                last_action_stored.get('type') != current_action_signature.get('type') or
-                last_action_stored.get('resistance_lost') != current_action_signature.get('resistance_lost')
+                not last_action_signature.get('type') or
+                last_action_signature.get('city_id') != current_action_signature.get('city_id') or
+                last_action_signature.get('type') != current_action_signature.get('type') or
+                last_action_signature.get('resistance_lost') != current_action_signature.get('resistance_lost')
             )
         )
         
         if is_new_turn_action:
-            active_war_rooms[str(war_id)]['last_action'] = attack_data
-            war_data = active_war_rooms.get(str(war_id), {})
-            last_action_data = war_data.get('last_action', {})
-            
+            # Store last action in channel topic
+            try:
+                topic_data = {**current_action_signature, 'ground_control': war.get('ground_control', 0), 'air_superiority': war.get('air_superiority', 0), 'naval_blockade': war.get('naval_blockade', 0)}
+                await war_channel.edit(topic=json.dumps(topic_data)[:1024])
+            except:
+                pass
+                
             action_name, success_text = await get_action_data(war_id, api_key)
             color = get_war_color(action_name)
             
@@ -440,10 +437,10 @@ async def send_detailed_war_update(war_channel, war, alliance_members, is_new_tu
                 blockade_status = get_blockade_status(naval_blockade_id, int(attacker_id), int(defender_id), our_side)
                 turn_embed.add_field(name="🚢 Blockade Status", value=blockade_status, inline=False)
 
-                last_action_data = active_war_rooms[str(war_id)].get('last_action', {})
-                ground_gained = (war.get('ground_control', 0) != last_action_data.get('ground_control', 0) and war.get('ground_control', 0) in [int(attacker_id), int(defender_id)])
-                air_gained = (war.get('air_superiority', 0) != last_action_data.get('air_superiority', 0) and war.get('air_superiority', 0) in [int(attacker_id), int(defender_id)])
-                naval_gained = (war.get('naval_blockade', 0) != last_action_data.get('naval_blockade', 0) and war.get('naval_blockade', 0) in [int(attacker_id), int(defender_id)])
+                # Get last action data from channel topic for control comparison
+                ground_gained = (war.get('ground_control', 0) != last_action_signature.get('ground_control', 0) and war.get('ground_control', 0) in [int(attacker_id), int(defender_id)])
+                air_gained = (war.get('air_superiority', 0) != last_action_signature.get('air_superiority', 0) and war.get('air_superiority', 0) in [int(attacker_id), int(defender_id)])
+                naval_gained = (war.get('naval_blockade', 0) != last_action_signature.get('naval_blockade', 0) and war.get('naval_blockade', 0) in [int(attacker_id), int(defender_id)])
 
                 gained_control_text = []
                 if ground_gained: gained_control_text.append("🪖 Ground Control")
@@ -461,22 +458,17 @@ async def send_detailed_war_update(war_channel, war, alliance_members, is_new_tu
                 await war_channel.send(embed=turn_embed)
 
         total_losses = {
-            'att_soldiers': 0, 'att_tanks': 0, 'att_aircraft': 0, 'att_ships': 0,
-            'def_soldiers': 0, 'def_tanks': 0, 'def_aircraft': 0, 'def_ships': 0
+            'att_soldiers': war.get("att_soldiers_lost", 0),
+            'att_tanks': war.get("att_tanks_lost", 0),
+            'att_aircraft': war.get("att_aircraft_lost", 0),
+            'att_ships': war.get("att_ships_lost", 0),
+            'def_soldiers': war.get("def_soldiers_lost", 0),
+            'def_tanks': war.get("def_tanks_lost", 0),
+            'def_aircraft': war.get("def_aircraft_lost", 0),
+            'def_ships': war.get("def_ships_lost", 0)
         }
 
-        total_losses['att_soldiers'] = war.get("att_soldiers_lost", 0)
-        total_losses['att_tanks'] = war.get("att_tanks_lost", 0) 
-        total_losses['att_aircraft'] = war.get("att_aircraft_lost", 0)
-        total_losses['att_ships'] = war.get("att_ships_lost", 0)
-        total_losses['def_soldiers'] = war.get("def_soldiers_lost", 0)
-        total_losses['def_tanks'] = war.get("def_tanks_lost", 0)
-        total_losses['def_aircraft'] = war.get("def_aircraft_lost", 0) 
-        total_losses['def_ships'] = war.get("def_ships_lost", 0)
-
-        active_war_rooms[str(war_id)]['total_losses'] = total_losses
-
-        # Get all participants
+        # Get all participants from channel permissions
         our_participants = []
         if our_side_is_attacker:
             our_participants.append(attacker_id)
@@ -492,28 +484,23 @@ async def send_detailed_war_update(war_channel, war, alliance_members, is_new_tu
             embed = summary_embed
             view = None
 
-        if war_data.get('main_embed_id'):
+        # Try to find and update the pinned message
+        pinned_messages = await war_channel.pins()
+        main_message = None
+        for msg in pinned_messages:
+            if msg.author == war_channel.guild.me and msg.embeds:
+                main_message = msg
+                break
+        
+        if main_message:
             try:
-                main_message = await war_channel.fetch_message(war_data['main_embed_id'])
                 await main_message.edit(embed=embed, view=view)
             except discord.NotFound:
                 main_message = await war_channel.send(embed=embed, view=view)
-                active_war_rooms[str(war_id)]['main_embed_id'] = main_message.id
+                await main_message.pin()
         else:
             main_message = await war_channel.send(embed=embed, view=view)
-            active_war_rooms[str(war_id)]['main_embed_id'] = main_message.id
-
-        if str(war_id) in active_war_rooms:
-            current_last_action = active_war_rooms[str(war_id)].get('last_action', {})
-            
-            active_war_rooms[str(war_id)]['last_action'] = {
-                **current_last_action,
-                'ground_control': war.get('ground_control', 0),
-                'air_superiority': war.get('air_superiority', 0),
-                'naval_blockade': war.get('naval_blockade', 0),
-            }
-
-        await save_war_room_to_db(str(war_id), active_war_rooms[str(war_id)])
+            await main_message.pin()
         
     except Exception as e:
         print(f"Error sending detailed war update: {e}")
@@ -598,21 +585,15 @@ async def create_summary_embed(war, attacker_info, defender_info, our_side, tota
 
 
 def find_existing_war_room_by_enemy(category: discord.CategoryChannel, enemy_id: str) -> Optional[discord.TextChannel]:
-    """Find existing war room channel by checking last 6 characters (enemy nation ID) of channel name"""
+    """Find existing war room channel by checking if enemy nation ID matches the end of channel name"""
     try:
         for channel in category.channels:
             if isinstance(channel, discord.TextChannel):
-                # Channel format: war-{war_id}-vs-{enemy_name}
-                # We want to extract the enemy ID from the end
-                channel_name = channel.name
-                
-                # Try to get the enemy ID from active_war_rooms first (more reliable)
-                for war_id, room_data in active_war_rooms.items():
-                    if room_data.get('channel_id') == channel.id:
-                        if room_data.get('enemy_id') == enemy_id:
-                            print(f"Found existing room {channel.name} for enemy {enemy_id}")
-                            return channel
-                        break
+                # Channel format: war-{war_id}-vs-nation-{nation_id}
+                # Extract the nation ID from the end of the channel name
+                if channel.name.endswith(f"-{enemy_id}"):
+                    print(f"Found existing room {channel.name} for enemy {enemy_id}")
+                    return channel
         
         return None
     except Exception as e:
@@ -620,63 +601,49 @@ def find_existing_war_room_by_enemy(category: discord.CategoryChannel, enemy_id:
         return None
 
 
-async def update_war_room_access(guild: discord.Guild, war_id: str, current_participants: Set[str]):
+async def update_war_room_access(guild: discord.Guild, channel: discord.TextChannel, current_participant_ids: Set[str]):
+    """Update war room permissions based on current participants"""
     try:
-        if str(war_id) not in active_war_rooms:
-            return
-            
-        war_room_data = active_war_rooms[str(war_id)]
-        channel = guild.get_channel(war_room_data['channel_id'])
-        if not channel:
-            del active_war_rooms[str(war_id)]
-            await delete_war_room_from_db(str(war_id))
-            return
-        
         alliance_members = await get_alliance_members(guild.id)
         aa_member_map = {str(member["NationID"]): member["DiscordID"] for member in alliance_members}
         
-        overwrites = dict(channel.overwrites)
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        }
         
-        old_participants = set(war_room_data['participants'])
-        removed_participants = old_participants - current_participants
-        
-        for nation_id in removed_participants:
-            if nation_id in aa_member_map:
-                try:
-                    discord_member = guild.get_member(int(aa_member_map[nation_id]))
-                    if discord_member and discord_member in overwrites:
-                        del overwrites[discord_member]
-                except (ValueError, TypeError):
-                    print(f"Invalid Discord ID when removing access: {aa_member_map[nation_id]}")
-                    continue
-        
-        new_participants = current_participants - old_participants
-        for nation_id in new_participants:
+        # Add permissions for current participants
+        for nation_id in current_participant_ids:
             if nation_id in aa_member_map:
                 try:
                     discord_member = guild.get_member(int(aa_member_map[nation_id]))
                     if discord_member:
                         overwrites[discord_member] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
                 except (ValueError, TypeError):
-                    print(f"Invalid Discord ID when adding access: {aa_member_map[nation_id]}")
+                    print(f"Invalid Discord ID: {aa_member_map[nation_id]}")
                     continue
+        
+        # Add government role if configured
+        try:
+            gov_role_name = get_settings_value("GOV_ROLE", guild.id)
+            if gov_role_name:
+                gov_role = discord.utils.get(guild.roles, name=gov_role_name)
+                if gov_role:
+                    overwrites[gov_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+        except Exception as e:
+            print(f"Could not add government role: {e}")
         
         await channel.edit(overwrites=overwrites)
         
-        war_room_data['participants'] = list(current_participants)
-        
-        await save_war_room_to_db(str(war_id), war_room_data)
-        
-        if not current_participants:
-            await channel.delete(reason=f"No alliance members left in war {war_id}")
-            del active_war_rooms[str(war_id)]
-            await delete_war_room_from_db(str(war_id))
-            print(f"Deleted war room for war {war_id} - no alliance members remaining")
+        # If no participants remain, delete the channel
+        if not current_participant_ids:
+            await channel.delete(reason="No alliance members left in this war room")
+            print(f"Deleted war room {channel.name} - no alliance members remaining")
         
     except discord.HTTPException as e:
-        print(f"Discord API error updating war room access for war {war_id}: {e}")
+        print(f"Discord API error updating war room access: {e}")
     except Exception as e:
-        print(f"Error updating war room access for war {war_id}: {e}")
+        print(f"Error updating war room access: {e}")
 
 
 async def create_war_room(
@@ -724,73 +691,35 @@ async def create_war_room(
         existing_channel = find_existing_war_room_by_enemy(category, enemy_id)
         
         if existing_channel:
-            # Add new participants to existing room
-            print(f"Adding participants to existing room for enemy {enemy_id}")
+            # Get current participants from the channel
+            current_participants = set()
+            for member, overwrite in existing_channel.overwrites.items():
+                if isinstance(member, discord.Member) and overwrite.read_messages:
+                    # Find nation ID for this discord member
+                    for am in alliance_members:
+                        if str(am["DiscordID"]) == str(member.id):
+                            current_participants.add(str(am["NationID"]))
+                            break
             
-            # Find the war_id associated with this channel
-            existing_war_id = None
-            for wid, room_data in active_war_rooms.items():
-                if room_data.get('channel_id') == existing_channel.id:
-                    existing_war_id = wid
-                    break
+            # Add new participants
+            new_participants = set(our_side) - current_participants
+            current_participants.update(our_side)
             
-            if existing_war_id:
-                # Update participants
-                existing_participants = set(active_war_rooms[existing_war_id].get('participants', []))
-                existing_participants.update(our_side)
-                active_war_rooms[existing_war_id]['participants'] = list(existing_participants)
-                
-                # Update channel permissions
-                await update_war_room_access(guild, existing_war_id, existing_participants)
-                
-                # Create new war room entry that references the same channel
-                active_war_rooms[str(war_id)] = {
-                    'channel_id': existing_channel.id,
-                    'participants': our_side,
-                    'guild_id': guild.id,
-                    'enemy_id': enemy_id,
-                    'main_embed_id': active_war_rooms[existing_war_id].get('main_embed_id'),
-                    'total_losses': {
-                        'att_soldiers': 0, 'att_tanks': 0, 'att_aircraft': 0, 'att_ships': 0,
-                        'def_soldiers': 0, 'def_tanks': 0, 'def_aircraft': 0, 'def_ships': 0
-                    },
-                    'last_action': {},
-                    'peace_offered': False
-                }
-                
-                await save_war_room_to_db(str(war_id), active_war_rooms[str(war_id)])
-                
-                # Update the main embed to show multiple participants
-                attacker_info = await get_nation_info(attacker_id, api_key)
-                defender_info = await get_nation_info(defender_id, api_key)
-                
-                # Get all our participants across all wars with this enemy
-                all_our_participants = list(existing_participants)
-                
-                if len(all_our_participants) > 1:
-                    view = MultiWarParticipantView(all_our_participants, api_key, existing_channel.name)
-                    embed = await view.get_current_embed()
-                    
-                    main_embed_id = active_war_rooms[existing_war_id].get('main_embed_id')
-                    if main_embed_id:
-                        try:
-                            main_message = await existing_channel.fetch_message(main_embed_id)
-                            await main_message.edit(embed=embed, view=view)
-                        except discord.NotFound:
-                            main_message = await existing_channel.send(embed=embed, view=view)
-                            active_war_rooms[existing_war_id]['main_embed_id'] = main_message.id
-                
-                # Notify about new participant
-                involved_discord_ids = [
-                    f"<@{member['DiscordID']}>" for member in alliance_members 
-                    if str(member["NationID"]) in our_side
-                ]
-                
+            # Update channel permissions
+            await update_war_room_access(guild, existing_channel, current_participants)
+            
+            # Notify about new participant
+            involved_discord_ids = [
+                f"<@{member['DiscordID']}>" for member in alliance_members 
+                if str(member["NationID"]) in new_participants
+            ]
+            
+            if involved_discord_ids:
                 await existing_channel.send(
                     f"**New participant(s) joined the war room!** {', '.join(involved_discord_ids)}"
                 )
-                
-                return existing_channel
+            
+            return existing_channel
         
         # Create new room if none exists
         attacker_info = await get_nation_info(attacker_id, api_key)
@@ -799,10 +728,8 @@ async def create_war_room(
         enemy_info = attacker_info if enemy_id == attacker_id else defender_info
         enemy_name = enemy_info.get('nation_name', f'Nation {enemy_id}')
         
-        sanitized_enemy_name = ''.join(c for c in enemy_name if c.isalnum() or c in [' ', '-']).strip()
-        sanitized_enemy_name = sanitized_enemy_name.lower().replace(' ', '-')[:20]
-        
-        channel_name = f"war-{war_id}-vs-{sanitized_enemy_name}"
+        # Channel format: war-{war_id}-vs-nation-{enemy_id}
+        channel_name = f"war-{war_id}-vs-nation-{enemy_id}"
         
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(read_messages=False),
@@ -882,22 +809,7 @@ async def create_war_room(
         )
         
         main_message = await channel.send(embed=embed)
-        
-        active_war_rooms[str(war_id)] = {
-            'channel_id': channel.id,
-            'participants': our_side,
-            'guild_id': guild.id,
-            'enemy_id': enemy_id,
-            'main_embed_id': main_message.id,
-            'total_losses': {
-                'att_soldiers': 0, 'att_tanks': 0, 'att_aircraft': 0, 'att_ships': 0,
-                'def_soldiers': 0, 'def_tanks': 0, 'def_aircraft': 0, 'def_ships': 0
-            },
-            'last_action': {},
-            'peace_offered': False
-        }
-        
-        await save_war_room_to_db(str(war_id), active_war_rooms[str(war_id)])
+        await main_message.pin()
         
         print(f"Created war room {channel.name} for war {war_id}")
         return channel
@@ -967,8 +879,6 @@ async def run_node_listener():
 
 
 async def handle_pnw_events():
-    await load_active_war_rooms()
-    
     listener_result = await run_node_listener()
     if not all(listener_result):
         print("❌ Failed to start PnW listener")
@@ -1011,9 +921,15 @@ async def handle_pnw_events():
                             continue
 
                         aa_member_map = {str(m["NationID"]): m["DiscordID"] for m in alliance_members}
+                        category_id = get_warroom_id(guild.id)
+                        
+                        try:
+                            category = await bot.fetch_channel(category_id)
+                        except:
+                            continue
 
                         for war in wars:
-                            is_new_turn=True
+                            is_new_turn = True
                             try:
                                 war_id = str(war.get("id"))
                                 if not war_id or war_id == "None":
@@ -1026,16 +942,18 @@ async def handle_pnw_events():
                                     print(f"DEBUG: Skipping war {war_id} (no alliance members involved)")
                                     continue
 
-                                if war_id not in active_war_rooms:
+                                # Determine enemy ID
+                                if attacker_id in aa_member_map:
+                                    enemy_id = defender_id
+                                else:
+                                    enemy_id = attacker_id
+                                
+                                # Check if war room exists for this enemy
+                                war_channel = find_existing_war_room_by_enemy(category, enemy_id)
+                                
+                                if not war_channel:
                                     war_channel = await create_war_room(guild, war, alliance_members, api_key)
                                     is_new_turn = False
-                                    if not war_channel:
-                                        continue
-                                else:
-                                    war_room_data = active_war_rooms[war_id]
-                                    if war_room_data.get("guild_id") != guild.id:
-                                        continue
-                                    war_channel = guild.get_channel(war_room_data["channel_id"])
                                     if not war_channel:
                                         continue
 
@@ -1046,7 +964,7 @@ async def handle_pnw_events():
                                 current_participants = {
                                     pid for pid in (attacker_id, defender_id) if pid in aa_member_map
                                 }
-                                await update_war_room_access(guild, war_id, current_participants)
+                                await update_war_room_access(guild, war_channel, current_participants)
 
                             except Exception as e:
                                 print(f"❌ Error processing war {war.get('id','Unknown')} in guild {guild.id}: {e}")
