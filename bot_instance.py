@@ -14,6 +14,7 @@ bot_key = os.getenv("Key")
 YT_Key = os.getenv("YT_Key")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 API_KEY = os.getenv("API_KEY")
 commandscalled = {"_global": 0}
 snapshots_file = "snapshots.json"
