@@ -872,7 +872,7 @@ async def on_message(message: discord.Message):
             return
         
         async with message.channel.typing():
-            response = await generate_response(supabase, message, content)
+            response = await generate_response(message, content)
             
             if len(response) > 2000:
                 chunks = [response[i:i+2000] for i in range(0, len(response), 2000)]
