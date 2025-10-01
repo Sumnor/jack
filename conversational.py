@@ -7,8 +7,7 @@ from typing import Optional, List, Dict
 from datetime import datetime, timedelta
 from supabase import create_client, Client
 import json
-from bot_instance import SUPABASE_URL, SUPABASE_KEY, GEMINI_API_KEY
-# Initialize Gemini
+from bot_instance import bot, SUPABASE_URL, SUPABASE_KEY, GEMINI_API_KEY
 genai.configure(api_key=GEMINI_API_KEY)
 
 generation_config = {
