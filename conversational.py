@@ -11,6 +11,12 @@ import json
 import random
 from bot_instance import bot, SUPABASE_URL, SUPABASE_KEY, GEMINI_API_KEY
 
+# New deps
+import aiohttp
+import tempfile
+from PyPDF2 import PdfReader
+from docx import Document
+
 # -----------------------
 # Gemini Setup (v2.5)
 # -----------------------
@@ -93,6 +99,52 @@ def get_funny_comeback() -> str:
         "present but not accounted for",
     ]
     return random.choice(comebacks)
+
+# -----------------------
+# Internet + File Handling
+# -----------------------
+async def fetch_url(url: str) -> str:
+    """Fetch content from a URL (basic HTML/text)"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=15) as resp:
+                if resp.status == 200:
+                    text = await resp.text()
+                    return text[:5000]  # limit length
+                else:
+                    return f"Failed to fetch {url}, status {resp.status}"
+    except Exception as e:
+        return f"Error fetching {url}: {e}"
+
+
+async def read_attachment(attachment: discord.Attachment) -> str:
+    """Download and parse supported file types"""
+    try:
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            await attachment.save(tmp.name)
+            filepath = tmp.name
+
+        if attachment.filename.endswith(".txt"):
+            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                return f.read()[:5000]
+
+        elif attachment.filename.endswith(".pdf"):
+            reader = PdfReader(filepath)
+            text = ""
+            for page in reader.pages[:10]:
+                text += page.extract_text() or ""
+            return text[:5000]
+
+        elif attachment.filename.endswith(".docx"):
+            doc = Document(filepath)
+            text = "\n".join([p.text for p in doc.paragraphs])
+            return text[:5000]
+
+        else:
+            return f"(can't read {attachment.filename}, unsupported type)"
+
+    except Exception as e:
+        return f"Error reading file {attachment.filename}: {e}"
 
 # -----------------------
 # Memory Functions
@@ -180,7 +232,7 @@ async def get_observations(channel_id: int, limit: int = 10) -> List[Dict]:
 # AI Response
 # -----------------------
 async def generate_response(message: discord.Message, user_message: str) -> str:
-    """Generate AI response using Gemini with memory context"""
+    """Generate AI response using Gemini with memory context + internet + files"""
     try:
         channel_id = message.channel.id
 
@@ -207,18 +259,30 @@ async def generate_response(message: discord.Message, user_message: str) -> str:
             context_parts.append(f"\n\nRECENT CONVERSATION:\n{recent_text}")
 
         context_parts.append(f"\n\nCurrent message from {message.author.name}: {user_message}")
+
+        # 🔹 Internet fetch if URLs present
+        url_match = re.findall(r'https?://\S+', user_message)
+        if url_match:
+            for url in url_match[:2]:
+                page_content = await fetch_url(url)
+                context_parts.append(f"\n\nCONTENT FROM {url}:\n{page_content}")
+
+        # 🔹 File reading if attachments present
+        if message.attachments:
+            for att in message.attachments[:2]:
+                file_text = await read_attachment(att)
+                context_parts.append(f"\n\nCONTENT FROM FILE {att.filename}:\n{file_text}")
+
         full_prompt = "\n".join(context_parts)
 
-        # Run Gemini in executor so it doesn’t block
+        # Run Gemini
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(None, lambda: gemini_model.generate_content(full_prompt))
 
         bot_response = None
 
-        # Prefer text field
         if hasattr(response, "text") and response.text:
             bot_response = response.text.strip()
-        # Fallback to candidate parts
         elif response.candidates and response.candidates[0].content.parts:
             bot_response = response.candidates[0].content.parts[0].text.strip()
         else:
