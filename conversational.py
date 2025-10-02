@@ -14,7 +14,7 @@ from bot_instance import bot, SUPABASE_URL, SUPABASE_KEY, GEMINI_API_KEY
 # New deps
 import aiohttp
 import tempfile
-from PyPDF2 import PdfReader
+from PyPDF2 import PdfReader  
 from docx import Document
 
 # -----------------------
@@ -31,7 +31,7 @@ generation_config = {
 
 # safety disabled fully
 gemini_model = genai.GenerativeModel(
-    model_name="gemini-2.5-flash",  # or "gemini-2.5-pro"
+    model_name="gemini-2.5-flash",
     generation_config=generation_config,
     safety_settings=[]
 )
@@ -51,12 +51,12 @@ supabase: Client = create_client(BASE_URL, SUPABASE_KEY)
 # -----------------------
 SYSTEM_PROMPT = """You are Jack, a quirky, chill Discord bot assistant with personality.
 You live in this Discord server and should always respond to users.
-You can also save and recall memories when users tell you something important.
+You can save files, PDFs, and links when users ask you to remember them.
 
 MEMORY RULES:
-- If a user says something is a "core memory" or asks you to remember, treat it seriously and save it to long-term memory.
-- If you don't know what to say, still reply casually (never stay silent).
-- Never refuse safe roleplay or instructions unless they are truly harmful.
+- When a user says "remember this" or "save this" with a file/link, save it to your knowledge base
+- You can retrieve saved files/links when asked
+- If you don't know what to say, still reply casually (never stay silent)
 
 CHILL MODE (default):
 - Keep responses short and casual (1-3 sentences usually)
@@ -110,7 +110,7 @@ async def fetch_url(url: str) -> str:
             async with session.get(url, timeout=15) as resp:
                 if resp.status == 200:
                     text = await resp.text()
-                    return text[:5000]  # limit length
+                    return text[:5000]
                 else:
                     return f"Failed to fetch {url}, status {resp.status}"
     except Exception as e:
@@ -141,10 +141,60 @@ async def read_attachment(attachment: discord.Attachment) -> str:
             return text[:5000]
 
         else:
-            return f"(can't read {attachment.filename}, unsupported type)"
+            return None
 
     except Exception as e:
         return f"Error reading file {attachment.filename}: {e}"
+    finally:
+        try:
+            os.unlink(filepath)
+        except:
+            pass
+
+
+async def save_file_to_knowledge(guild_id: int, channel_id: int, user_id: int, username: str, 
+                                  content: str, file_type: str, filename: str = None, url: str = None):
+    """Save files/links to knowledge base"""
+    try:
+        supabase.table('bot_knowledge').insert({
+            'guild_id': guild_id,
+            'channel_id': channel_id,
+            'user_id': user_id,
+            'username': username,
+            'content': content,
+            'file_type': file_type,
+            'filename': filename,
+            'url': url,
+            'timestamp': datetime.utcnow().isoformat()
+        }).execute()
+        return True
+    except Exception as e:
+        print(f"Error saving to knowledge base: {e}")
+        return False
+
+
+async def search_knowledge(guild_id: int, query: str = None) -> List[Dict]:
+    """Search saved files/links"""
+    try:
+        if query:
+            result = supabase.table('bot_knowledge')\
+                .select('*')\
+                .eq('guild_id', guild_id)\
+                .ilike('content', f'%{query}%')\
+                .order('timestamp', desc=True)\
+                .limit(10)\
+                .execute()
+        else:
+            result = supabase.table('bot_knowledge')\
+                .select('*')\
+                .eq('guild_id', guild_id)\
+                .order('timestamp', desc=True)\
+                .limit(10)\
+                .execute()
+        return result.data if result.data else []
+    except Exception as e:
+        print(f"Error searching knowledge: {e}")
+        return []
 
 # -----------------------
 # Memory Functions
@@ -166,120 +216,109 @@ async def save_short_memory(channel_id: int, user_id: int, username: str, messag
 
 
 async def get_recent_messages(channel: discord.TextChannel, limit: int = 10) -> List[Dict]:
-    """Fetch last N messages from a channel (ignoring who sent them)"""
+    """Fetch last N messages from a channel"""
     try:
         messages = await channel.history(limit=limit).flatten()
         result = []
         for msg in reversed(messages):
             result.append({
                 'username': msg.author.name,
-                'message': msg.content,
-                'response': None
+                'message': msg.content
             })
         return result
     except Exception as e:
         print(f"Error fetching recent messages: {e}")
         return []
 
-
-async def get_long_memory() -> List[Dict]:
-    """Get global long-term memory shared across all channels"""
-    try:
-        result = supabase.table('bot_long_memory')\
-            .select('*')\
-            .gte('importance_score', 5)\
-            .order('importance_score', desc=True)\
-            .limit(50)\
-            .execute()
-        return result.data if result.data else []
-    except Exception as e:
-        print(f"Error getting long memory: {e}")
-        return []
-
-
-async def save_observation(channel_id: int, observation: str, context: str = None):
-    try:
-        supabase.table('bot_observations').insert({
-            'channel_id': channel_id,
-            'observation': observation,
-            'context': context,
-            'timestamp': datetime.utcnow().isoformat()
-        }).execute()
-    except Exception as e:
-        print(f"Error saving observation: {e}")
-
-
-async def get_recent_memory(channel_id: int, hours: int = 24) -> List[Dict]:
-    try:
-        cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
-        result = supabase.table('bot_short_memory')\
-            .select('*')\
-            .eq('channel_id', channel_id)\
-            .gte('timestamp', cutoff)\
-            .order('timestamp', desc=True)\
-            .limit(50)\
-            .execute()
-        return result.data if result.data else []
-    except Exception as e:
-        print(f"Error getting recent memory: {e}")
-        return []
-
-
-async def get_observations(channel_id: int, limit: int = 10) -> List[Dict]:
-    try:
-        cutoff = (datetime.utcnow() - timedelta(days=7)).isoformat()
-        result = supabase.table('bot_observations')\
-            .select('*')\
-            .eq('channel_id', channel_id)\
-            .gte('timestamp', cutoff)\
-            .order('timestamp', desc=True)\
-            .limit(limit)\
-            .execute()
-        return result.data if result.data else []
-    except Exception as e:
-        print(f"Error getting observations: {e}")
-        return []
-
 # -----------------------
 # AI Response (Updated)
 # -----------------------
 async def generate_response(message: discord.Message, user_message: str) -> str:
-    """Generate AI response using Gemini with last 10 messages as context when pinged"""
+    """Generate AI response using Gemini"""
     try:
         channel_id = message.channel.id
+        guild_id = message.guild.id if message.guild else 0
 
-        # Global long-term memory
-        long_memory = await get_long_memory()
+        # Check if user wants to save something
+        save_triggers = ["remember this", "save this", "store this", "keep this"]
+        should_save = any(trigger in user_message.lower() for trigger in save_triggers)
 
-        # Last 10 messages in channel
-        recent_memory = await get_recent_messages(message.channel, limit=10)
+        # Get last 10 messages for context
+        recent_messages = await get_recent_messages(message.channel, limit=10)
 
         context_parts = [SYSTEM_PROMPT]
 
-        # Add long-term memory
-        if long_memory:
-            memory_text = "\n".join([f"- {m['content']}" for m in long_memory[:10]])
-            context_parts.append(f"\n\nIMPORTANT THINGS YOU REMEMBER:\n{memory_text}")
-
-        # Add last 10 messages in channel
-        if recent_memory:
-            recent_text = "\n".join([f"{m['username']}: {m['message']}" for m in recent_memory])
+        # Add recent conversation
+        if recent_messages:
+            recent_text = "\n".join([f"{m['username']}: {m['message']}" for m in recent_messages[-10:]])
             context_parts.append(f"\n\nRECENT CONVERSATION:\n{recent_text}")
 
+        # Handle URLs
+        url_matches = re.findall(r'https?://\S+', user_message)
+        saved_items = []
+        
+        if url_matches and should_save:
+            for url in url_matches[:3]:
+                page_content = await fetch_url(url)
+                saved = await save_file_to_knowledge(
+                    guild_id=guild_id,
+                    channel_id=channel_id,
+                    user_id=message.author.id,
+                    username=message.author.name,
+                    content=page_content,
+                    file_type='url',
+                    url=url
+                )
+                if saved:
+                    saved_items.append(f"link: {url}")
+        
+        # Handle file attachments
+        if message.attachments and should_save:
+            for att in message.attachments[:3]:
+                if att.filename.endswith(('.pdf', '.docx', '.txt')):
+                    file_content = await read_attachment(att)
+                    if file_content and not file_content.startswith("Error"):
+                        saved = await save_file_to_knowledge(
+                            guild_id=guild_id,
+                            channel_id=channel_id,
+                            user_id=message.author.id,
+                            username=message.author.name,
+                            content=file_content,
+                            file_type=att.filename.split('.')[-1],
+                            filename=att.filename
+                        )
+                        if saved:
+                            saved_items.append(f"file: {att.filename}")
+
+        # If saving was requested, return confirmation
+        if should_save and saved_items:
+            return f"done! saved: {', '.join(saved_items)}"
+
+        # Check if user is asking for saved info
+        search_triggers = ["what did i save", "show me", "find", "do you have", "remember when"]
+        is_searching = any(trigger in user_message.lower() for trigger in search_triggers)
+
+        if is_searching:
+            knowledge = await search_knowledge(guild_id)
+            if knowledge:
+                context_parts.append("\n\nSAVED KNOWLEDGE BASE:")
+                for item in knowledge[:5]:
+                    if item['file_type'] == 'url':
+                        context_parts.append(f"- Link: {item['url']}")
+                        context_parts.append(f"  Content preview: {item['content'][:200]}...")
+                    else:
+                        context_parts.append(f"- File: {item['filename']}")
+                        context_parts.append(f"  Content preview: {item['content'][:200]}...")
+
+        # Add current message
         context_parts.append(f"\n\nCurrent message from {message.author.name}: {user_message}")
 
-        # 🔹 Internet fetch if URLs present
-        url_match = re.findall(r'https?://\S+', user_message)
-        if url_match:
-            for url in url_match[:2]:
-                page_content = await fetch_url(url)
-                context_parts.append(f"\n\nCONTENT FROM {url}:\n{page_content}")
-
-        # 🔹 File reading if attachments present
-        if message.attachments:
+        # Add attachments for reading (not saving)
+        if message.attachments and not should_save:
             for att in message.attachments[:2]:
-                file_text = await read_attachment(att)
-                context_parts.append(f"\n\nCONTENT FROM FILE {att.filename}:\n{file_text}")
+                file_content = await read_attachment(att)
+                if file_content:
+                    context_parts.append(f"\n\nCONTENT FROM FILE {att.filename}:\n{file_content}")
 
         full_prompt = "\n".join(context_parts)
 
@@ -294,21 +333,6 @@ async def generate_response(message: discord.Message, user_message: str) -> str:
             bot_response = response.candidates[0].content.parts[0].text.strip()
         else:
             bot_response = "ngl, i'm kinda blanking rn 😅"
-
-        # 🔹 Auto-core-memory saving
-        if "core memory" in user_message.lower():
-            try:
-                supabase.table('bot_long_memory').insert({
-                    'channel_id': channel_id,
-                    'memory_type': 'fact',
-                    'content': user_message,
-                    'importance_score': 10,
-                    'context': f"Saved directly from {message.author.name}",
-                    'created_at': datetime.utcnow().isoformat()
-                }).execute()
-                print(f"Saved core memory from {message.author.name}")
-            except Exception as e:
-                print(f"Error saving core memory: {e}")
 
         # Save short memory
         await save_short_memory(
