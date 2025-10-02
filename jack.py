@@ -879,12 +879,12 @@ async def on_message(message: discord.Message):
 
     await bot.process_commands(message)
 
-@tasks.loop(hours=6)
+@tasks.loop(minutes=30)
 async def cleanup_old_memories():
+    """Delete short-term memory older than 1 hour"""
     try:
-        cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+        cutoff = (datetime.utcnow() - timedelta(hours=1)).isoformat()
         supabase.table('bot_short_memory').delete().lt('timestamp', cutoff).execute()
-        print("Cleaned up old short-term memories")
     except Exception as e:
         print(f"Error cleaning up memories: {e}")
 
