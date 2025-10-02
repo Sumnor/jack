@@ -64,8 +64,16 @@ You can save files, PDFs, and links when users ask you to remember them.
 
 MEMORY RULES:
 - When a user says "remember this" or "save this" with a file/link, save it to your knowledge base
+- When users ask questions, ALWAYS check if you have relevant saved information first
+- If you have saved knowledge that answers the question, USE IT and cite the source
+- If you can't fully access a Google Doc or link, provide the URL and offer to summarize what you CAN see
 - You can retrieve saved files/links when asked
-- If you don't know what to say, still reply casually (never stay silent)
+
+ANSWERING QUESTIONS:
+- If you have saved knowledge about the topic, reference it directly
+- Example: "based on the OBRC charter I saved, it's about..."
+- If you only have a link, say: "I have the link saved: [url]. Want me to summarize what I can see?"
+- Don't pretend you don't have information if it's in your saved knowledge
 
 CHILL MODE (default):
 - Keep responses short and casual (1-3 sentences usually)
@@ -182,25 +190,61 @@ async def save_file_to_knowledge(guild_id: int, channel_id: int, user_id: int, u
         return False
 
 
+async def extract_keywords(text: str) -> List[str]:
+    """Extract meaningful keywords from user query"""
+    # Remove common words
+    stop_words = {'the', 'is', 'at', 'which', 'on', 'a', 'an', 'and', 'or', 'but', 'in', 'with', 'to', 'for', 'of', 'what', 'whats', 'tell', 'me', 'about', 'show', 'find', 'do', 'you', 'have', 'my', 'your'}
+    words = text.lower().split()
+    keywords = [w for w in words if w not in stop_words and len(w) > 2]
+    return keywords
+
+
 async def search_knowledge(guild_id: int, query: str = None) -> List[Dict]:
-    """Search saved files/links"""
+    """Search saved files/links with keyword matching and scoring"""
     try:
-        if query:
-            result = supabase.table('bot_knowledge')\
-                .select('*')\
-                .eq('guild_id', guild_id)\
-                .ilike('content', f'%{query}%')\
-                .order('timestamp', desc=True)\
-                .limit(10)\
-                .execute()
-        else:
-            result = supabase.table('bot_knowledge')\
-                .select('*')\
-                .eq('guild_id', guild_id)\
-                .order('timestamp', desc=True)\
-                .limit(10)\
-                .execute()
-        return result.data if result.data else []
+        # Get all knowledge for this guild
+        result = supabase.table('bot_knowledge')\
+            .select('*')\
+            .eq('guild_id', guild_id)\
+            .order('timestamp', desc=True)\
+            .execute()
+        
+        if not result.data:
+            return []
+        
+        if not query:
+            return result.data[:10]
+        
+        # Extract keywords from query
+        keywords = await extract_keywords(query)
+        if not keywords:
+            return result.data[:10]
+        
+        # Score each item based on keyword matches
+        scored_items = []
+        for item in result.data:
+            score = 0
+            content_lower = (item.get('content', '') or '').lower()
+            filename_lower = (item.get('filename', '') or '').lower()
+            url_lower = (item.get('url', '') or '').lower()
+            
+            for keyword in keywords:
+                # Higher score for filename/url matches
+                if keyword in filename_lower:
+                    score += 10
+                if keyword in url_lower:
+                    score += 10
+                # Lower score for content matches
+                content_count = content_lower.count(keyword)
+                score += content_count * 2
+            
+            if score > 0:
+                scored_items.append((score, item))
+        
+        # Sort by score and return top matches
+        scored_items.sort(reverse=True, key=lambda x: x[0])
+        return [item for score, item in scored_items[:5]]
+        
     except Exception as e:
         print(f"Error searching knowledge: {e}")
         return []
@@ -302,21 +346,27 @@ async def generate_response(message: discord.Message, user_message: str) -> str:
         if should_save and saved_items:
             return f"done! saved: {', '.join(saved_items)}"
 
-        # Check if user is asking for saved info
-        search_triggers = ["what did i save", "show me", "find", "do you have", "remember when"]
-        is_searching = any(trigger in user_message.lower() for trigger in search_triggers)
-
-        if is_searching:
-            knowledge = await search_knowledge(guild_id)
-            if knowledge:
-                context_parts.append("\n\nSAVED KNOWLEDGE BASE:")
-                for item in knowledge[:5]:
-                    if item['file_type'] == 'url':
-                        context_parts.append(f"- Link: {item['url']}")
-                        context_parts.append(f"  Content preview: {item['content'][:200]}...")
-                    else:
-                        context_parts.append(f"- File: {item['filename']}")
-                        context_parts.append(f"  Content preview: {item['content'][:200]}...")
+        # ALWAYS search knowledge base for EVERY message (not just questions)
+        knowledge = await search_knowledge(guild_id, user_message)
+        
+        if knowledge:
+            context_parts.append("\n\n=== RELEVANT SAVED KNOWLEDGE ===")
+            for idx, item in enumerate(knowledge[:3], 1):
+                context_parts.append(f"\n[KNOWLEDGE SOURCE {idx}]")
+                if item['file_type'] == 'url':
+                    context_parts.append(f"URL: {item['url']}")
+                else:
+                    context_parts.append(f"FILE: {item['filename']}")
+                
+                # Include substantial content
+                content = item['content'][:2000] if item['content'] else "No content available"
+                context_parts.append(f"CONTENT:\n{content}")
+            
+            context_parts.append("\n=== INSTRUCTIONS ===")
+            context_parts.append("Use the knowledge sources above to answer the user's question.")
+            context_parts.append("If the content answers their question, provide a clear answer referencing the source.")
+            context_parts.append("If you can't find the answer in the content, say so and provide the link/filename so they can check themselves.")
+            context_parts.append("DO NOT say you don't have information if it's literally provided above.")
 
         # Add current message
         context_parts.append(f"\n\nCurrent message from {message.author.name}: {user_message}")
@@ -342,6 +392,27 @@ async def generate_response(message: discord.Message, user_message: str) -> str:
             # Method 1: Direct text attribute
             try:
                 bot_response = response.text.strip()
+                
+                # If response doesn't use saved knowledge when it should, add it manually
+                if knowledge and asking_about_knowledge:
+                    # Check if response is generic/unhelpful
+                    generic_phrases = ["don't know", "not sure", "can't help", "don't have"]
+                    if any(phrase in bot_response.lower() for phrase in generic_phrases):
+                        # Override with direct info
+                        bot_response = "based on what i have saved:\n\n"
+                        for item in knowledge[:2]:
+                            if item['file_type'] == 'url':
+                                bot_response += f"🔗 {item['url']}\n"
+                            else:
+                                bot_response += f"📄 {item['filename']}\n"
+                            
+                            # Add snippet
+                            snippet = item['content'][:500] if item['content'] else ""
+                            if snippet:
+                                bot_response += f"preview: {snippet}...\n\n"
+                        
+                        bot_response += "want me to explain more from what i saved?"
+                        
             except ValueError as e:
                 # Response was blocked by safety
                 if "finish_reason" in str(e):
