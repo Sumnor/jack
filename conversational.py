@@ -227,14 +227,13 @@ async def save_short_memory(channel_id: int, user_id: int, username: str, messag
 async def get_recent_messages(channel: discord.TextChannel, limit: int = 10) -> List[Dict]:
     """Fetch last N messages from a channel"""
     try:
-        messages = await channel.history(limit=limit).flatten()
         result = []
-        for msg in reversed(messages):
+        async for msg in channel.history(limit=limit):
             result.append({
                 'username': msg.author.name,
                 'message': msg.content
             })
-        return result
+        return list(reversed(result))  # Reverse to get chronological order
     except Exception as e:
         print(f"Error fetching recent messages: {e}")
         return []
@@ -341,30 +340,40 @@ async def generate_response(message: discord.Message, user_message: str) -> str:
             bot_response = None
             
             # Method 1: Direct text attribute
-            if hasattr(response, "text"):
-                try:
-                    bot_response = response.text.strip()
-                except:
-                    pass
+            try:
+                bot_response = response.text.strip()
+            except ValueError as e:
+                # Response was blocked by safety
+                if "finish_reason" in str(e):
+                    print(f"Response blocked by safety filters")
+                    # Try with a more neutral prompt
+                    try:
+                        neutral_prompt = f"{SYSTEM_PROMPT}\n\nUser {message.author.name} said: {user_message}\n\nRespond casually and briefly."
+                        retry_response = await loop.run_in_executor(None, lambda: gemini_model.generate_content(neutral_prompt))
+                        bot_response = retry_response.text.strip()
+                    except:
+                        bot_response = "can't really respond to that one, safety filters are being strict today 🤷"
+                else:
+                    raise
+            except Exception as text_error:
+                print(f"Error accessing response.text: {text_error}")
+                
+                # Method 2: Through candidates
+                if hasattr(response, 'candidates') and response.candidates:
+                    try:
+                        if response.candidates[0].content.parts:
+                            bot_response = response.candidates[0].content.parts[0].text.strip()
+                    except:
+                        pass
             
-            # Method 2: Through candidates
-            if not bot_response and hasattr(response, 'candidates') and response.candidates:
-                try:
-                    if response.candidates[0].content.parts:
-                        bot_response = response.candidates[0].content.parts[0].text.strip()
-                except:
-                    pass
-            
-            # Method 3: Check if blocked by safety
+            # Final fallback
             if not bot_response:
                 if hasattr(response, 'prompt_feedback'):
                     print(f"Prompt feedback: {response.prompt_feedback}")
                 if hasattr(response, 'candidates') and response.candidates:
                     print(f"Finish reason: {response.candidates[0].finish_reason}")
-                    print(f"Safety ratings: {response.candidates[0].safety_ratings}")
                 
-                # Fallback response
-                bot_response = "can't respond to that one chief, my filters are acting up 🤷"
+                bot_response = "my filters won't let me respond to that one, sorry chief 😅"
             
         except Exception as gemini_error:
             print(f"Gemini API Error: {gemini_error}")
