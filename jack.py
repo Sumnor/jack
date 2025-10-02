@@ -838,33 +838,31 @@ async def on_message(message: discord.Message):
                 print(f"Error handling DM logging: {e}")
 
         await message.channel.send(default_reply)
-
+    
     if message.guild is not None:
         channel_id = message.channel.id
         bot_mentioned = bot.user in message.mentions
-
-        if not bot_mentioned and len(message.content) > 20:
-            if any(keyword in message.content.lower() for keyword in ['important', 'remember', 'note', 'document', 'announcement']):
-                await save_observation(channel_id, message.content, context=f"Posted by {message.author.name}")
+        
+        if not bot_mentioned:
             await bot.process_commands(message)
             return
-
+        
         if bot_mentioned:
             if not is_message_targeting_bot(message.content, bot_mentioned, bot.user):
                 await message.reply(get_funny_comeback())
                 await bot.process_commands(message)
                 return
-
+            
             content = message.content
             for mention in message.mentions:
                 content = content.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
             content = content.strip()
-
-            if not content:
+            
+            if not content and not message.attachments:
                 await message.reply("yeah?")
                 await bot.process_commands(message)
                 return
-
+            
             async with message.channel.typing():
                 response = await generate_response(message, content)
                 if len(response) > 2000:
@@ -873,12 +871,16 @@ async def on_message(message: discord.Message):
                         await message.reply(chunk)
                 else:
                     await message.reply(response)
-
+            
             await bot.process_commands(message)
             return
-
+    
     await bot.process_commands(message)
 
+
+# -----------------------
+# Background Tasks
+# -----------------------
 @tasks.loop(minutes=30)
 async def cleanup_old_memories():
     """Delete short-term memory older than 1 hour"""
@@ -897,11 +899,11 @@ async def curate_memories_task():
             return
         channels = set(m['channel_id'] for m in result.data)
         for channel_id in channels:
-            await curate_memories(channel_id)
+            # Add your curate_memories function here if needed
+            pass
         print(f"Curated memories for {len(channels)} channels")
     except Exception as e:
         print(f"Error in memory curation task: {e}")
-
 
 async def start_war_listener():
     await bot.wait_until_ready()
