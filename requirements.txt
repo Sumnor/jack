@@ -12,3 +12,4 @@ google-generativeai
 supabase
 PyPDF2
 docx
+exceptions
