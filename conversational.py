@@ -7,9 +7,14 @@ from typing import Optional, List, Dict
 from datetime import datetime, timedelta
 from supabase import create_client, Client
 import json
+import random
 from bot_instance import bot, SUPABASE_URL, SUPABASE_KEY, GEMINI_API_KEY
+
+# Configure Gemini
 genai.configure(api_key=GEMINI_API_KEY)
-from supabase import create_client, Client
+
+# Initialize Supabase client
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 generation_config = {
     "temperature": 0.9,
@@ -72,51 +77,6 @@ BOUNDARIES:
 
 Remember: Read the room. If it's serious, be serious. If it's chill, stay chill."""
 
-"""
-SQL to run in Supabase SQL Editor:
-
--- Short-term memory (24 hour rolling window)
-CREATE TABLE IF NOT EXISTS bot_short_memory (
-    id BIGSERIAL PRIMARY KEY,
-    channel_id BIGINT NOT NULL,
-    user_id BIGINT NOT NULL,
-    username TEXT NOT NULL,
-    message TEXT NOT NULL,
-    response TEXT,
-    timestamp TIMESTAMPTZ DEFAULT NOW(),
-    is_pinged BOOLEAN DEFAULT FALSE
-);
-
-CREATE INDEX idx_short_memory_channel ON bot_short_memory(channel_id);
-CREATE INDEX idx_short_memory_timestamp ON bot_short_memory(timestamp);
-
--- Long-term memory (important info graded and kept)
-CREATE TABLE IF NOT EXISTS bot_long_memory (
-    id BIGSERIAL PRIMARY KEY,
-    channel_id BIGINT NOT NULL,
-    memory_type TEXT NOT NULL,
-    content TEXT NOT NULL,
-    importance_score INTEGER DEFAULT 5,
-    context TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    last_accessed TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_long_memory_channel ON bot_long_memory(channel_id);
-CREATE INDEX idx_long_memory_importance ON bot_long_memory(importance_score);
-
--- Observations (passive learning from channel messages)
-CREATE TABLE IF NOT EXISTS bot_observations (
-    id BIGSERIAL PRIMARY KEY,
-    channel_id BIGINT NOT NULL,
-    observation TEXT NOT NULL,
-    context TEXT,
-    timestamp TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_observations_channel ON bot_observations(channel_id);
-CREATE INDEX idx_observations_timestamp ON bot_observations(timestamp);
-"""
 
 def is_message_targeting_bot(content: str, bot_mentioned: bool, bot_user) -> bool:
     """Determine if message is actually directed at the bot"""
@@ -139,6 +99,7 @@ def is_message_targeting_bot(content: str, bot_mentioned: bool, bot_user) -> boo
     
     return True
 
+
 def get_funny_comeback() -> str:
     """Get a random funny comeback when mentioned but not targeted"""
     comebacks = [
@@ -151,10 +112,10 @@ def get_funny_comeback() -> str:
         "sorry i was processing other packets",
         "present but not accounted for",
     ]
-    import random
     return random.choice(comebacks)
 
-async def save_short_memory(supabase, channel_id: int, user_id: int, username: str, message: str, response: str = None, is_pinged: bool = False):
+
+async def save_short_memory(channel_id: int, user_id: int, username: str, message: str, response: str = None, is_pinged: bool = False):
     """Save interaction to short-term memory"""
     try:
         supabase.table('bot_short_memory').insert({
@@ -169,7 +130,8 @@ async def save_short_memory(supabase, channel_id: int, user_id: int, username: s
     except Exception as e:
         print(f"Error saving short memory: {e}")
 
-async def save_observation(supabase, channel_id: int, observation: str, context: str = None):
+
+async def save_observation(channel_id: int, observation: str, context: str = None):
     """Save passive observation from channel"""
     try:
         supabase.table('bot_observations').insert({
@@ -181,7 +143,8 @@ async def save_observation(supabase, channel_id: int, observation: str, context:
     except Exception as e:
         print(f"Error saving observation: {e}")
 
-async def get_recent_memory(supabase, channel_id: int, hours: int = 24) -> List[Dict]:
+
+async def get_recent_memory(channel_id: int, hours: int = 24) -> List[Dict]:
     """Get recent conversations from short-term memory"""
     try:
         cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
@@ -197,7 +160,8 @@ async def get_recent_memory(supabase, channel_id: int, hours: int = 24) -> List[
         print(f"Error getting recent memory: {e}")
         return []
 
-async def get_long_memory(supabase, channel_id: int) -> List[Dict]:
+
+async def get_long_memory(channel_id: int) -> List[Dict]:
     """Get important long-term memories"""
     try:
         result = supabase.table('bot_long_memory')\
@@ -220,7 +184,8 @@ async def get_long_memory(supabase, channel_id: int) -> List[Dict]:
         print(f"Error getting long memory: {e}")
         return []
 
-async def get_observations(supabase, channel_id: int, limit: int = 10) -> List[Dict]:
+
+async def get_observations(channel_id: int, limit: int = 10) -> List[Dict]:
     """Get recent observations"""
     try:
         cutoff = (datetime.utcnow() - timedelta(days=7)).isoformat()
@@ -236,7 +201,8 @@ async def get_observations(supabase, channel_id: int, limit: int = 10) -> List[D
         print(f"Error getting observations: {e}")
         return []
 
-async def curate_memories(supabase, channel_id: int):
+
+async def curate_memories(channel_id: int):
     """Use AI to decide what to keep in long-term memory"""
     try:
         cutoff = (datetime.utcnow() - timedelta(hours=12)).isoformat()
@@ -296,14 +262,15 @@ Respond ONLY with the JSON, nothing else:"""
     except Exception as e:
         print(f"Error curating memories: {e}")
 
-async def generate_response(supabase, message: discord.Message, user_message: str) -> str:
+
+async def generate_response(message: discord.Message, user_message: str) -> str:
     """Generate AI response using Gemini with memory context"""
     try:
         channel_id = message.channel.id
         
-        recent_memory = await get_recent_memory(supabase, channel_id)
-        long_memory = await get_long_memory(supabase, channel_id)
-        observations = await get_observations(supabase, channel_id)
+        recent_memory = await get_recent_memory(channel_id)
+        long_memory = await get_long_memory(channel_id)
+        observations = await get_observations(channel_id)
         
         context_parts = [SYSTEM_PROMPT]
         
@@ -330,7 +297,6 @@ async def generate_response(supabase, message: discord.Message, user_message: st
         bot_response = response.text.strip()
         
         await save_short_memory(
-            supabase,
             channel_id=channel_id,
             user_id=message.author.id,
             username=message.author.name,
@@ -345,122 +311,136 @@ async def generate_response(supabase, message: discord.Message, user_message: st
         print(f"Error generating response: {e}")
         return "yo my brain just glitched, try again?"
 
-# Add these functions to your existing bot file to enable conversational AI
-# Call handle_conversational_ai() at the end of your on_message handler
 
-async def handle_conversational_ai(bot, supabase, message: discord.Message):
-    """Handle conversational AI - call this at the end of on_message"""
+# Helper function for getting prices (add your implementation)
+def get_prices():
+    """Placeholder - implement your actual price fetching logic"""
+    # Replace with your actual implementation
+    raise NotImplementedError("Implement your get_prices() function")
+
+
+@bot.event
+async def on_message(message: discord.Message):
     if message.author.bot:
         return
     
-    channel_id = message.channel.id
-    bot_mentioned = bot.user in message.mentions
+    # Guild message handling (Conversational AI) - Process FIRST
+    if message.guild is not None:
+        channel_id = message.channel.id
+        bot_mentioned = bot.user in message.mentions
+        
+        # Passive observation (not pinged)
+        if not bot_mentioned and len(message.content) > 20:
+            if any(keyword in message.content.lower() for keyword in ['important', 'remember', 'note', 'document', 'announcement']):
+                await save_observation(channel_id, message.content, context=f"Posted by {message.author.name}")
+            await bot.process_commands(message)
+            return
+        
+        # Bot was mentioned
+        if bot_mentioned:
+            if not is_message_targeting_bot(message.content, bot_mentioned, bot.user):
+                await message.reply(get_funny_comeback())
+                await bot.process_commands(message)
+                return
+            
+            content = message.content
+            for mention in message.mentions:
+                content = content.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
+            content = content.strip()
+            
+            if not content:
+                await message.reply("yeah?")
+                await bot.process_commands(message)
+                return
+            
+            async with message.channel.typing():
+                response = await generate_response(message, content)
+                
+                if len(response) > 2000:
+                    chunks = [response[i:i+2000] for i in range(0, len(response), 2000)]
+                    for chunk in chunks:
+                        await message.reply(chunk)
+                else:
+                    await message.reply(response)
+            
+            await bot.process_commands(message)
+            return
     
-    # Passive observation (not pinged)
-    if not bot_mentioned and len(message.content) > 20:
-        if any(keyword in message.content.lower() for keyword in ['important', 'remember', 'note', 'document', 'announcement']):
-            await save_observation(supabase, channel_id, message.content, context=f"Posted by {message.author.name}")
+    await bot.process_commands(message)
+
+
+# Background tasks
+@tasks.loop(hours=6)
+async def cleanup_old_memories():
+    try:
+        cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
+        supabase.table('bot_short_memory').delete().lt('timestamp', cutoff).execute()
+        print("Cleaned up old short-term memories")
+    except Exception as e:
+        print(f"Error cleaning up memories: {e}")
+
+
+@tasks.loop(hours=12)
+async def curate_memories_task():
+    try:
+        result = supabase.table('bot_short_memory').select('channel_id').execute()
+        channels = set(m['channel_id'] for m in result.data)
+        
+        for channel_id in channels:
+            await curate_memories(channel_id)
+        
+        print(f"Curated memories for {len(channels)} channels")
+    except Exception as e:
+        print(f"Error in memory curation task: {e}")
+
+
+# Commands
+@bot.command(name='remember')
+async def remember(ctx, *, fact: str):
+    """Manually save something to long-term memory"""
+    try:
+        supabase.table('bot_long_memory').insert({
+            'channel_id': ctx.channel.id,
+            'memory_type': 'fact',
+            'content': fact,
+            'importance_score': 8,
+            'context': f"Manually saved by {ctx.author.name}",
+            'created_at': datetime.utcnow().isoformat()
+        }).execute()
+        await ctx.reply("got it, locked that in my long-term memory")
+    except Exception as e:
+        await ctx.reply("couldn't save that, my memory banks are glitching")
+
+
+@bot.command(name='memories')
+async def show_memories(ctx):
+    """Show what the bot remembers about this channel"""
+    long_mem = await get_long_memory(ctx.channel.id)
+    
+    if not long_mem:
+        await ctx.reply("my mind is blank for this channel... we gotta make some memories")
         return
     
-    # Bot was mentioned
-    if bot_mentioned:
-        if not is_message_targeting_bot(message.content, bot_mentioned, bot.user):
-            await message.reply(get_funny_comeback())
-            return
-        
-        content = message.content
-        for mention in message.mentions:
-            content = content.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
-        content = content.strip()
-        
-        if not content:
-            await message.reply("yeah?")
-            return
-        
-        async with message.channel.typing():
-            response = await generate_response(supabase, message, content)
-            
-            if len(response) > 2000:
-                chunks = [response[i:i+2000] for i in range(0, len(response), 2000)]
-                for chunk in chunks:
-                    await message.reply(chunk)
-            else:
-                await message.reply(response)
+    memory_list = "\n".join([
+        f"• {m['content']} (importance: {m['importance_score']}/10)"
+        for m in long_mem[:10]
+    ])
+    
+    embed = discord.Embed(
+        title="what i remember about this channel",
+        description=memory_list,
+        color=discord.Color.blue()
+    )
+    await ctx.reply(embed=embed)
 
-# Background tasks - add these to your bot
-def setup_memory_tasks(bot, supabase):
-    """Setup background memory management tasks"""
-    
-    @tasks.loop(hours=6)
-    async def cleanup_old_memories():
-        try:
-            cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
-            supabase.table('bot_short_memory').delete().lt('timestamp', cutoff).execute()
-            print("Cleaned up old short-term memories")
-        except Exception as e:
-            print(f"Error cleaning up memories: {e}")
-    
-    @tasks.loop(hours=12)
-    async def curate_memories_task():
-        try:
-            result = supabase.table('bot_short_memory').select('channel_id').execute()
-            channels = set(m['channel_id'] for m in result.data)
-            
-            for channel_id in channels:
-                await curate_memories(supabase, channel_id)
-            
-            print(f"Curated memories for {len(channels)} channels")
-        except Exception as e:
-            print(f"Error in memory curation task: {e}")
-    
-    cleanup_old_memories.start()
-    curate_memories_task.start()
 
-# Commands to add to your bot
-def add_memory_commands(bot, supabase):
-    """Add memory-related commands to bot"""
-    
-    @bot.command(name='remember')
-    async def remember(ctx, *, fact: str):
-        try:
-            supabase.table('bot_long_memory').insert({
-                'channel_id': ctx.channel.id,
-                'memory_type': 'fact',
-                'content': fact,
-                'importance_score': 8,
-                'context': f"Manually saved by {ctx.author.name}",
-                'created_at': datetime.utcnow().isoformat()
-            }).execute()
-            await ctx.reply("got it, locked that in my long-term memory")
-        except Exception as e:
-            await ctx.reply("couldn't save that, my memory banks are glitching")
-    
-    @bot.command(name='memories')
-    async def show_memories(ctx):
-        long_mem = await get_long_memory(supabase, ctx.channel.id)
-        
-        if not long_mem:
-            await ctx.reply("my mind is blank for this channel... we gotta make some memories")
-            return
-        
-        memory_list = "\n".join([
-            f"• {m['content']} (importance: {m['importance_score']}/10)"
-            for m in long_mem[:10]
-        ])
-        
-        embed = discord.Embed(
-            title="what i remember about this channel",
-            description=memory_list,
-            color=discord.Color.blue()
-        )
-        await ctx.reply(embed=embed)
-    
-    @bot.command(name='forget')
-    async def forget(ctx):
-        try:
-            supabase.table('bot_short_memory').delete().eq('channel_id', ctx.channel.id).execute()
-            supabase.table('bot_long_memory').delete().eq('channel_id', ctx.channel.id).execute()
-            supabase.table('bot_observations').delete().eq('channel_id', ctx.channel.id).execute()
-            await ctx.reply("memories wiped, who are you people again?")
-        except:
-            await ctx.reply("error wiping memories, they're stuck in my head")
+@bot.command(name='forget')
+async def forget(ctx):
+    """Wipe all memories for this channel"""
+    try:
+        supabase.table('bot_short_memory').delete().eq('channel_id', ctx.channel.id).execute()
+        supabase.table('bot_long_memory').delete().eq('channel_id', ctx.channel.id).execute()
+        supabase.table('bot_observations').delete().eq('channel_id', ctx.channel.id).execute()
+        await ctx.reply("memories wiped, who are you people again?")
+    except:
+        await ctx.reply("error wiping memories, they're stuck in my head")
