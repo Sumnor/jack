@@ -36,19 +36,30 @@ gemini_model = genai.GenerativeModel(
 )
 
 # -----------------------
-# Supabase Setup (NO /rest/v1 in URL!)
+# Supabase Setup
 # -----------------------
-supabase: Client = create_client(
-    SUPABASE_URL,  # should just be https://xxxx.supabase.co
-    SUPABASE_KEY
-)
+# Make sure SUPABASE_URL is just https://xxxx.supabase.co (no /rest/v1)
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # -----------------------
 # System Prompt
 # -----------------------
 SYSTEM_PROMPT = """You are a quirky, chill Discord bot assistant with personality. Here's how you should act:
 
-[... your system prompt here ...]
+CHILL MODE (default):
+- Keep responses short and casual (1-3 sentences usually)
+- Use lowercase for a relaxed vibe unless emphasizing something
+- Be friendly, witty, and occasionally make lighthearted jokes
+
+SERIOUS MODE (when needed):
+- Use proper capitalization and punctuation
+- Be clear, direct, and professional
+- Provide structured, actionable information
+
+PERSONALITY TRAITS:
+- Slightly sarcastic but never mean
+- Self-aware that you're a bot
+- Occasionally reference being "just vibes" or "living in the cloud"
 """
 
 # -----------------------
@@ -221,78 +232,60 @@ async def generate_response(message: discord.Message, user_message: str) -> str:
         return "yo my brain just glitched, try again?"
 
 # -----------------------
-# Discord Events
+# Memory Curation
 # -----------------------
-@bot.event
-async def on_message(message: discord.Message):
-    if message.author.bot:
-        return
-
-    if message.guild is not None:
-        channel_id = message.channel.id
-        bot_mentioned = bot.user in message.mentions
-
-        if not bot_mentioned and len(message.content) > 20:
-            if any(keyword in message.content.lower() for keyword in ['important', 'remember', 'note', 'document', 'announcement']):
-                await save_observation(channel_id, message.content, context=f"Posted by {message.author.name}")
-            await bot.process_commands(message)
-            return
-
-        if bot_mentioned:
-            if not is_message_targeting_bot(message.content, bot_mentioned, bot.user):
-                await message.reply(get_funny_comeback())
-                await bot.process_commands(message)
-                return
-
-            content = message.content
-            for mention in message.mentions:
-                content = content.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
-            content = content.strip()
-
-            if not content:
-                await message.reply("yeah?")
-                await bot.process_commands(message)
-                return
-
-            async with message.channel.typing():
-                response = await generate_response(message, content)
-                if len(response) > 2000:
-                    chunks = [response[i:i+2000] for i in range(0, len(response), 2000)]
-                    for chunk in chunks:
-                        await message.reply(chunk)
-                else:
-                    await message.reply(response)
-
-            await bot.process_commands(message)
-            return
-
-    await bot.process_commands(message)
-
-# -----------------------
-# Background Tasks
-# -----------------------
-'''@tasks.loop(hours=6)
-async def cleanup_old_memories():
+async def curate_memories(channel_id: int):
     try:
-        cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
-        supabase.table('bot_short_memory').delete().lt('timestamp', cutoff).execute()
-        print("Cleaned up old short-term memories")
-    except Exception as e:
-        print(f"Error cleaning up memories: {e}")
-
-
-@tasks.loop(hours=12)
-async def curate_memories_task():
-    try:
-        result = supabase.table('bot_short_memory').select('channel_id').execute()
-        if not result.data:
+        cutoff = (datetime.utcnow() - timedelta(hours=12)).isoformat()
+        old_memories = supabase.table('bot_short_memory')\
+            .select('*')\
+            .eq('channel_id', channel_id)\
+            .lt('timestamp', cutoff)\
+            .execute()
+        if not old_memories.data:
             return
-        channels = set(m['channel_id'] for m in result.data)
-        for channel_id in channels:
-            await curate_memories(channel_id)
-        print(f"Curated memories for {len(channels)} channels")
+
+        memory_text = "\n".join([
+            f"User {m['username']}: {m['message']}" + (f"\nBot: {m['response']}" if m['response'] else "")
+            for m in old_memories.data[:20]
+        ])
+
+        prompt = f"""Review these conversation snippets and identify what should be saved to long-term memory.
+Return valid JSON like this:
+{{
+  "memories": [
+    {{"type": "fact/preference/event/document", "content": "summary", "importance": 1-10, "context": "why it matters"}}
+  ]
+}}
+
+Conversations:
+{memory_text}
+"""
+
+        response = gemini_model.generate_content(prompt)
+        text = response.text.strip() if hasattr(response, "text") else ""
+
+        try:
+            data = json.loads(text)
+            for memory in data.get('memories', []):
+                supabase.table('bot_long_memory').insert({
+                    'channel_id': channel_id,
+                    'memory_type': memory['type'],
+                    'content': memory['content'],
+                    'importance_score': memory['importance'],
+                    'context': memory.get('context'),
+                    'created_at': datetime.utcnow().isoformat()
+                }).execute()
+        except json.JSONDecodeError:
+            print("Could not parse AI memory curation response")
+
+        supabase.table('bot_short_memory')\
+            .delete()\
+            .eq('channel_id', channel_id)\
+            .lt('timestamp', cutoff)\
+            .execute()
     except Exception as e:
-        print(f"Error in memory curation task: {e}")'''
+        print(f"Error curating memories: {e}")
 
 # -----------------------
 # Commands
