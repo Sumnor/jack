@@ -246,31 +246,6 @@ async def generate_response(message: discord.Message, user_message: str) -> str:
         return "yo my brain just glitched, try again?"
 
 
-# Cleanup tasks and commands stay the same, just with .table() instead of .from_()
-@tasks.loop(hours=6)
-async def cleanup_old_memories():
-    try:
-        cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
-        supabase.table('bot_short_memory').delete().lt('timestamp', cutoff).execute()
-        print("Cleaned up old short-term memories")
-    except Exception as e:
-        print(f"Error cleaning up memories: {e}")
-
-
-@tasks.loop(hours=12)
-async def curate_memories_task():
-    try:
-        result = supabase.table('bot_short_memory').select('channel_id').execute()
-        if not result.data:
-            return
-        channels = set(m['channel_id'] for m in result.data)
-        for channel_id in channels:
-            await curate_memories(channel_id)
-        print(f"Curated memories for {len(channels)} channels")
-    except Exception as e:
-        print(f"Error in memory curation task: {e}")
-
-
 @bot.command(name='remember')
 async def remember(ctx, *, fact: str):
     try:
