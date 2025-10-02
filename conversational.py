@@ -3,6 +3,7 @@ from discord.ext import commands, tasks
 import google.generativeai as genai
 import os
 import re
+import asyncio
 from typing import Optional, List, Dict
 from datetime import datetime, timedelta
 from supabase import create_client, Client
@@ -22,13 +23,7 @@ generation_config = {
     "max_output_tokens": 400,
 }
 
-safety_settings = [
-    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-]
-
+# safety disabled fully
 gemini_model = genai.GenerativeModel(
     model_name="gemini-2.5-flash",  # or "gemini-2.5-pro"
     generation_config=generation_config,
@@ -48,22 +43,22 @@ supabase: Client = create_client(BASE_URL, SUPABASE_KEY)
 # -----------------------
 # System Prompt
 # -----------------------
-SYSTEM_PROMPT = """You are a quirky, chill Discord bot assistant with personality. Here's how you should act:
+SYSTEM_PROMPT = """You are Jack, a quirky, chill Discord bot assistant with personality.
+You live in this Discord server and should always respond to users.
+You can also save and recall memories when users tell you something important.
+
+MEMORY RULES:
+- If a user says something is a "core memory" or asks you to remember, treat it seriously and save it to long-term memory.
+- If you don't know what to say, still reply casually (never stay silent).
+- Never refuse safe roleplay or instructions unless they are truly harmful.
 
 CHILL MODE (default):
 - Keep responses short and casual (1-3 sentences usually)
-- Use lowercase for a relaxed vibe unless emphasizing something
-- Be friendly, witty, and occasionally make lighthearted jokes
+- lowercase vibe unless emphasis
+- witty, sarcastic, but never mean
 
 SERIOUS MODE (when needed):
-- Use proper capitalization and punctuation
-- Be clear, direct, and professional
-- Provide structured, actionable information
-
-PERSONALITY TRAITS:
-- Slightly sarcastic but never mean
-- Self-aware that you're a bot
-- Occasionally reference being "just vibes" or "living in the cloud"
+- clear, structured, professional
 """
 
 # -----------------------
@@ -188,11 +183,12 @@ async def generate_response(message: discord.Message, user_message: str) -> str:
     """Generate AI response using Gemini with memory context"""
     try:
         channel_id = message.channel.id
-        
+
+        # Gather memory + context
         recent_memory = await get_recent_memory(channel_id)
         long_memory = await get_long_memory(channel_id)
         observations = await get_observations(channel_id)
-        
+
         context_parts = [SYSTEM_PROMPT]
 
         if long_memory:
@@ -211,27 +207,39 @@ async def generate_response(message: discord.Message, user_message: str) -> str:
             context_parts.append(f"\n\nRECENT CONVERSATION:\n{recent_text}")
 
         context_parts.append(f"\n\nCurrent message from {message.author.name}: {user_message}")
-        
         full_prompt = "\n".join(context_parts)
-        
-        response = gemini_model.generate_content(full_prompt)
 
-        # Safety check
-        if not response.candidates:
-            return "hmm i got nothing back, maybe try rephrasing?"
+        # Run Gemini in executor so it doesn’t block
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(None, lambda: gemini_model.generate_content(full_prompt))
 
-        candidate = response.candidates[0]
-        finish_reason = candidate.finish_reason
+        bot_response = None
 
-        '''if finish_reason == 2:  # SAFETY block
-            return "uhh i can't respond to that one (safety filter kicked in)"'''
-
-        if candidate.content.parts:
-            bot_response = candidate.content.parts[0].text.strip()
+        # Prefer text field
+        if hasattr(response, "text") and response.text:
+            bot_response = response.text.strip()
+        # Fallback to candidate parts
+        elif response.candidates and response.candidates[0].content.parts:
+            bot_response = response.candidates[0].content.parts[0].text.strip()
         else:
-            bot_response = "idk what to say right now"
+            bot_response = "ngl, i'm kinda blanking rn 😅"
 
-        # Save memory
+        # 🔹 Auto-core-memory saving
+        if "core memory" in user_message.lower():
+            try:
+                supabase.table('bot_long_memory').insert({
+                    'channel_id': channel_id,
+                    'memory_type': 'fact',
+                    'content': user_message,
+                    'importance_score': 10,
+                    'context': f"Saved directly from {message.author.name}",
+                    'created_at': datetime.utcnow().isoformat()
+                }).execute()
+                print(f"Saved core memory from {message.author.name}")
+            except Exception as e:
+                print(f"Error saving core memory: {e}")
+
+        # Save short memory
         await save_short_memory(
             channel_id=channel_id,
             user_id=message.author.id,
@@ -240,112 +248,9 @@ async def generate_response(message: discord.Message, user_message: str) -> str:
             response=bot_response,
             is_pinged=True
         )
-        
+
         return bot_response
-        
+
     except Exception as e:
         print(f"Error generating response: {e}")
         return "yo my brain just glitched, try again?"
-
-# -----------------------
-# Memory Curation
-# -----------------------
-async def curate_memories(channel_id: int):
-    try:
-        cutoff = (datetime.utcnow() - timedelta(hours=12)).isoformat()
-        old_memories = supabase.table('bot_short_memory')\
-            .select('*')\
-            .eq('channel_id', channel_id)\
-            .lt('timestamp', cutoff)\
-            .execute()
-        if not old_memories.data:
-            return
-
-        memory_text = "\n".join([
-            f"User {m['username']}: {m['message']}" + (f"\nBot: {m['response']}" if m['response'] else "")
-            for m in old_memories.data[:20]
-        ])
-
-        prompt = f"""Review these conversation snippets and identify what should be saved to long-term memory.
-Return valid JSON like this:
-{{
-  "memories": [
-    {{"type": "fact/preference/event/document", "content": "summary", "importance": 1-10, "context": "why it matters"}}
-  ]
-}}
-
-Conversations:
-{memory_text}
-"""
-
-        response = gemini_model.generate_content(prompt)
-        text = response.text.strip() if hasattr(response, "text") else ""
-
-        try:
-            data = json.loads(text)
-            for memory in data.get('memories', []):
-                supabase.table('bot_long_memory').insert({
-                    'channel_id': channel_id,
-                    'memory_type': memory['type'],
-                    'content': memory['content'],
-                    'importance_score': memory['importance'],
-                    'context': memory.get('context'),
-                    'created_at': datetime.utcnow().isoformat()
-                }).execute()
-        except json.JSONDecodeError:
-            print("Could not parse AI memory curation response")
-
-        supabase.table('bot_short_memory')\
-            .delete()\
-            .eq('channel_id', channel_id)\
-            .lt('timestamp', cutoff)\
-            .execute()
-    except Exception as e:
-        print(f"Error curating memories: {e}")
-
-# -----------------------
-# Commands
-# -----------------------
-@bot.command(name='remember')
-async def remember(ctx, *, fact: str):
-    try:
-        supabase.table('bot_long_memory').insert({
-            'channel_id': ctx.channel.id,
-            'memory_type': 'fact',
-            'content': fact,
-            'importance_score': 8,
-            'context': f"Manually saved by {ctx.author.name}",
-            'created_at': datetime.utcnow().isoformat()
-        }).execute()
-        await ctx.reply("got it, locked that in my long-term memory")
-    except Exception as e:
-        await ctx.reply("couldn't save that, my memory banks are glitching")
-
-
-@bot.command(name='memories')
-async def show_memories(ctx):
-    long_mem = await get_long_memory(ctx.channel.id)
-    if not long_mem:
-        await ctx.reply("my mind is blank for this channel... we gotta make some memories")
-        return
-    memory_list = "\n".join([
-        f"• {m['content']} (importance: {m['importance_score']}/10)"
-        for m in long_mem[:10]
-    ])
-    embed = discord.Embed(
-        title="what i remember about this channel",
-        description=memory_list,
-        color=discord.Color.blue()
-    )
-    await ctx.reply(embed=embed)
-
-
-@bot.command(name='forget')
-async def forget(ctx):
-    try:
-        supabase.table('bot_short_memory').delete().eq('channel_id', ctx.channel.id).execute()
-        supabase.table('bot_long_memory').delete().eq('channel_id', ctx.channel.id).execute()
-        supabase.table('bot_observations').delete().eq('channel_id', ctx.channel.id).execute()
-        await ctx.reply("memories wiped, who are you people again?")
-    except:
-        await ctx.reply("error wiping memories, they're stuck in my head")
