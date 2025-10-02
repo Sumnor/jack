@@ -38,8 +38,12 @@ gemini_model = genai.GenerativeModel(
 # -----------------------
 # Supabase Setup
 # -----------------------
-# Make sure SUPABASE_URL is just https://xxxx.supabase.co (no /rest/v1)
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+if SUPABASE_URL.endswith("/rest/v1"):
+    BASE_URL = SUPABASE_URL.replace("/rest/v1", "")
+else:
+    BASE_URL = SUPABASE_URL
+
+supabase: Client = create_client(BASE_URL, SUPABASE_KEY)
 
 # -----------------------
 # System Prompt
@@ -181,12 +185,14 @@ async def get_observations(channel_id: int, limit: int = 10) -> List[Dict]:
 # AI Response
 # -----------------------
 async def generate_response(message: discord.Message, user_message: str) -> str:
+    """Generate AI response using Gemini with memory context"""
     try:
         channel_id = message.channel.id
+        
         recent_memory = await get_recent_memory(channel_id)
         long_memory = await get_long_memory(channel_id)
         observations = await get_observations(channel_id)
-
+        
         context_parts = [SYSTEM_PROMPT]
 
         if long_memory:
@@ -205,19 +211,27 @@ async def generate_response(message: discord.Message, user_message: str) -> str:
             context_parts.append(f"\n\nRECENT CONVERSATION:\n{recent_text}")
 
         context_parts.append(f"\n\nCurrent message from {message.author.name}: {user_message}")
+        
         full_prompt = "\n".join(context_parts)
-
+        
         response = gemini_model.generate_content(full_prompt)
 
-        # Handle response consistently with new SDK
-        bot_response = ""
-        if hasattr(response, "text") and response.text:
-            bot_response = response.text.strip()
-        elif hasattr(response, "candidates") and response.candidates:
-            bot_response = response.candidates[0].content.parts[0].text.strip()
-        else:
-            bot_response = "uhh i spaced out, say that again?"
+        # Safety check
+        if not response.candidates:
+            return "hmm i got nothing back, maybe try rephrasing?"
 
+        candidate = response.candidates[0]
+        finish_reason = candidate.finish_reason
+
+        if finish_reason == 2:  # SAFETY block
+            return "uhh i can't respond to that one (safety filter kicked in)"
+
+        if candidate.content.parts:
+            bot_response = candidate.content.parts[0].text.strip()
+        else:
+            bot_response = "idk what to say right now"
+
+        # Save memory
         await save_short_memory(
             channel_id=channel_id,
             user_id=message.author.id,
@@ -226,7 +240,9 @@ async def generate_response(message: discord.Message, user_message: str) -> str:
             response=bot_response,
             is_pinged=True
         )
+        
         return bot_response
+        
     except Exception as e:
         print(f"Error generating response: {e}")
         return "yo my brain just glitched, try again?"
