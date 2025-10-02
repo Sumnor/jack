@@ -11,5 +11,5 @@ scikit-learn
 google-generativeai
 supabase
 PyPDF2
-docx
-exceptions
+python-docx
+aiohttp
