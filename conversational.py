@@ -30,10 +30,19 @@ generation_config = {
 }
 
 # safety disabled fully
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
+
+safety_settings = {
+    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+}
+
 gemini_model = genai.GenerativeModel(
     model_name="gemini-2.5-flash",
     generation_config=generation_config,
-    safety_settings=[]
+    safety_settings=safety_settings
 )
 
 # -----------------------
@@ -324,15 +333,42 @@ async def generate_response(message: discord.Message, user_message: str) -> str:
 
         # Run Gemini
         loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(None, lambda: gemini_model.generate_content(full_prompt))
-
-        bot_response = None
-        if hasattr(response, "text") and response.text:
-            bot_response = response.text.strip()
-        elif response.candidates and response.candidates[0].content.parts:
-            bot_response = response.candidates[0].content.parts[0].text.strip()
-        else:
-            bot_response = "ngl, i'm kinda blanking rn 😅"
+        
+        try:
+            response = await loop.run_in_executor(None, lambda: gemini_model.generate_content(full_prompt))
+            
+            # Try multiple ways to extract text
+            bot_response = None
+            
+            # Method 1: Direct text attribute
+            if hasattr(response, "text"):
+                try:
+                    bot_response = response.text.strip()
+                except:
+                    pass
+            
+            # Method 2: Through candidates
+            if not bot_response and hasattr(response, 'candidates') and response.candidates:
+                try:
+                    if response.candidates[0].content.parts:
+                        bot_response = response.candidates[0].content.parts[0].text.strip()
+                except:
+                    pass
+            
+            # Method 3: Check if blocked by safety
+            if not bot_response:
+                if hasattr(response, 'prompt_feedback'):
+                    print(f"Prompt feedback: {response.prompt_feedback}")
+                if hasattr(response, 'candidates') and response.candidates:
+                    print(f"Finish reason: {response.candidates[0].finish_reason}")
+                    print(f"Safety ratings: {response.candidates[0].safety_ratings}")
+                
+                # Fallback response
+                bot_response = "can't respond to that one chief, my filters are acting up 🤷"
+            
+        except Exception as gemini_error:
+            print(f"Gemini API Error: {gemini_error}")
+            bot_response = "gemini's having a moment, give me a sec"
 
         # Save short memory
         await save_short_memory(
@@ -348,4 +384,7 @@ async def generate_response(message: discord.Message, user_message: str) -> str:
 
     except Exception as e:
         print(f"Error generating response: {e}")
+        print(f"Error type: {type(e)}")
+        import traceback
+        traceback.print_exc()
         return "yo my brain just glitched, try again?"
