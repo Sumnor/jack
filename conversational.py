@@ -32,7 +32,7 @@ safety_settings = [
 gemini_model = genai.GenerativeModel(
     model_name="gemini-2.5-flash",  # or "gemini-2.5-pro"
     generation_config=generation_config,
-    safety_settings=safety_settings
+    safety_settings=[]
 )
 
 # -----------------------
@@ -223,8 +223,8 @@ async def generate_response(message: discord.Message, user_message: str) -> str:
         candidate = response.candidates[0]
         finish_reason = candidate.finish_reason
 
-        if finish_reason == 2:  # SAFETY block
-            return "uhh i can't respond to that one (safety filter kicked in)"
+        '''if finish_reason == 2:  # SAFETY block
+            return "uhh i can't respond to that one (safety filter kicked in)"'''
 
         if candidate.content.parts:
             bot_response = candidate.content.parts[0].text.strip()
