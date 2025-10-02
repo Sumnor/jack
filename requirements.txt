@@ -10,3 +10,4 @@ httpx
 scikit-learn
 google-generativeai
 supabase
+PyPDF2
