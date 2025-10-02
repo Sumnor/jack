@@ -839,47 +839,47 @@ async def on_message(message: discord.Message):
 
         await message.channel.send(default_reply)
         
-if message.guild is not None:
-    channel_id = message.channel.id
-    bot_mentioned = bot.user in message.mentions
-    
-    # Passive observation (not pinged)
-    if not bot_mentioned and len(message.content) > 20:
-        if any(keyword in message.content.lower() for keyword in ['important', 'remember', 'note', 'document', 'announcement']):
-            await save_observation(channel_id, message.content, context=f"Posted by {message.author.name}")
-        await bot.process_commands(message)
-        return
-    
-    # Bot was mentioned
-    if bot_mentioned:
-        # Check if actually targeted
-        if not is_message_targeting_bot(message.content, bot_mentioned):
-            await message.reply(get_funny_comeback())
+    if message.guild is not None:
+        channel_id = message.channel.id
+        bot_mentioned = bot.user in message.mentions
+        
+        # Passive observation (not pinged)
+        if not bot_mentioned and len(message.content) > 20:
+            if any(keyword in message.content.lower() for keyword in ['important', 'remember', 'note', 'document', 'announcement']):
+                await save_observation(channel_id, message.content, context=f"Posted by {message.author.name}")
             await bot.process_commands(message)
             return
         
-        # Remove bot mention
-        content = message.content
-        for mention in message.mentions:
-            content = content.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
-        content = content.strip()
-        
-        if not content:
-            await message.reply("yeah?")
-            await bot.process_commands(message)
-            return
-        
-        async with message.channel.typing():
-            response = await generate_response(message, content)
+        # Bot was mentioned
+        if bot_mentioned:
+            # Check if actually targeted
+            if not is_message_targeting_bot(message.content, bot_mentioned):
+                await message.reply(get_funny_comeback())
+                await bot.process_commands(message)
+                return
             
-            if len(response) > 2000:
-                chunks = [response[i:i+2000] for i in range(0, len(response), 2000)]
-                for chunk in chunks:
-                    await message.reply(chunk)
-            else:
-                await message.reply(response)
-
-await bot.process_commands(message)
+            # Remove bot mention
+            content = message.content
+            for mention in message.mentions:
+                content = content.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
+            content = content.strip()
+            
+            if not content:
+                await message.reply("yeah?")
+                await bot.process_commands(message)
+                return
+            
+            async with message.channel.typing():
+                response = await generate_response(message, content)
+                
+                if len(response) > 2000:
+                    chunks = [response[i:i+2000] for i in range(0, len(response), 2000)]
+                    for chunk in chunks:
+                        await message.reply(chunk)
+                else:
+                    await message.reply(response)
+    
+    await bot.process_commands(message)
 
 @tasks.loop(hours=6)
 async def cleanup_old_memories():
