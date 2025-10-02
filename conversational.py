@@ -150,6 +150,7 @@ async def read_attachment(attachment: discord.Attachment) -> str:
 # Memory Functions
 # -----------------------
 async def save_short_memory(channel_id: int, user_id: int, username: str, message: str, response: str = None, is_pinged: bool = False):
+    """Save short-term memory for a specific channel (max 1 hour)"""
     try:
         supabase.table('bot_short_memory').insert({
             'channel_id': channel_id,
@@ -162,6 +163,38 @@ async def save_short_memory(channel_id: int, user_id: int, username: str, messag
         }).execute()
     except Exception as e:
         print(f"Error saving short memory: {e}")
+
+
+async def get_recent_messages(channel: discord.TextChannel, limit: int = 10) -> List[Dict]:
+    """Fetch last N messages from a channel (ignoring who sent them)"""
+    try:
+        messages = await channel.history(limit=limit).flatten()
+        result = []
+        for msg in reversed(messages):
+            result.append({
+                'username': msg.author.name,
+                'message': msg.content,
+                'response': None
+            })
+        return result
+    except Exception as e:
+        print(f"Error fetching recent messages: {e}")
+        return []
+
+
+async def get_long_memory() -> List[Dict]:
+    """Get global long-term memory shared across all channels"""
+    try:
+        result = supabase.table('bot_long_memory')\
+            .select('*')\
+            .gte('importance_score', 5)\
+            .order('importance_score', desc=True)\
+            .limit(50)\
+            .execute()
+        return result.data if result.data else []
+    except Exception as e:
+        print(f"Error getting long memory: {e}")
+        return []
 
 
 async def save_observation(channel_id: int, observation: str, context: str = None):
@@ -192,27 +225,6 @@ async def get_recent_memory(channel_id: int, hours: int = 24) -> List[Dict]:
         return []
 
 
-async def get_long_memory(channel_id: int) -> List[Dict]:
-    try:
-        result = supabase.table('bot_long_memory')\
-            .select('*')\
-            .eq('channel_id', channel_id)\
-            .gte('importance_score', 5)\
-            .order('importance_score', desc=True)\
-            .limit(20)\
-            .execute()
-        if result.data:
-            ids = [m['id'] for m in result.data]
-            supabase.table('bot_long_memory')\
-                .update({'last_accessed': datetime.utcnow().isoformat()})\
-                .in_('id', ids)\
-                .execute()
-        return result.data if result.data else []
-    except Exception as e:
-        print(f"Error getting long memory: {e}")
-        return []
-
-
 async def get_observations(channel_id: int, limit: int = 10) -> List[Dict]:
     try:
         cutoff = (datetime.utcnow() - timedelta(days=7)).isoformat()
@@ -229,33 +241,29 @@ async def get_observations(channel_id: int, limit: int = 10) -> List[Dict]:
         return []
 
 # -----------------------
-# AI Response
+# AI Response (Updated)
 # -----------------------
 async def generate_response(message: discord.Message, user_message: str) -> str:
-    """Generate AI response using Gemini with memory context + internet + files"""
+    """Generate AI response using Gemini with last 10 messages as context when pinged"""
     try:
         channel_id = message.channel.id
 
-        # Gather memory + context
-        recent_memory = await get_recent_memory(channel_id)
-        long_memory = await get_long_memory(channel_id)
-        observations = await get_observations(channel_id)
+        # Global long-term memory
+        long_memory = await get_long_memory()
+
+        # Last 10 messages in channel
+        recent_memory = await get_recent_messages(message.channel, limit=10)
 
         context_parts = [SYSTEM_PROMPT]
 
+        # Add long-term memory
         if long_memory:
             memory_text = "\n".join([f"- {m['content']}" for m in long_memory[:10]])
             context_parts.append(f"\n\nIMPORTANT THINGS YOU REMEMBER:\n{memory_text}")
 
-        if observations:
-            obs_text = "\n".join([f"- {o['observation']}" for o in observations[:5]])
-            context_parts.append(f"\n\nTHINGS YOU'VE NOTICED:\n{obs_text}")
-
+        # Add last 10 messages in channel
         if recent_memory:
-            recent_text = "\n".join([
-                f"{m['username']}: {m['message']}" + (f"\nYou: {m['response']}" if m['response'] else "")
-                for m in reversed(recent_memory[:10])
-            ])
+            recent_text = "\n".join([f"{m['username']}: {m['message']}" for m in recent_memory])
             context_parts.append(f"\n\nRECENT CONVERSATION:\n{recent_text}")
 
         context_parts.append(f"\n\nCurrent message from {message.author.name}: {user_message}")
@@ -280,7 +288,6 @@ async def generate_response(message: discord.Message, user_message: str) -> str:
         response = await loop.run_in_executor(None, lambda: gemini_model.generate_content(full_prompt))
 
         bot_response = None
-
         if hasattr(response, "text") and response.text:
             bot_response = response.text.strip()
         elif response.candidates and response.candidates[0].content.parts:
