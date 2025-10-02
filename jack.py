@@ -853,7 +853,7 @@ async def on_message(message: discord.Message):
         # Bot was mentioned
         if bot_mentioned:
             # Check if actually targeted
-            if not is_message_targeting_bot(message.content, bot_mentioned):
+            if not is_message_targeting_bot(message.content, bot_mentioned, bot.user):
                 await message.reply(get_funny_comeback())
                 await bot.process_commands(message)
                 return
@@ -978,7 +978,6 @@ async def on_ready():
         bot.add_view(TicketButtonView())
     
     print("Starting tasks...")
-    await setup_database()
     cleanup_old_memories.start()
     curate_memories_task.start()
     if not check_alerts.is_running():
