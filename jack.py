@@ -881,9 +881,9 @@ async def on_message(message: discord.Message):
     
     await bot.process_commands(message)
 
+# Cleanup tasks and commands stay the same, just with .table() instead of .from_()
 @tasks.loop(hours=6)
 async def cleanup_old_memories():
-    """Clean up short-term memories older than 24 hours"""
     try:
         cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
         supabase.table('bot_short_memory').delete().lt('timestamp', cutoff).execute()
@@ -891,47 +891,16 @@ async def cleanup_old_memories():
     except Exception as e:
         print(f"Error cleaning up memories: {e}")
 
-@tasks.loop(hours=12)
-async def curate_memories_task():
-    """Periodically curate memories for all active channels"""
-    try:
-        result = supabase.table('bot_short_memory')\
-            .select('channel_id')\
-            .execute()
-        
-        channels = set(m['channel_id'] for m in result.data)
-        
-        for channel_id in channels:
-            await curate_memories(supabase, channel_id)
-        
-        print(f"Curated memories for {len(channels)} channels")
-    except Exception as e:
-        print(f"Error in memory curation task: {e}")
-
-@tasks.loop(hours=6)
-async def cleanup_old_memories():
-    """Clean up short-term memories older than 24 hours"""
-    try:
-        cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
-        supabase.table('bot_short_memory').delete().lt('timestamp', cutoff).execute()
-        print("Cleaned up old short-term memories")
-    except Exception as e:
-        print(f"Error cleaning up memories: {e}")
 
 @tasks.loop(hours=12)
 async def curate_memories_task():
-    """Periodically curate memories for all active channels"""
     try:
-        # Get all unique channel IDs from short memory
-        result = supabase.table('bot_short_memory')\
-            .select('channel_id')\
-            .execute()
-        
+        result = supabase.table('bot_short_memory').select('channel_id').execute()
+        if not result.data:
+            return
         channels = set(m['channel_id'] for m in result.data)
-        
         for channel_id in channels:
             await curate_memories(channel_id)
-        
         print(f"Curated memories for {len(channels)} channels")
     except Exception as e:
         print(f"Error in memory curation task: {e}")
