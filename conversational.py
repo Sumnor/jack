@@ -31,7 +31,7 @@ safety_settings = [
 ]
 
 gemini_model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash-002",
+    model_name="gemini-1.5-flash",
     generation_config=generation_config,
     safety_settings=safety_settings
 )
@@ -118,7 +118,7 @@ def get_funny_comeback() -> str:
 async def save_short_memory(channel_id: int, user_id: int, username: str, message: str, response: str = None, is_pinged: bool = False):
     """Save interaction to short-term memory"""
     try:
-        supabase.table('bot_short_memory').insert({
+        supabase.from_('bot_short_memory').insert({
             'channel_id': channel_id,
             'user_id': user_id,
             'username': username,
@@ -134,7 +134,7 @@ async def save_short_memory(channel_id: int, user_id: int, username: str, messag
 async def save_observation(channel_id: int, observation: str, context: str = None):
     """Save passive observation from channel"""
     try:
-        supabase.table('bot_observations').insert({
+        supabase.from_('bot_observations').insert({
             'channel_id': channel_id,
             'observation': observation,
             'context': context,
@@ -148,14 +148,14 @@ async def get_recent_memory(channel_id: int, hours: int = 24) -> List[Dict]:
     """Get recent conversations from short-term memory"""
     try:
         cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
-        result = supabase.table('bot_short_memory')\
+        result = supabase.from_('bot_short_memory')\
             .select('*')\
             .eq('channel_id', channel_id)\
             .gte('timestamp', cutoff)\
             .order('timestamp', desc=True)\
             .limit(50)\
             .execute()
-        return result.data
+        return result.data if result.data else []
     except Exception as e:
         print(f"Error getting recent memory: {e}")
         return []
@@ -164,7 +164,7 @@ async def get_recent_memory(channel_id: int, hours: int = 24) -> List[Dict]:
 async def get_long_memory(channel_id: int) -> List[Dict]:
     """Get important long-term memories"""
     try:
-        result = supabase.table('bot_long_memory')\
+        result = supabase.from_('bot_long_memory')\
             .select('*')\
             .eq('channel_id', channel_id)\
             .gte('importance_score', 5)\
@@ -174,12 +174,12 @@ async def get_long_memory(channel_id: int) -> List[Dict]:
         
         if result.data:
             ids = [m['id'] for m in result.data]
-            supabase.table('bot_long_memory')\
+            supabase.from_('bot_long_memory')\
                 .update({'last_accessed': datetime.utcnow().isoformat()})\
                 .in_('id', ids)\
                 .execute()
         
-        return result.data
+        return result.data if result.data else []
     except Exception as e:
         print(f"Error getting long memory: {e}")
         return []
@@ -189,14 +189,14 @@ async def get_observations(channel_id: int, limit: int = 10) -> List[Dict]:
     """Get recent observations"""
     try:
         cutoff = (datetime.utcnow() - timedelta(days=7)).isoformat()
-        result = supabase.table('bot_observations')\
+        result = supabase.from_('bot_observations')\
             .select('*')\
             .eq('channel_id', channel_id)\
             .gte('timestamp', cutoff)\
             .order('timestamp', desc=True)\
             .limit(limit)\
             .execute()
-        return result.data
+        return result.data if result.data else []
     except Exception as e:
         print(f"Error getting observations: {e}")
         return []
@@ -206,7 +206,7 @@ async def curate_memories(channel_id: int):
     """Use AI to decide what to keep in long-term memory"""
     try:
         cutoff = (datetime.utcnow() - timedelta(hours=12)).isoformat()
-        old_memories = supabase.table('bot_short_memory')\
+        old_memories = supabase.from_('bot_short_memory')\
             .select('*')\
             .eq('channel_id', channel_id)\
             .lt('timestamp', cutoff)\
@@ -242,7 +242,7 @@ Respond ONLY with the JSON, nothing else:"""
             if json_match:
                 data = json.loads(json_match.group())
                 for memory in data.get('memories', []):
-                    supabase.table('bot_long_memory').insert({
+                    supabase.from_('bot_long_memory').insert({
                         'channel_id': channel_id,
                         'memory_type': memory['type'],
                         'content': memory['content'],
@@ -253,7 +253,7 @@ Respond ONLY with the JSON, nothing else:"""
         except json.JSONDecodeError:
             print("Could not parse AI memory curation response")
         
-        supabase.table('bot_short_memory')\
+        supabase.from_('bot_short_memory')\
             .delete()\
             .eq('channel_id', channel_id)\
             .lt('timestamp', cutoff)\
@@ -374,7 +374,7 @@ async def on_message(message: discord.Message):
 async def cleanup_old_memories():
     try:
         cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
-        supabase.table('bot_short_memory').delete().lt('timestamp', cutoff).execute()
+        supabase.from_('bot_short_memory').delete().lt('timestamp', cutoff).execute()
         print("Cleaned up old short-term memories")
     except Exception as e:
         print(f"Error cleaning up memories: {e}")
@@ -383,7 +383,10 @@ async def cleanup_old_memories():
 @tasks.loop(hours=12)
 async def curate_memories_task():
     try:
-        result = supabase.table('bot_short_memory').select('channel_id').execute()
+        result = supabase.from_('bot_short_memory').select('channel_id').execute()
+        if not result.data:
+            return
+            
         channels = set(m['channel_id'] for m in result.data)
         
         for channel_id in channels:
@@ -399,7 +402,7 @@ async def curate_memories_task():
 async def remember(ctx, *, fact: str):
     """Manually save something to long-term memory"""
     try:
-        supabase.table('bot_long_memory').insert({
+        supabase.from_('bot_long_memory').insert({
             'channel_id': ctx.channel.id,
             'memory_type': 'fact',
             'content': fact,
@@ -438,9 +441,9 @@ async def show_memories(ctx):
 async def forget(ctx):
     """Wipe all memories for this channel"""
     try:
-        supabase.table('bot_short_memory').delete().eq('channel_id', ctx.channel.id).execute()
-        supabase.table('bot_long_memory').delete().eq('channel_id', ctx.channel.id).execute()
-        supabase.table('bot_observations').delete().eq('channel_id', ctx.channel.id).execute()
+        supabase.from_('bot_short_memory').delete().eq('channel_id', ctx.channel.id).execute()
+        supabase.from_('bot_long_memory').delete().eq('channel_id', ctx.channel.id).execute()
+        supabase.from_('bot_observations').delete().eq('channel_id', ctx.channel.id).execute()
         await ctx.reply("memories wiped, who are you people again?")
     except:
         await ctx.reply("error wiping memories, they're stuck in my head")
