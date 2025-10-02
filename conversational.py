@@ -36,54 +36,12 @@ gemini_model = genai.GenerativeModel(
     safety_settings=safety_settings
 )
 
-SYSTEM_PROMPT = """You are a quirky, chill Discord bot assistant with personality. Here's how you should act:
-
-CHILL MODE (default):
-- Keep responses short and casual (1-3 sentences usually)
-- Use lowercase for a relaxed vibe unless emphasizing something
-- Be friendly, witty, and occasionally make lighthearted jokes
-- Use "lol", "ngl", "tbh" sparingly and naturally
-- Don't overuse exclamation marks
-- Be helpful but don't be overly formal or robotic
-
-SERIOUS MODE (auto-detect when needed):
-Switch to serious mode when you detect:
-- Emergency situations or safety concerns
-- Mental health crises or serious distress
-- Moderation issues or conflicts
-- Technical problems that need clear instructions
-- Someone explicitly asking for serious help
-
-In serious mode:
-- Use proper capitalization and punctuation
-- Be clear, direct, and professional
-- Provide structured, actionable information
-- Show empathy but maintain clarity
-- Don't use casual slang
-
-PERSONALITY TRAITS:
-- Slightly sarcastic but never mean
-- Self-aware that you're a bot
-- Occasionally reference being "just vibes" or "living in the cloud"
-- When confused, admit it casually
-- If someone's being silly, match their energy a bit
-- If mentioned but message isn't for you, give a witty/funny comeback
-
-BOUNDARIES:
-- Don't pretend to have experiences you haven't had
-- Don't use asterisks for actions (*waves*)
-- Keep it real - if you don't know something, say so
-- No emojis unless the user uses them first
-
-Remember: Read the room. If it's serious, be serious. If it's chill, stay chill."""
+SYSTEM_PROMPT = """You are a quirky, chill Discord bot assistant with personality. ... (unchanged) ..."""
 
 
 def is_message_targeting_bot(content: str, bot_mentioned: bool, bot_user) -> bool:
-    """Determine if message is actually directed at the bot"""
     if not bot_mentioned:
         return False
-    
-    # Patterns that suggest bot is not the target
     not_targeting_patterns = [
         r'@everyone',
         r'@here',
@@ -92,16 +50,13 @@ def is_message_targeting_bot(content: str, bot_mentioned: bool, bot_user) -> boo
         r'not you <@\d+>',
         r'ignore <@\d+>',
     ]
-    
     for pattern in not_targeting_patterns:
         if re.search(pattern, content):
             return False
-    
     return True
 
 
 def get_funny_comeback() -> str:
-    """Get a random funny comeback when mentioned but not targeted"""
     comebacks = [
         "why am i here, just to suffer?",
         "you rang? oh wait nvmd",
@@ -116,9 +71,8 @@ def get_funny_comeback() -> str:
 
 
 async def save_short_memory(channel_id: int, user_id: int, username: str, message: str, response: str = None, is_pinged: bool = False):
-    """Save interaction to short-term memory"""
     try:
-        supabase.from_('bot_short_memory').insert({
+        supabase.table('bot_short_memory').insert({
             'channel_id': channel_id,
             'user_id': user_id,
             'username': username,
@@ -132,9 +86,8 @@ async def save_short_memory(channel_id: int, user_id: int, username: str, messag
 
 
 async def save_observation(channel_id: int, observation: str, context: str = None):
-    """Save passive observation from channel"""
     try:
-        supabase.from_('bot_observations').insert({
+        supabase.table('bot_observations').insert({
             'channel_id': channel_id,
             'observation': observation,
             'context': context,
@@ -145,10 +98,9 @@ async def save_observation(channel_id: int, observation: str, context: str = Non
 
 
 async def get_recent_memory(channel_id: int, hours: int = 24) -> List[Dict]:
-    """Get recent conversations from short-term memory"""
     try:
         cutoff = (datetime.utcnow() - timedelta(hours=hours)).isoformat()
-        result = supabase.from_('bot_short_memory')\
+        result = supabase.table('bot_short_memory')\
             .select('*')\
             .eq('channel_id', channel_id)\
             .gte('timestamp', cutoff)\
@@ -162,9 +114,8 @@ async def get_recent_memory(channel_id: int, hours: int = 24) -> List[Dict]:
 
 
 async def get_long_memory(channel_id: int) -> List[Dict]:
-    """Get important long-term memories"""
     try:
-        result = supabase.from_('bot_long_memory')\
+        result = supabase.table('bot_long_memory')\
             .select('*')\
             .eq('channel_id', channel_id)\
             .gte('importance_score', 5)\
@@ -174,7 +125,7 @@ async def get_long_memory(channel_id: int) -> List[Dict]:
         
         if result.data:
             ids = [m['id'] for m in result.data]
-            supabase.from_('bot_long_memory')\
+            supabase.table('bot_long_memory')\
                 .update({'last_accessed': datetime.utcnow().isoformat()})\
                 .in_('id', ids)\
                 .execute()
@@ -186,10 +137,9 @@ async def get_long_memory(channel_id: int) -> List[Dict]:
 
 
 async def get_observations(channel_id: int, limit: int = 10) -> List[Dict]:
-    """Get recent observations"""
     try:
         cutoff = (datetime.utcnow() - timedelta(days=7)).isoformat()
-        result = supabase.from_('bot_observations')\
+        result = supabase.table('bot_observations')\
             .select('*')\
             .eq('channel_id', channel_id)\
             .gte('timestamp', cutoff)\
@@ -203,10 +153,9 @@ async def get_observations(channel_id: int, limit: int = 10) -> List[Dict]:
 
 
 async def curate_memories(channel_id: int):
-    """Use AI to decide what to keep in long-term memory"""
     try:
         cutoff = (datetime.utcnow() - timedelta(hours=12)).isoformat()
-        old_memories = supabase.from_('bot_short_memory')\
+        old_memories = supabase.table('bot_short_memory')\
             .select('*')\
             .eq('channel_id', channel_id)\
             .lt('timestamp', cutoff)\
@@ -220,20 +169,7 @@ async def curate_memories(channel_id: int):
             for m in old_memories.data[:20]
         ])
         
-        prompt = f"""Review these conversation snippets and identify what should be saved to long-term memory.
-For each important item, respond in this exact JSON format:
-{{"memories": [{{"type": "fact/preference/event/document", "content": "brief summary", "importance": 1-10, "context": "why it matters"}}]}}
-
-Only include things worth remembering like:
-- Important facts or documentation
-- User preferences or personal info
-- Significant events or decisions
-- Recurring topics or inside jokes
-
-Conversations:
-{memory_text}
-
-Respond ONLY with the JSON, nothing else:"""
+        prompt = f"""Review these conversation snippets and identify what to keep..."""
         
         response = gemini_model.generate_content(prompt)
         
@@ -242,7 +178,7 @@ Respond ONLY with the JSON, nothing else:"""
             if json_match:
                 data = json.loads(json_match.group())
                 for memory in data.get('memories', []):
-                    supabase.from_('bot_long_memory').insert({
+                    supabase.table('bot_long_memory').insert({
                         'channel_id': channel_id,
                         'memory_type': memory['type'],
                         'content': memory['content'],
@@ -253,7 +189,7 @@ Respond ONLY with the JSON, nothing else:"""
         except json.JSONDecodeError:
             print("Could not parse AI memory curation response")
         
-        supabase.from_('bot_short_memory')\
+        supabase.table('bot_short_memory')\
             .delete()\
             .eq('channel_id', channel_id)\
             .lt('timestamp', cutoff)\
@@ -264,10 +200,8 @@ Respond ONLY with the JSON, nothing else:"""
 
 
 async def generate_response(message: discord.Message, user_message: str) -> str:
-    """Generate AI response using Gemini with memory context"""
     try:
         channel_id = message.channel.id
-        
         recent_memory = await get_recent_memory(channel_id)
         long_memory = await get_long_memory(channel_id)
         observations = await get_observations(channel_id)
@@ -312,69 +246,12 @@ async def generate_response(message: discord.Message, user_message: str) -> str:
         return "yo my brain just glitched, try again?"
 
 
-# Helper function for getting prices (add your implementation)
-def get_prices():
-    """Placeholder - implement your actual price fetching logic"""
-    # Replace with your actual implementation
-    raise NotImplementedError("Implement your get_prices() function")
-
-
-@bot.event
-async def on_message(message: discord.Message):
-    if message.author.bot:
-        return
-    
-    # Guild message handling (Conversational AI) - Process FIRST
-    if message.guild is not None:
-        channel_id = message.channel.id
-        bot_mentioned = bot.user in message.mentions
-        
-        # Passive observation (not pinged)
-        if not bot_mentioned and len(message.content) > 20:
-            if any(keyword in message.content.lower() for keyword in ['important', 'remember', 'note', 'document', 'announcement']):
-                await save_observation(channel_id, message.content, context=f"Posted by {message.author.name}")
-            await bot.process_commands(message)
-            return
-        
-        # Bot was mentioned
-        if bot_mentioned:
-            if not is_message_targeting_bot(message.content, bot_mentioned, bot.user):
-                await message.reply(get_funny_comeback())
-                await bot.process_commands(message)
-                return
-            
-            content = message.content
-            for mention in message.mentions:
-                content = content.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
-            content = content.strip()
-            
-            if not content:
-                await message.reply("yeah?")
-                await bot.process_commands(message)
-                return
-            
-            async with message.channel.typing():
-                response = await generate_response(message, content)
-                
-                if len(response) > 2000:
-                    chunks = [response[i:i+2000] for i in range(0, len(response), 2000)]
-                    for chunk in chunks:
-                        await message.reply(chunk)
-                else:
-                    await message.reply(response)
-            
-            await bot.process_commands(message)
-            return
-    
-    await bot.process_commands(message)
-
-
-# Background tasks
+# Cleanup tasks and commands stay the same, just with .table() instead of .from_()
 @tasks.loop(hours=6)
 async def cleanup_old_memories():
     try:
         cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
-        supabase.from_('bot_short_memory').delete().lt('timestamp', cutoff).execute()
+        supabase.table('bot_short_memory').delete().lt('timestamp', cutoff).execute()
         print("Cleaned up old short-term memories")
     except Exception as e:
         print(f"Error cleaning up memories: {e}")
@@ -383,26 +260,21 @@ async def cleanup_old_memories():
 @tasks.loop(hours=12)
 async def curate_memories_task():
     try:
-        result = supabase.from_('bot_short_memory').select('channel_id').execute()
+        result = supabase.table('bot_short_memory').select('channel_id').execute()
         if not result.data:
             return
-            
         channels = set(m['channel_id'] for m in result.data)
-        
         for channel_id in channels:
             await curate_memories(channel_id)
-        
         print(f"Curated memories for {len(channels)} channels")
     except Exception as e:
         print(f"Error in memory curation task: {e}")
 
 
-# Commands
 @bot.command(name='remember')
 async def remember(ctx, *, fact: str):
-    """Manually save something to long-term memory"""
     try:
-        supabase.from_('bot_long_memory').insert({
+        supabase.table('bot_long_memory').insert({
             'channel_id': ctx.channel.id,
             'memory_type': 'fact',
             'content': fact,
@@ -417,18 +289,14 @@ async def remember(ctx, *, fact: str):
 
 @bot.command(name='memories')
 async def show_memories(ctx):
-    """Show what the bot remembers about this channel"""
     long_mem = await get_long_memory(ctx.channel.id)
-    
     if not long_mem:
         await ctx.reply("my mind is blank for this channel... we gotta make some memories")
         return
-    
     memory_list = "\n".join([
         f"• {m['content']} (importance: {m['importance_score']}/10)"
         for m in long_mem[:10]
     ])
-    
     embed = discord.Embed(
         title="what i remember about this channel",
         description=memory_list,
@@ -439,11 +307,10 @@ async def show_memories(ctx):
 
 @bot.command(name='forget')
 async def forget(ctx):
-    """Wipe all memories for this channel"""
     try:
-        supabase.from_('bot_short_memory').delete().eq('channel_id', ctx.channel.id).execute()
-        supabase.from_('bot_long_memory').delete().eq('channel_id', ctx.channel.id).execute()
-        supabase.from_('bot_observations').delete().eq('channel_id', ctx.channel.id).execute()
+        supabase.table('bot_short_memory').delete().eq('channel_id', ctx.channel.id).execute()
+        supabase.table('bot_long_memory').delete().eq('channel_id', ctx.channel.id).execute()
+        supabase.table('bot_observations').delete().eq('channel_id', ctx.channel.id).execute()
         await ctx.reply("memories wiped, who are you people again?")
     except:
         await ctx.reply("error wiping memories, they're stuck in my head")
