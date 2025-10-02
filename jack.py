@@ -16,7 +16,7 @@ from utils import get_registration_sheet, load_registration_data, save_to_allian
 from databases import get_all_alerts, fetch_latest_model, fetch_latest_price, MATERIALS, SUPABASE_KEY, SUPABASE_URL
 from regression_models import fetch_material_data, train_model_for_resource
 from warrooms import handle_pnw_events
-from conversational import generate_response, is_message_targeting_bot, get_funny_comeback, save_observation, curate_memories, save_short_memory
+from conversational import generate_response, is_message_targeting_bot, get_funny_comeback, save_observation, save_short_memory
 
 UNIT_PRICES = {
     "soldiers": 5,
@@ -838,50 +838,47 @@ async def on_message(message: discord.Message):
                 print(f"Error handling DM logging: {e}")
 
         await message.channel.send(default_reply)
-        
+
     if message.guild is not None:
         channel_id = message.channel.id
         bot_mentioned = bot.user in message.mentions
-        
-        # Passive observation (not pinged)
+
         if not bot_mentioned and len(message.content) > 20:
             if any(keyword in message.content.lower() for keyword in ['important', 'remember', 'note', 'document', 'announcement']):
                 await save_observation(channel_id, message.content, context=f"Posted by {message.author.name}")
             await bot.process_commands(message)
             return
-        
-        # Bot was mentioned
+
         if bot_mentioned:
-            # Check if actually targeted
             if not is_message_targeting_bot(message.content, bot_mentioned, bot.user):
                 await message.reply(get_funny_comeback())
                 await bot.process_commands(message)
                 return
-            
-            # Remove bot mention
+
             content = message.content
             for mention in message.mentions:
                 content = content.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
             content = content.strip()
-            
+
             if not content:
                 await message.reply("yeah?")
                 await bot.process_commands(message)
                 return
-            
+
             async with message.channel.typing():
                 response = await generate_response(message, content)
-                
                 if len(response) > 2000:
                     chunks = [response[i:i+2000] for i in range(0, len(response), 2000)]
                     for chunk in chunks:
                         await message.reply(chunk)
                 else:
                     await message.reply(response)
-    
+
+            await bot.process_commands(message)
+            return
+
     await bot.process_commands(message)
 
-# Cleanup tasks and commands stay the same, just with .table() instead of .from_()
 @tasks.loop(hours=6)
 async def cleanup_old_memories():
     try:
@@ -904,6 +901,7 @@ async def curate_memories_task():
         print(f"Curated memories for {len(channels)} channels")
     except Exception as e:
         print(f"Error in memory curation task: {e}")
+
 
 async def start_war_listener():
     await bot.wait_until_ready()
