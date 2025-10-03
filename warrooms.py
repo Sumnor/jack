@@ -172,33 +172,37 @@ async def check_and_cleanup_war_rooms(guild_id: int, wars: list):
         alliance_members = await get_alliance_members(guild_id)
         aa_member_ids = {str(member["NationID"]) for member in alliance_members}
         
-        # Track active enemies (enemies we still have wars with)
+        # Track which enemies we have ACTIVE wars with (no end_date)
         active_enemies = set()
         for war in wars:
-            if not war.get("end_date"):  # Only count active wars
+            # Only count wars that haven't ended
+            if not war.get("end_date"):
                 attacker_id = str(war.get("att_id"))
                 defender_id = str(war.get("def_id"))
                 
+                # If we're the attacker, the defender is our enemy
                 if attacker_id in aa_member_ids:
                     active_enemies.add(defender_id)
+                # If we're the defender, the attacker is our enemy
                 if defender_id in aa_member_ids:
                     active_enemies.add(attacker_id)
         
-        # Check all war room channels
+        print(f"Active enemies for guild {guild_id}: {active_enemies}")
+        
+        # Check all war room channels in the category
         for channel in category.channels:
             if isinstance(channel, discord.TextChannel) and channel.name.startswith("war-"):
-                # Extract enemy ID from channel name (format: war-{id}-vs-nation-{enemy_id})
+                # Extract enemy ID from channel name (format: war-{war_id}-vs-nation-{enemy_id})
                 parts = channel.name.split("-")
-                if len(parts) >= 2:
+                if len(parts) >= 4:  # Should be: ['war', '{id}', 'vs', 'nation', '{enemy_id}']
                     enemy_id = parts[-1]  # Last part is enemy nation ID
                     
-                    # If this enemy is no longer active, delete the room
-                    if enemy_id not in active_enemies:
-                        await channel.delete(reason=f"No more active wars with enemy {enemy_id}")
-                        print(f"Deleted war room {channel.name} - no active wars remaining")
+                    print(f"Checking room {channel.name} for enemy {enemy_id}")
                     
-    except Exception as e:
-        print(f"Error in war room cleanup: {e}")
+                    # Only delete if this enemy is NOT in our active enemies list
+                    if enemy_id not in active_enemies:
+                        print(f"Deleting war room {channel.name} - enemy {enemy_id} has no active wars")
+                        await channel.
 
 def get_war_color(war_type: str) -> int:
     war_type = war_type.lower()
@@ -934,21 +938,20 @@ async def handle_pnw_events():
                                 war_id = str(war.get("id"))
                                 if not war_id or war_id == "None":
                                     continue
-
+                        
                                 attacker_id = str(war.get("att_id", "Unknown"))
                                 defender_id = str(war.get("def_id", "Unknown"))
-
+                        
                                 if attacker_id not in aa_member_map and defender_id not in aa_member_map:
                                     print(f"DEBUG: Skipping war {war_id} (no alliance members involved)")
                                     continue
-
+                        
                                 # Determine enemy ID
                                 if attacker_id in aa_member_map:
                                     enemy_id = defender_id
                                 else:
                                     enemy_id = attacker_id
                                 
-                                # Check if war room exists for this enemy
                                 war_channel = find_existing_war_room_by_enemy(category, enemy_id)
                                 
                                 if not war_channel:
@@ -956,16 +959,17 @@ async def handle_pnw_events():
                                     is_new_turn = False
                                     if not war_channel:
                                         continue
-
+                                
                                 await send_detailed_war_update(
                                     war_channel, war, alliance_members, is_new_turn, api_key=api_key
                                 )
-
+                        
+                                # Update permissions for current participants
                                 current_participants = {
                                     pid for pid in (attacker_id, defender_id) if pid in aa_member_map
                                 }
                                 await update_war_room_access(guild, war_channel, current_participants)
-
+                        
                             except Exception as e:
                                 print(f"❌ Error processing war {war.get('id','Unknown')} in guild {guild.id}: {e}")
                                 import traceback; traceback.print_exc()
