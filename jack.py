@@ -16,7 +16,6 @@ from utils import get_registration_sheet, load_registration_data, save_to_allian
 from databases import get_all_alerts, fetch_latest_model, fetch_latest_price, MATERIALS, SUPABASE_KEY, SUPABASE_URL
 from regression_models import fetch_material_data, train_model_for_resource
 from warrooms import handle_pnw_events
-from conversational import generate_response, is_message_targeting_bot, get_funny_comeback, save_short_memory
 
 UNIT_PRICES = {
     "soldiers": 5,
@@ -838,72 +837,7 @@ async def on_message(message: discord.Message):
                 print(f"Error handling DM logging: {e}")
 
         await message.channel.send(default_reply)
-    
-    if message.guild is not None:
-        channel_id = message.channel.id
-        bot_mentioned = bot.user in message.mentions
-        
-        if not bot_mentioned:
-            await bot.process_commands(message)
-            return
-        
-        if bot_mentioned:
-            if not is_message_targeting_bot(message.content, bot_mentioned, bot.user):
-                await message.reply(get_funny_comeback())
-                await bot.process_commands(message)
-                return
-            
-            content = message.content
-            for mention in message.mentions:
-                content = content.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
-            content = content.strip()
-            
-            if not content and not message.attachments:
-                await message.reply("yeah?")
-                await bot.process_commands(message)
-                return
-            
-            async with message.channel.typing():
-                response = await generate_response(message, content)
-                if len(response) > 2000:
-                    chunks = [response[i:i+2000] for i in range(0, len(response), 2000)]
-                    for chunk in chunks:
-                        await message.reply(chunk)
-                else:
-                    await message.reply(response)
-            
-            await bot.process_commands(message)
-            return
-    
     await bot.process_commands(message)
-
-
-# -----------------------
-# Background Tasks
-# -----------------------
-@tasks.loop(minutes=30)
-async def cleanup_old_memories():
-    """Delete short-term memory older than 1 hour"""
-    try:
-        cutoff = (datetime.utcnow() - timedelta(hours=1)).isoformat()
-        supabase.table('bot_short_memory').delete().lt('timestamp', cutoff).execute()
-    except Exception as e:
-        print(f"Error cleaning up memories: {e}")
-
-
-@tasks.loop(hours=12)
-async def curate_memories_task():
-    try:
-        result = supabase.table('bot_short_memory').select('channel_id').execute()
-        if not result.data:
-            return
-        channels = set(m['channel_id'] for m in result.data)
-        for channel_id in channels:
-            # Add your curate_memories function here if needed
-            pass
-        print(f"Curated memories for {len(channels)} channels")
-    except Exception as e:
-        print(f"Error in memory curation task: {e}")
 
 async def start_war_listener():
     await bot.wait_until_ready()
@@ -947,8 +881,6 @@ async def on_ready():
         bot.add_view(TicketButtonView())
     
     print("Starting tasks...")
-    cleanup_old_memories.start()
-    curate_memories_task.start()
     if not check_alerts.is_running():
         check_alerts.start()
     if not hourly_snapshot.is_running():
