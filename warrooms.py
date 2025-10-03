@@ -202,7 +202,14 @@ async def check_and_cleanup_war_rooms(guild_id: int, wars: list):
                     # Only delete if this enemy is NOT in our active enemies list
                     if enemy_id not in active_enemies:
                         print(f"Deleting war room {channel.name} - enemy {enemy_id} has no active wars")
-                        await channel.
+                        await channel.delete(reason=f"All wars with enemy {enemy_id} have ended")
+                    else:
+                        print(f"Keeping war room {channel.name} - enemy {enemy_id} still has active wars")
+                    
+    except Exception as e:
+        print(f"Error in war room cleanup: {e}")
+        import traceback
+        traceback.print_exc()
 
 def get_war_color(war_type: str) -> int:
     war_type = war_type.lower()
