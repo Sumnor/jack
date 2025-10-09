@@ -13,6 +13,8 @@ from settings_multi import get_warroom_id, get_api_key_for_guild, get_aa_name_gu
 import requests
 from discord_views import MultiWarParticipantView
 
+RUN = True
+
 async def get_attack_data(war_id: str, api_key: str) -> dict:
     import aiohttp
 
@@ -852,7 +854,10 @@ async def create_war_room(
         return None
 
 
+
 async def run_node_listener():
+    if not RUN:
+        return
     try:
         project_root = os.path.dirname(os.path.abspath(__file__))
         print("Installing Node.js packages...")
@@ -1039,7 +1044,23 @@ async def handle_pnw_events():
             print(f"Terminating Node.js process (PID {process.pid})")
             process.terminate()
             await process.wait()
-
+            
+@bot.tree.command(name='disable_or_enable_run', description='Enable or disable automatic war room checks(admin only)')
+async def doe_run(interaction: discord.Interaction):
+    try:
+        await interaction.response.defer()
+        user_id = interaction.user.id
+        if user_id != "1148678095176474678":
+            return interaction.followup.send("You don't have the necessary permissions", ephemeral=True)
+        if RUN:
+            RUN = False
+            await run_node_listener()
+        else:
+            RUN = True
+            await run_node_listener()
+        await interaction.followup.send(f"`RUN` has been set to `{RUN}`", ephemeral=True)
+        
+            
 
 @bot.tree.command(name='toggle_war_rooms', description='Enable or disable automatic war room creation')
 async def toggle_war_rooms(interaction: discord.Interaction):
