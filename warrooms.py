@@ -1059,6 +1059,12 @@ async def doe_run(interaction: discord.Interaction):
             RUN = True
             await run_node_listener()
         await interaction.followup.send(f"`RUN` has been set to `{RUN}`", ephemeral=True)
+    except Exception as e:
+        print(f"Error in toggle_war_rooms command: {e}")
+        if not interaction.response.is_done():
+            await interaction.response.send_message("An error occurred while toggling war rooms.", ephemeral=True)
+        else:
+            await interaction.followup.send("An error occurred while toggling war rooms.", ephemeral=True)
         
             
 
