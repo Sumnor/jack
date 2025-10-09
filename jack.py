@@ -336,159 +336,6 @@ async def price_snapshots():
 async def before_price_snapshots():
     await bot.wait_until_ready()
 
-@tasks.loop(hours=1)
-async def hourly_snapshot():
-    now = datetime.datetime.now(timezone.utc)
-    current_hour = now.replace(minute=0, second=0, microsecond=0)
-
-    guild_ids_to_process = set()
-    for guild in bot.guilds:
-        guild_id = str(guild.id)
-        try:
-            
-            records = supabase.select('alliance_snapshots', 
-                                    filters={'guild_id': guild_id},
-                                    columns='time_t')
-            
-            if records:
-                last_time_str = records[-1].get("time_t", "")
-                try:
-                    last_time = datetime.datetime.fromisoformat(last_time_str)
-                    if last_time.replace(minute=0, second=0, microsecond=0) == current_hour:
-                        print(f"⭐ Already saved snapshot for guild {guild_id}")
-                        continue
-                except ValueError:
-                    print(f"⚠️ Invalid timestamp in database for guild {guild_id}: {last_time_str}")
-            guild_ids_to_process.add(guild_id)
-        except Exception as e:
-            print(f"⚪ Could not access alliance snapshots for guild {guild_id}: {e}")
-
-    if not guild_ids_to_process:
-        print("✅ All guilds already processed this hour.")
-        return
-    
-    
-    guild_settings = {}
-    for guild_id in guild_ids_to_process:
-        try:
-            api_key_record = supabase.select('server_settings', 
-                                           filters={'server_id': guild_id, 'key': 'API_KEY'})
-            aa_name_record = supabase.select('server_settings', 
-                                           filters={'server_id': guild_id, 'key': 'AA_NAME'})
-            
-            if api_key_record and aa_name_record:
-                guild_settings[guild_id] = {
-                    'API_KEY': api_key_record[0].get('value', ''),
-                    'AA_NAME': aa_name_record[0].get('value', '')
-                }
-        except Exception as e:
-            print(f"Failed to get settings for guild {guild_id}: {e}")
-
-    if not guild_settings:
-        print("⚠️ No guilds found with both API_KEY and AA_NAME settings.")
-        return
-    
-    load_sheet_data()
-    for guild_id, settings in guild_settings.items():
-        api_key = settings["API_KEY"]
-        target_aa_name = settings["AA_NAME"]
-        
-        try:
-            all_users = cached_users
-            print(f"👥 Guild {guild_id}: {len(all_users)} total registered users in global sheet")
-
-            if not all_users:
-                print(f"⚠️ Skipping guild {guild_id} (no users in global sheet)")
-                continue
-            
-            filtered_users = {}
-            match_count = 0
-            
-            print(f"🎯 Target AA: '{target_aa_name}'")
-            
-            for user_id, user in all_users.items():
-                user_aa = str(user.get("AA", "")).strip()
-                
-                if user_aa.lower() == target_aa_name.lower():
-                    match_count += 1
-                    filtered_users[user_id] = user
-
-            print(f"🔍 Guild {guild_id}: Found {match_count} users in '{target_aa_name}' alliance")
-
-            if not filtered_users:
-                print(f"⚠️ Skipping guild {guild_id} (no users in target alliance '{target_aa_name}')")
-                continue
-            
-            
-            prices = {}
-            try:
-                res = requests.post(
-                    f"https://api.politicsandwar.com/graphql?api_key={api_key}",
-                    json={"query": "{ top_trade_info { resources { resource average_price } } }"},
-                    headers={"Content-Type": "application/json"}
-                )
-                res.raise_for_status()
-                resources_data = res.json()["data"]["top_trade_info"]["resources"]
-                prices = {r["resource"]: float(r["average_price"]) for r in resources_data}
-            except Exception as e:
-                print(f"⚠️ Failed to fetch prices for guild {guild_id}: {e}")
-
-            totals = {
-                "money": 0, "food": 0, "gasoline": 0, "munitions": 0,
-                "steel": 0, "aluminum": 0, "bauxite": 0, "lead": 0,
-                "iron": 0, "oil": 0, "coal": 0, "uranium": 0, "num_cities": 0
-            }
-            processed, failed = 0, 0
-            seen_ids = set()
-            
-            for user_id, user in filtered_users.items():
-                nation_id = str(user.get("NationID", "")).strip()
-                if not nation_id or nation_id in seen_ids:
-                    failed += 1
-                    continue
-                seen_ids.add(nation_id)
-
-                try:
-                    _, cities, food, money, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, uranium = get_resources(nation_id, None, guild_id)
-                    if not money:
-                        raise ValueError("No data returned")
-                    
-                    for key, val in zip(
-                        ["money", "food", "gasoline", "munitions", "steel", "aluminum", "bauxite", "lead", "iron", "oil", "coal", "uranium", "num_cities"],
-                        [money, food, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, uranium, cities]
-                    ):
-                        totals[key] += val
-                    processed += 1
-                except Exception as e:
-                    failed += 1
-                    print(f"⚪ Failed for user {user_id} (guild {guild_id}): {e}")
-                await asyncio.sleep(5)
-
-            wealth = totals["money"]
-            resource_values = {}
-            for res, amt in totals.items():
-                if res in ["money", "num_cities"]:
-                    continue
-                val = amt * prices.get(res, 0)
-                resource_values[res] = val
-                wealth += val
-
-            
-            save_row = [current_hour.isoformat(), wealth, totals["money"]]
-            for res in [
-                "food", "gasoline", "munitions", "steel", "aluminum",
-                "bauxite", "lead", "iron", "oil", "coal", "uranium"
-            ]:
-                save_row.append(resource_values.get(res, 0))
-
-            try:
-                save_to_alliance_net(save_row, guild_id=guild_id)
-                print(f"✅ Saved snapshot for guild {guild_id} (AA: '{target_aa_name}'): ${wealth:,.0f} ({processed} processed, {failed} failed)")
-            except Exception as e:
-                print(f"⚪ Failed to save snapshot for guild {guild_id}: {e}")
-
-        except Exception as e:
-            print(f"⚪ General error in guild {guild_id}: {e}")
 
 @tasks.loop(hours=2)
 async def check_api_loop():
@@ -641,11 +488,6 @@ def get_nation_score(nation_id: str) -> float | None:
     except Exception as e:
         print(f"[ERROR] get_nation_score: {e}")
         return None
-
-@hourly_snapshot.before_loop
-async def before_hourly():
-    print("Waiting for bot to be ready before starting hourly snapshots...")
-    await bot.wait_until_ready()
 
 @tasks.loop(hours=168)
 async def weekly_member_updater():
@@ -857,7 +699,6 @@ async def on_ready():
     import spying
     import war
     import quality_of_life
-    import res_details
     import raws_requests
     import base_commands
     import request_build
@@ -883,8 +724,6 @@ async def on_ready():
     print("Starting tasks...")
     if not check_alerts.is_running():
         check_alerts.start()
-    if not hourly_snapshot.is_running():
-        hourly_snapshot.start()
     if not process_auto_requests.is_running():
         process_auto_requests.start()
     if not weekly_member_updater.is_running():
