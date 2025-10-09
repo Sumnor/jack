@@ -156,6 +156,39 @@ async def get_alliance_members(guild_id: int) -> List[Dict]:
         traceback.print_exc()
         return []
 
+def get_participants_from_description(channel: discord.TextChannel) -> Set[str]:
+    """Extract participant nation IDs from channel description"""
+    try:
+        if not channel.topic:
+            return set()
+        
+        # Description format: "Participants: nation_id1,nation_id2,nation_id3"
+        if "Participants:" in channel.topic:
+            parts = channel.topic.split("Participants:")
+            if len(parts) > 1:
+                participant_str = parts[1].strip()
+                return set(participant_str.split(","))
+        
+        return set()
+    except Exception as e:
+        print(f"Error parsing participants from description: {e}")
+        return set()
+
+async def update_channel_description(channel: discord.TextChannel, participant_ids: Set[str]):
+    """Update channel description with current participants"""
+    try:
+        participant_str = ",".join(sorted(participant_ids))
+        new_topic = f"Participants: {participant_str}"
+        
+        # Limit to 1024 characters (Discord's topic limit)
+        if len(new_topic) > 1024:
+            new_topic = new_topic[:1020] + "..."
+        
+        await channel.edit(topic=new_topic)
+        print(f"Updated channel {channel.name} description with participants: {participant_str}")
+    except Exception as e:
+        print(f"Error updating channel description: {e}")
+
 async def check_and_cleanup_war_rooms(guild_id: int, wars: list):
     """Check if wars have ended and cleanup rooms based on end_date"""
     try:
@@ -338,11 +371,12 @@ async def send_detailed_war_update(war_channel, war, alliance_members, is_new_tu
 
         attack_data = await get_attack_data(war_id, api_key)
         
-        # Try to get last action from channel topic
+        # Try to get last action from channel topic (after "Participants:" part)
         last_action_signature = {}
-        if war_channel.topic:
+        if war_channel.topic and "|" in war_channel.topic:
             try:
-                last_action_signature = json.loads(war_channel.topic)
+                action_part = war_channel.topic.split("|", 1)[1]
+                last_action_signature = json.loads(action_part)
             except:
                 pass
         
@@ -363,10 +397,13 @@ async def send_detailed_war_update(war_channel, war, alliance_members, is_new_tu
         )
         
         if is_new_turn_action:
-            # Store last action in channel topic
+            # Store last action in channel topic (after participants)
             try:
+                participant_part = war_channel.topic.split("|")[0] if war_channel.topic and "|" in war_channel.topic else war_channel.topic
                 topic_data = {**current_action_signature, 'ground_control': war.get('ground_control', 0), 'air_superiority': war.get('air_superiority', 0), 'naval_blockade': war.get('naval_blockade', 0)}
-                await war_channel.edit(topic=json.dumps(topic_data)[:1024])
+                new_topic = f"{participant_part}|{json.dumps(topic_data)}"
+                if len(new_topic) <= 1024:
+                    await war_channel.edit(topic=new_topic)
             except:
                 pass
                 
@@ -479,7 +516,8 @@ async def send_detailed_war_update(war_channel, war, alliance_members, is_new_tu
             'def_ships': war.get("def_ships_lost", 0)
         }
 
-        # Get all participants from channel permissions
+        # Get participants from description
+        current_participants = get_participants_from_description(war_channel)
         our_participants = []
         if our_side_is_attacker:
             our_participants.append(attacker_id)
@@ -612,44 +650,54 @@ def find_existing_war_room_by_enemy(category: discord.CategoryChannel, enemy_id:
         return None
 
 
-async def update_war_room_access(guild: discord.Guild, channel: discord.TextChannel, current_participant_ids: Set[str]):
-    """Update war room permissions based on current participants"""
+async def update_war_room_access(guild: discord.Guild, channel: discord.TextChannel, new_participant_ids: Set[str], alliance_members: List[Dict]):
+    """Add new participants to war room and send join notification"""
     try:
-        alliance_members = await get_alliance_members(guild.id)
+        # Get current participants from description
+        current_participants = get_participants_from_description(channel)
+        
+        # Find who is actually new
+        truly_new = new_participant_ids - current_participants
+        
+        if not truly_new:
+            return  # No new participants
+        
         aa_member_map = {str(member["NationID"]): member["DiscordID"] for member in alliance_members}
         
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(read_messages=False),
-            guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
-        }
-        
-        # Add permissions for current participants
-        for nation_id in current_participant_ids:
+        # Add permissions for new participants
+        for nation_id in truly_new:
             if nation_id in aa_member_map:
                 try:
                     discord_member = guild.get_member(int(aa_member_map[nation_id]))
                     if discord_member:
-                        overwrites[discord_member] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+                        await channel.set_permissions(
+                            discord_member, 
+                            read_messages=True, 
+                            send_messages=True
+                        )
                 except (ValueError, TypeError):
                     print(f"Invalid Discord ID: {aa_member_map[nation_id]}")
                     continue
         
-        # Add government role if configured
-        try:
-            gov_role_name = get_settings_value("GOV_ROLE", guild.id)
-            if gov_role_name:
-                gov_role = discord.utils.get(guild.roles, name=gov_role_name)
-                if gov_role:
-                    overwrites[gov_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
-        except Exception as e:
-            print(f"Could not add government role: {e}")
+        # Update description with all participants
+        all_participants = current_participants | new_participant_ids
+        await update_channel_description(channel, all_participants)
         
-        await channel.edit(overwrites=overwrites)
+        # Send join notification
+        new_mentions = []
+        for nation_id in truly_new:
+            if nation_id in aa_member_map:
+                new_mentions.append(f"<@{aa_member_map[nation_id]}>")
         
-        # If no participants remain, delete the channel
-        if not current_participant_ids:
-            await channel.delete(reason="No alliance members left in this war room")
-            print(f"Deleted war room {channel.name} - no alliance members remaining")
+        if new_mentions:
+            join_embed = discord.Embed(
+                title="🆕 New Participant Joined!",
+                description=f"{', '.join(new_mentions)} joined the war room",
+                color=discord.Color.green()
+            )
+            join_embed.timestamp = discord.utils.utcnow()
+            await channel.send(embed=join_embed)
+            print(f"Added {len(new_mentions)} new participant(s) to {channel.name}")
         
     except discord.HTTPException as e:
         print(f"Discord API error updating war room access: {e}")
@@ -684,55 +732,21 @@ async def create_war_room(
             return None
         
         aa_member_ids = {str(member["NationID"]) for member in alliance_members}
-        our_side = []
+        our_participants = []
         enemy_id = None
         
         if attacker_id in aa_member_ids:
-            our_side.append(attacker_id)
+            our_participants.append(attacker_id)
             enemy_id = defender_id
         if defender_id in aa_member_ids:
-            our_side.append(defender_id)
+            our_participants.append(defender_id)
             if enemy_id is None:
                 enemy_id = attacker_id
             
-        if not our_side:
+        if not our_participants:
             return None
         
-        # Check if a war room already exists for this enemy
-        existing_channel = find_existing_war_room_by_enemy(category, enemy_id)
-        
-        if existing_channel:
-            # Get current participants from the channel
-            current_participants = set()
-            for member, overwrite in existing_channel.overwrites.items():
-                if isinstance(member, discord.Member) and overwrite.read_messages:
-                    # Find nation ID for this discord member
-                    for am in alliance_members:
-                        if str(am["DiscordID"]) == str(member.id):
-                            current_participants.add(str(am["NationID"]))
-                            break
-            
-            # Add new participants
-            new_participants = set(our_side) - current_participants
-            current_participants.update(our_side)
-            
-            # Update channel permissions
-            await update_war_room_access(guild, existing_channel, current_participants)
-            
-            # Notify about new participant
-            involved_discord_ids = [
-                f"<@{member['DiscordID']}>" for member in alliance_members 
-                if str(member["NationID"]) in new_participants
-            ]
-            
-            if involved_discord_ids:
-                await existing_channel.send(
-                    f"**New participant(s) joined the war room!** {', '.join(involved_discord_ids)}"
-                )
-            
-            return existing_channel
-        
-        # Create new room if none exists
+        # Create new room
         attacker_info = await get_nation_info(attacker_id, api_key)
         defender_info = await get_nation_info(defender_id, api_key)
         
@@ -748,7 +762,7 @@ async def create_war_room(
         }
         
         for member_data in alliance_members:
-            if str(member_data["NationID"]) in our_side:
+            if str(member_data["NationID"]) in our_participants:
                 try:
                     discord_member = guild.get_member(int(member_data["DiscordID"]))
                     if discord_member:
@@ -774,6 +788,9 @@ async def create_war_room(
             overwrites=overwrites,
             reason=f"War room for war ID {war_id}"
         )
+        
+        # Set initial description with participants
+        await update_channel_description(channel, set(our_participants))
         
         embed = discord.Embed(
             title=f"⚔️ **NEW WAR ROOM** - ID {war_id}",
@@ -811,7 +828,7 @@ async def create_war_room(
         
         involved_discord_ids = [
             f"<@{member['DiscordID']}>" for member in alliance_members 
-            if str(member["NationID"]) in our_side
+            if str(member["NationID"]) in our_participants
         ]
         
         await channel.send(
@@ -932,6 +949,7 @@ async def handle_pnw_events():
                             continue
 
                         aa_member_map = {str(m["NationID"]): m["DiscordID"] for m in alliance_members}
+                        aa_member_ids = set(aa_member_map.keys())
                         category_id = get_warroom_id(guild.id)
                         
                         try:
@@ -949,33 +967,50 @@ async def handle_pnw_events():
                                 attacker_id = str(war.get("att_id", "Unknown"))
                                 defender_id = str(war.get("def_id", "Unknown"))
                         
-                                if attacker_id not in aa_member_map and defender_id not in aa_member_map:
+                                # Check if any alliance members are involved
+                                our_involved = []
+                                if attacker_id in aa_member_ids:
+                                    our_involved.append(attacker_id)
+                                if defender_id in aa_member_ids:
+                                    our_involved.append(defender_id)
+                                
+                                if not our_involved:
                                     print(f"DEBUG: Skipping war {war_id} (no alliance members involved)")
                                     continue
                         
                                 # Determine enemy ID
-                                if attacker_id in aa_member_map:
+                                if attacker_id in aa_member_ids:
                                     enemy_id = defender_id
                                 else:
                                     enemy_id = attacker_id
                                 
+                                # Look for existing war room
                                 war_channel = find_existing_war_room_by_enemy(category, enemy_id)
                                 
-                                if not war_channel:
+                                if war_channel:
+                                    # Check if current participants are in the description
+                                    current_participants = get_participants_from_description(war_channel)
+                                    new_participants = set(our_involved) - current_participants
+                                    
+                                    if new_participants:
+                                        # Add new participants
+                                        await update_war_room_access(guild, war_channel, set(our_involved), alliance_members)
+                                    
+                                    # Send war update
+                                    await send_detailed_war_update(
+                                        war_channel, war, alliance_members, is_new_turn, api_key=api_key
+                                    )
+                                else:
+                                    # Create new war room
                                     war_channel = await create_war_room(guild, war, alliance_members, api_key)
                                     is_new_turn = False
                                     if not war_channel:
                                         continue
-                                
-                                await send_detailed_war_update(
-                                    war_channel, war, alliance_members, is_new_turn, api_key=api_key
-                                )
-                        
-                                # Update permissions for current participants
-                                current_participants = {
-                                    pid for pid in (attacker_id, defender_id) if pid in aa_member_map
-                                }
-                                await update_war_room_access(guild, war_channel, current_participants)
+                                    
+                                    # Send initial update
+                                    await send_detailed_war_update(
+                                        war_channel, war, alliance_members, is_new_turn, api_key=api_key
+                                    )
                         
                             except Exception as e:
                                 print(f"❌ Error processing war {war.get('id','Unknown')} in guild {guild.id}: {e}")
