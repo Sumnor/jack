@@ -706,7 +706,6 @@ async def on_ready():
     import market_tools
     import regression_models
     import warrooms
-    import conversational
     
     try:
         from tickets import get_all_ticket_configs
