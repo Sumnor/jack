@@ -21,6 +21,7 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member, exte
         )
 
     user_id = str(interaction.user.id)
+    who_id = who.id
     own_id = None
 
     
@@ -125,7 +126,7 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member, exte
         embed.set_footer(text="Brought to you by Sumnor", icon_url=image_url)
 
         nation_id = own_id
-        view = NationInfoView(nation_id, embed, user_id)
+        view = NationInfoView(nation_id, embed, who_id)
         await interaction.followup.send(embed=embed, view=view)
 
     except Exception as e:
