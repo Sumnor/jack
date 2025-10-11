@@ -738,6 +738,15 @@ class NationInfoView(discord.ui.View):
     async def audit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         nation_id = self.nation_id
+        async def is_banker():
+            GOV_ROLE = get_gov_role(interaction)
+            return (
+                any(role.name == GOV_ROLE for role in interaction.user.roles)
+            )
+        if interaction.user.id != who.id:
+            if not await is_banker():
+                await interaction.followup.send("❌ You don't have the rights")
+                return
     
         try:
             
