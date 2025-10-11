@@ -26,6 +26,7 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member, exte
     
     if external_id != "None":
         own_id = external_id.strip()
+    else:
 
         
         guild_id = str(interaction.guild.id)
