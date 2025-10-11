@@ -27,13 +27,6 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member, exte
     if external_id != "None":
         own_id = external_id.strip()
 
-    else:
-        
-        if interaction.user.id != who.id:
-            if not await is_banker():
-                await interaction.followup.send("❌ You don't have the rights")
-                return
-
         
         guild_id = str(interaction.guild.id)
         target_id = str(who.id)
