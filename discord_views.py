@@ -574,9 +574,9 @@ class HelpView(discord.ui.View):
             item.disabled = True
 
 class NationInfoView(discord.ui.View):
-    def __init__(self, nation_id, original_embed, who=None):
+    def __init__(self, nation_id, original_embed, user_id=None):
         super().__init__(timeout=None)
-        self.who = who
+        self.who = user_id
         self.nation_id = nation_id
         self.original_embed = original_embed
 
@@ -745,7 +745,7 @@ class NationInfoView(discord.ui.View):
             return (
                 any(role.name == GOV_ROLE for role in interaction.user.roles)
             )
-        if interaction.user.id != who.id:
+        if interaction.user.id != who:
             if not await is_banker():
                 await interaction.followup.send("❌ You don't have the rights")
                 return
