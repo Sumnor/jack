@@ -574,8 +574,9 @@ class HelpView(discord.ui.View):
             item.disabled = True
 
 class NationInfoView(discord.ui.View):
-    def __init__(self, nation_id, original_embed):
+    def __init__(self, nation_id, original_embed, who=None):
         super().__init__(timeout=None)
+        self.who = who
         self.nation_id = nation_id
         self.original_embed = original_embed
 
@@ -738,6 +739,7 @@ class NationInfoView(discord.ui.View):
     async def audit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         nation_id = self.nation_id
+        who = self.who
         async def is_banker():
             GOV_ROLE = get_gov_role(interaction)
             return (
