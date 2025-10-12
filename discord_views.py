@@ -1063,7 +1063,7 @@ class NationInfoView(discord.ui.View):
         self.add_item(PrevPageButton())
         self.add_item(NextPageButton())
         self.add_item(BackButton())
-        await interaction.followup.send(embed=embed, view=self)
+        await interaction.edit_original_response(embed=embed, view=self)
 
 
 class PrevPageButton(discord.ui.Button):
