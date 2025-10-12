@@ -1284,7 +1284,7 @@ class BackButton(discord.ui.Button):
         self.parent_view = parent_view
 
     async def callback(self, interaction: discord.Interaction):
-        if str(interaction.user.id) == str('1148678095176474678'):
+        
             self.parent_view.clear_items()
             self.parent_view.add_item(self.parent_view.builds_button)
             self.parent_view.add_item(self.parent_view.projects_button)
@@ -1307,7 +1307,7 @@ class CloseButton(discord.ui.Button):
         super().__init__(label="Close", style=discord.ButtonStyle.danger)
 
     async def callback(self, interaction: discord.Interaction):
-        if str(interaction.user.id) == str('1148678095176474678'):
+        
             try:
                 await interaction.message.delete()
             except (discord.NotFound, discord.Forbidden):
