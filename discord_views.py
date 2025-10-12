@@ -981,6 +981,90 @@ class NationInfoView(discord.ui.View):
         except Exception as e:
             await interaction.followup.send(f"❌ An error occurred during MMR audit: {e}", ephemeral=True)
 
+    @discord.ui.button(label="Wars", style=discord.ButtonStyle.red)
+    async def wars_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        nation_id = self.nation_id
+        wars = get_wars_data_sql_by_nation_id(nation_id)
+    
+        if not wars:
+            embed = discord.Embed(
+                title=f"WARS FOR {nation_id}",
+                description="No active wars found.",
+                colour=discord.Colour.dark_grey()
+            )
+            await interaction.followup.send(embed=embed)
+            return
+    
+        wars_per_page = 30
+        self.pages = [wars[i:i + wars_per_page] for i in range(0, len(wars), wars_per_page)]
+        self.current_page = 0
+        embed = discord.Embed(
+            title=f"WARS FOR {nation_id} (Page {self.current_page + 1}/{len(self.pages)})",
+            colour=discord.Colour.dark_grey()
+        )
+    
+        for war in self.pages[self.current_page]:
+            war_id = war.get('id')
+            attacker_emojis, defender_emojis = [], []
+    
+            groundcontrol = war.get('groundcontrol')
+            airsuperiority = war.get('airsuperiority')
+            navalblockade = war.get('navalblockade')
+    
+            attacker_nation_name = war.get('attacker_nation_name')
+            attacker_id = war.get('attacker_id')
+            attacker_alliance_name = war.get('attacker_alliance_name')
+            attacker_alliance_id = war.get('attacker_alliance_id')
+    
+            defender_nation_name = war.get('defender_nation_name')
+            defender_id = war.get('defender_id')
+            defender_alliance_name = war.get('defender_alliance_name')
+            defender_alliance_id = war.get('defender_alliance_id')
+    
+            if groundcontrol == attacker_id:
+                attacker_emojis.append('🪖')
+            elif groundcontrol == defender_id:
+                defender_emojis.append('🪖')
+    
+            if airsuperiority == attacker_id:
+                attacker_emojis.append('✈️')
+            elif airsuperiority == defender_id:
+                defender_emojis.append('✈️')
+    
+            if navalblockade == attacker_id:
+                attacker_emojis.append('🚢')
+            elif navalblockade == defender_id:
+                defender_emojis.append('🚢')
+    
+            if attacker_emojis:
+                attacker_nation_name = f"{attacker_nation_name} ({''.join(attacker_emojis)})"
+            if defender_emojis:
+                defender_nation_name = f"{defender_nation_name} ({''.join(defender_emojis)})"
+    
+            if attacker_alliance_name:
+                attacker = f"[{attacker_nation_name}](https://www.politicsandwar.com/nation/id={attacker_id}) ([{attacker_alliance_name}](https://www.politicsandwar.com/alliance/id={attacker_alliance_id}))"
+            else:
+                attacker = f"[{attacker_nation_name}](https://www.politicsandwar.com/nation/id={attacker_id})"
+    
+            if defender_alliance_name:
+                defender = f"[{defender_nation_name}](https://www.politicsandwar.com/nation/id={defender_id}) ([{defender_alliance_name}](https://www.politicsandwar.com/alliance/id={defender_alliance_id}))"
+            else:
+                defender = f"[{defender_nation_name}](https://www.politicsandwar.com/nation/id={defender_id})"
+    
+            embed.add_field(
+                name=f"[War: {war_id}](https://politicsandwar.com/nation/war/timeline/war={war_id})",
+                value=f"Type: {war.get('war_type')} | Attacker: {attacker} | Defender: {defender}",
+                inline=False
+            )
+    
+        self.clear_items()
+        self.add_item(PrevPageButton())
+        self.add_item(NextPageButton())
+        self.add_item(BackButton())
+        await interaction.followup.send(embed=embed, view=self)
+
+
 class PrevPageButton(discord.ui.Button):
     def __init__(self):
         super().__init__(label="⬅ Prev", style=discord.ButtonStyle.secondary)
@@ -1021,6 +1105,7 @@ class BackButton(discord.ui.Button):
         self.parent_view.add_item(self.parent_view.projects_button)
         self.parent_view.add_item(self.parent_view.audit_button)
         self.parent_view.add_item(self.parent_view.mmr_button)
+        self.parent_view.add_item(self.parent_view.wars_button)
         self.parent_view.add_item(CloseButton())
 
         try:
