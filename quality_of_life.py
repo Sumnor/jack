@@ -94,10 +94,10 @@ async def who_nation(interaction: discord.Interaction, who: discord.Member, exte
 
         msg = (
             f"**📋 GENERAL INFOS:**\n"
-            f"🌍 *Nation:* {nation_name} (Nation ID: `{own_id}`)\n"
+            f"🌍 *Nation:* [{nation_name}](https://www.politicsandwar.com/nation/id={own_id}) (Nation ID: `{own_id}`)\n"
             f"👑 *Leader:* {nation_leader}\n"
             f"🔛 *Active:* {activity_str}\n"
-            f"🫂 *Alliance:* {alliance} (Alliance ID: `{alliance_id}`)\n"
+            f"🫂 *Alliance:* [{alliance}](https://www.politicsandwar.com/alliance/id={alliance_id}) (Alliance ID: `{alliance_id}`)\n"
             f"🎖️ *Alliance Position:* {alliance_position}\n"
             f"🏙️ *Cities:* {num_cities}\n"
             f"🎨 *Color Trade Bloc:* {colour}\n"
