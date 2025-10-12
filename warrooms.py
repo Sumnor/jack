@@ -207,20 +207,57 @@ async def check_and_cleanup_war_rooms(guild_id: int, wars: list):
         alliance_members = await get_alliance_members(guild_id)
         aa_member_ids = {str(member["NationID"]) for member in alliance_members}
         
-        # Track which enemies we have ACTIVE wars with (no end_date)
+        # Fetch ALL active wars for alliance members from the API
+        api_key = get_api_key_for_guild(guild_id)
+        if not api_key:
+            return
+            
         active_enemies = set()
-        for war in wars:
-            # Only count wars that haven't ended
-            if not war.get("end_date"):
-                attacker_id = str(war.get("att_id"))
-                defender_id = str(war.get("def_id"))
-                
-                # If we're the attacker, the defender is our enemy
-                if attacker_id in aa_member_ids:
-                    active_enemies.add(defender_id)
-                # If we're the defender, the attacker is our enemy
-                if defender_id in aa_member_ids:
-                    active_enemies.add(attacker_id)
+        
+        # Query API for all active wars involving alliance members
+        try:
+            import aiohttp
+            url = f"https://api.politicsandwar.com/graphql?api_key={api_key}"
+            
+            # Build list of nation IDs to check
+            nation_ids = [int(nid) for nid in aa_member_ids]
+            
+            query = """
+            query($nation_ids: [Int!]) {
+                wars(nation_id: $nation_ids, active: true) {
+                    data {
+                        id
+                        att_id
+                        def_id
+                        end_date
+                    }
+                }
+            }
+            """
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json={
+                    "query": query,
+                    "variables": {"nation_ids": nation_ids}
+                }) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        all_wars = data.get("data", {}).get("wars", {}).get("data", [])
+                        
+                        # Build set of active enemies
+                        for war in all_wars:
+                            if not war.get("end_date"):  # War is still active
+                                attacker_id = str(war.get("att_id"))
+                                defender_id = str(war.get("def_id"))
+                                
+                                if attacker_id in aa_member_ids:
+                                    active_enemies.add(defender_id)
+                                if defender_id in aa_member_ids:
+                                    active_enemies.add(attacker_id)
+        except Exception as e:
+            print(f"Error fetching active wars for cleanup check: {e}")
+            # If we can't fetch wars, don't delete any rooms to be safe
+            return
         
         print(f"Active enemies for guild {guild_id}: {active_enemies}")
         
