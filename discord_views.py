@@ -994,7 +994,7 @@ class NationInfoView(discord.ui.View):
                 description="No active wars found.",
                 colour=discord.Colour.dark_grey()
             )
-            await interaction.followup.send(embed=embed)
+            await interaction.edit_original_response(embed=embed)
             return
     
         wars_per_page = 30
