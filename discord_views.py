@@ -655,8 +655,8 @@ class NationInfoView(discord.ui.View):
     @discord.ui.button(label="Cities", style=discord.ButtonStyle.primary)
     async def builds_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        if str(interaction.user.id) != str('1148678095176474678'):
-            return await interaction.followup.send("Fuck Yourself :)")
+        
+            
         df = graphql_cities(self.nation_id, interaction)
         if df is None or df.empty:
             await interaction.followup.send("❌ Failed to fetch or parse city data.", ephemeral=True)
@@ -704,8 +704,8 @@ class NationInfoView(discord.ui.View):
     @discord.ui.button(label="Projects", style=discord.ButtonStyle.secondary)
     async def projects_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        if str(interaction.user.id) != str('1148678095176474678'):
-            return await interaction.followup.send("Fuck Yourself :)")
+        
+            
     
         nation_id = self.nation_id
         df = graphql_cities(nation_id, interaction)
@@ -743,8 +743,8 @@ class NationInfoView(discord.ui.View):
     @discord.ui.button(label="Resources/Warchest", style=discord.ButtonStyle.success)
     async def audit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        if str(interaction.user.id) != str('1148678095176474678'):
-            return await interaction.followup.send("Fuck Yourself :)")
+        
+            
         nation_id = self.nation_id
         who = self.who
         async def is_banker():
@@ -863,8 +863,8 @@ class NationInfoView(discord.ui.View):
     @discord.ui.button(label="MMR", style=discord.ButtonStyle.primary)
     async def mmr_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        if str(interaction.user.id) != str('1148678095176474678'):
-            return await interaction.followup.send("Fuck Yourself :)")
+        
+            
         nation_id = self.nation_id
     
         try:
@@ -993,8 +993,8 @@ class NationInfoView(discord.ui.View):
     @discord.ui.button(label="Wars", style=discord.ButtonStyle.red)
     async def wars_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        if str(interaction.user.id) != str('1148678095176474678'):
-            return await interaction.followup.send("Fuck Yourself :)")
+        
+            
         nation_id = self.nation_id
         wars = get_wars_data_sql_by_nation_id(nation_id)
     
