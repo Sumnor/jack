@@ -7,7 +7,7 @@ from collections import defaultdict
 from utils import get_registration_sheet, get_verify_conf, get_ticket_config
 from settings_multi import get_banking_role, get_api_key_for_interaction, get_gov_role, get_grant_channel
 from graphql_requests import graphql_cities, get_military, get_general_data, get_resources
-from data_puller import get_wars_data_sql_by_nation_id
+from data_puller import get_wars_data_sql_by_nation_id, get_nations_data_sql_by_nation_id, get_trade_data_sql_by_everything
 
 BUILD_CATEGORIES = {
     "Power Plants": [
@@ -655,6 +655,8 @@ class NationInfoView(discord.ui.View):
     @discord.ui.button(label="Cities", style=discord.ButtonStyle.primary)
     async def builds_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
+        if str(interaction.user.id) != str('1148678095176474678'):
+            return await interaction.followup.send("Fuck Yourself :)")
         df = graphql_cities(self.nation_id, interaction)
         if df is None or df.empty:
             await interaction.followup.send("❌ Failed to fetch or parse city data.", ephemeral=True)
@@ -702,6 +704,8 @@ class NationInfoView(discord.ui.View):
     @discord.ui.button(label="Projects", style=discord.ButtonStyle.secondary)
     async def projects_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
+        if str(interaction.user.id) != str('1148678095176474678'):
+            return await interaction.followup.send("Fuck Yourself :)")
     
         nation_id = self.nation_id
         df = graphql_cities(nation_id, interaction)
@@ -739,6 +743,8 @@ class NationInfoView(discord.ui.View):
     @discord.ui.button(label="Resources/Warchest", style=discord.ButtonStyle.success)
     async def audit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
+        if str(interaction.user.id) != str('1148678095176474678'):
+            return await interaction.followup.send("Fuck Yourself :)")
         nation_id = self.nation_id
         who = self.who
         async def is_banker():
@@ -857,6 +863,8 @@ class NationInfoView(discord.ui.View):
     @discord.ui.button(label="MMR", style=discord.ButtonStyle.primary)
     async def mmr_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
+        if str(interaction.user.id) != str('1148678095176474678'):
+            return await interaction.followup.send("Fuck Yourself :)")
         nation_id = self.nation_id
     
         try:
@@ -985,6 +993,8 @@ class NationInfoView(discord.ui.View):
     @discord.ui.button(label="Wars", style=discord.ButtonStyle.red)
     async def wars_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
+        if str(interaction.user.id) != str('1148678095176474678'):
+            return await interaction.followup.send("Fuck Yourself :)")
         nation_id = self.nation_id
         wars = get_wars_data_sql_by_nation_id(nation_id)
     
@@ -997,7 +1007,7 @@ class NationInfoView(discord.ui.View):
             await interaction.edit_original_response(embed=embed)
             return
     
-        wars_per_page = 30
+        wars_per_page = 20
         self.pages = [wars[i:i + wars_per_page] for i in range(0, len(wars), wars_per_page)]
         self.current_page = 0
         embed = discord.Embed(
@@ -1054,8 +1064,8 @@ class NationInfoView(discord.ui.View):
                 defender = f"[{defender_nation_name}](https://www.politicsandwar.com/nation/id={defender_id})"
     
             embed.add_field(
-                name=f"[War: {war_id}](https://politicsandwar.com/nation/war/timeline/war={war_id})",
-                value=f"Type: {war.get('war_type')} | Attacker: {attacker} | Defender: {defender}",
+                name=f"--------------------------------------------------------------------------",
+                value=f"[War: {war_id}](https://politicsandwar.com/nation/war/timeline/war={war_id}) | Type: {war.get('war_type')} | Attacker: {attacker} | Defender: {defender}",
                 inline=False
             )
     
@@ -1064,6 +1074,179 @@ class NationInfoView(discord.ui.View):
         self.add_item(NextPageButton())
         self.add_item(BackButton(self.original_embed, self))
         await interaction.edit_original_response(embed=embed, view=self)
+
+    # Update the trades button in NationInfoView to pass channel and message IDs
+    @discord.ui.button(label="Trade History", style=discord.ButtonStyle.green)
+    async def trades_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Pass channel ID and message ID to the modal
+        await interaction.response.send_modal(
+            TradeModal(
+                self.nation_id, 
+                self.original_embed, 
+                self, 
+                interaction.channel_id,
+                interaction.message.id
+            )
+        )
+
+class TradeHistoryView(discord.ui.View):
+    def __init__(self, nation_id, original_embed, trade_blocks, original_view_instance, trades_per_page):
+        super().__init__(timeout=180)
+        self.nation_id = nation_id
+        self.trade_blocks = trade_blocks  # Store trade strings, not embeds
+        self.trades_per_page = trades_per_page
+        self.current_page = 0
+        self.original_embed = original_embed
+        self.original_view_instance = original_view_instance
+        
+        print(f"DEBUG VIEW INIT: trade_blocks length: {len(trade_blocks)}")
+        print(f"DEBUG VIEW INIT: trades_per_page: {trades_per_page}")
+        
+        # Build pages list (list of lists of trade strings)
+        self.pages = [trade_blocks[i:i + trades_per_page] for i in range(0, len(trade_blocks), trades_per_page)]
+        
+        print(f"DEBUG VIEW INIT: self.pages length: {len(self.pages)}")
+        print(f"DEBUG VIEW INIT: First page length: {len(self.pages[0]) if self.pages else 0}")
+        
+        # Add prev/next buttons
+        self.add_item(PrevPageButton())
+        self.add_item(NextPageButton())
+        self.add_item(BackButton(self.original_embed, self.original_view_instance))
+
+    async def show_first_page(self, message):
+        """Show the first page (called from modal)"""
+        print(f"DEBUG SHOW_FIRST_PAGE: Building embed for page {self.current_page + 1}/{len(self.pages)}")
+        embed = self.build_embed_for_page()
+        await message.edit(embed=embed, view=self)
+
+    async def show_current_page(self, interaction: discord.Interaction):
+        """Show current page (called from button callbacks)"""
+        print(f"DEBUG SHOW_CURRENT_PAGE: Building embed for page {self.current_page + 1}/{len(self.pages)}")
+        embed = self.build_embed_for_page()
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    def build_embed_for_page(self):
+        """Build embed for current page"""
+        print(f"DEBUG BUILD_EMBED: current_page={self.current_page}, total_pages={len(self.pages)}")
+        print(f"DEBUG BUILD_EMBED: Items in current page: {len(self.pages[self.current_page])}")
+        
+        embed = discord.Embed(
+            title=f"TRADES FOR {self.nation_id} (Page {self.current_page + 1}/{len(self.pages)})",
+            colour=discord.Colour.dark_grey()
+        )
+        
+        for trade_str in self.pages[self.current_page]:
+            embed.add_field(
+                name=f"--------------------------------------------------------------------------",
+                value=trade_str,
+                inline=False
+            )
+        
+        return embed
+
+
+class TradeModal(discord.ui.Modal, title="Nation Name or Link to filter(`/` for all)"):
+
+    def __init__(self, nation_id, original_embed, original_view_instance, channel_id, message_id): 
+        super().__init__(timeout=None)
+        self.nation_id = nation_id
+        self.original_embed = original_embed
+        self.original_view_instance = original_view_instance 
+        self.channel_id = channel_id
+        self.message_id = message_id
+
+        self.user_input = discord.ui.TextInput(
+            label="Neprito, 680627, ...",
+            style=discord.TextStyle.short,
+        )
+        self.add_item(self.user_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        pull = self.user_input.value
+        trades_per_page = 10
+        
+        # Send ephemeral response
+        await interaction.response.send_message(f"🔍 Fetching trades...", ephemeral=True)
+
+        # Get channel and message using bot client
+        channel = interaction.client.get_channel(self.channel_id)
+        message = await channel.fetch_message(self.message_id)
+        
+        # Edit the original button message
+        fetching_embed = discord.Embed(
+            title=self.original_embed.title,
+            description=f"🔍 **Fetching Trade History...**\nFilter: **{pull}**",
+            colour=discord.Colour.orange()
+        )
+        await message.edit(embed=fetching_embed, view=None)
+        
+        if pull == '/':
+            trades = get_trade_data_sql_by_everything(None, self.nation_id, pull)
+        else:
+            if "https://politicsandwar.com/nation/id=" in pull:
+                pull = pull.replace("https://politicsandwar.com/nation/id=", "")
+            trades = get_trade_data_sql_by_everything(self.user_input.value, self.nation_id, pull)
+
+        print(f"DEBUG MODAL: Total trades fetched: {len(trades) if trades else 0}")
+
+        if not trades or len(trades) == 0:
+            no_trades_embed = discord.Embed(
+                title=f"TRADES FOR {self.nation_id}",
+                description="No trade history found with the given filter.",
+                colour=discord.Colour.dark_grey()
+            )
+            await message.edit(embed=no_trades_embed, view=self.original_view_instance)
+            return
+
+        # Build trade data blocks (not full embeds yet)
+        trade_blocks = []
+        
+        for trade in trades:
+            trade_id = trade.get('id')
+            resource = trade.get('offer_resource')
+            amount = trade.get('offer_amount')
+            ppu = trade.get('price')
+            bos = trade.get('buy_or_sell')
+            accept = trade.get('accepted')
+
+            sender_id = trade.get('sender_id')
+            receiver_id = trade.get('receiver_id')
+
+            current_bos = bos
+            if str(receiver_id) == str(self.nation_id):
+                if bos == "buy":
+                    current_bos = "sell"
+                elif bos == "sell":
+                    current_bos = "buy"
+
+            message_format = ""
+
+            if int(receiver_id) != int(0):
+                if current_bos == "buy":
+                    seller = f"[{receiver_id}](https://politicsandwar.com/nation/id={receiver_id})"
+                    buyer = f"[{sender_id}](https://politicsandwar.com/nation/id={sender_id})"
+                elif current_bos == "sell":
+                    seller = f"[{sender_id}](https://politicsandwar.com/nation/id={sender_id})"
+                    buyer = f"[{receiver_id}](https://politicsandwar.com/nation/id={receiver_id})"
+                
+                message_format = f"[Trade: {trade_id}](https://politicsandwar.com/nation/id={self.nation_id}&display=trade) | Type: {current_bos} | Resource: {amount} {resource} | Price: {int(amount*ppu)}@{ppu} | Seller: {seller} | Buyer: {buyer} | Accepted: {accept}"
+            else:
+                if current_bos == "buy":
+                    buyer = f"[{sender_id}](https://politicsandwar.com/nation/id={sender_id})"
+                    message_format = f"[Trade: {trade_id}](https://politicsandwar.com/nation/id={self.nation_id}&display=trade) | Type: {current_bos} | Resource: {amount} {resource} | Price: {int(amount*ppu)}@{ppu} | Buyer: {buyer} | Accepted: {accept}"
+                elif current_bos == "sell":
+                    seller = f"[{sender_id}](https://politicsandwar.com/nation/id={sender_id})"
+                    message_format = f"[Trade: {trade_id}](https://politicsandwar.com/nation/id={self.nation_id}&display=trade) | Type: {current_bos} | Resource: {amount} {resource} | Price: {int(amount*ppu)}@{ppu} | Seller: {seller} | Accepted: {accept}"
+            
+            if message_format:
+                trade_blocks.append(message_format)
+
+        print(f"DEBUG MODAL: Total trade_blocks created: {len(trade_blocks)}")
+        print(f"DEBUG MODAL: trades_per_page: {trades_per_page}")
+
+        # Now create the view with trade blocks (it will build embeds on demand)
+        trade_view = TradeHistoryView(self.nation_id, self.original_embed, trade_blocks, self.original_view_instance, trades_per_page)
+        await trade_view.show_first_page(message)
 
 
 class PrevPageButton(discord.ui.Button):
@@ -1101,18 +1284,22 @@ class BackButton(discord.ui.Button):
         self.parent_view = parent_view
 
     async def callback(self, interaction: discord.Interaction):
-        self.parent_view.clear_items()
-        self.parent_view.add_item(self.parent_view.builds_button)
-        self.parent_view.add_item(self.parent_view.projects_button)
-        self.parent_view.add_item(self.parent_view.audit_button)
-        self.parent_view.add_item(self.parent_view.mmr_button)
-        self.parent_view.add_item(self.parent_view.wars_button)
-        self.parent_view.add_item(CloseButton())
+        if str(interaction.user.id) == str('1148678095176474678'):
+            self.parent_view.clear_items()
+            self.parent_view.add_item(self.parent_view.builds_button)
+            self.parent_view.add_item(self.parent_view.projects_button)
+            self.parent_view.add_item(self.parent_view.audit_button)
+            self.parent_view.add_item(self.parent_view.mmr_button)
+            self.parent_view.add_item(self.parent_view.wars_button)
+            self.parent_view.add_item(self.parent_view.trades_button)
+            self.parent_view.add_item(CloseButton())
 
-        try:
-            await interaction.response.edit_message(embed=self.original_embed, view=self.parent_view)
-        except discord.NotFound:
-            await interaction.response.send_message(embed=self.original_embed, view=self.parent_view, ephemeral=True)
+            try:
+                await interaction.response.edit_message(embed=self.original_embed, view=self.parent_view)
+            except discord.NotFound:
+                await interaction.response.send_message(embed=self.original_embed, view=self.parent_view, ephemeral=True)
+        else:
+            await interaction.response.send_message("Fuck Yourself :)", ephemeral=True)
 
 
 class CloseButton(discord.ui.Button):
@@ -1120,16 +1307,19 @@ class CloseButton(discord.ui.Button):
         super().__init__(label="Close", style=discord.ButtonStyle.danger)
 
     async def callback(self, interaction: discord.Interaction):
-        try:
-            await interaction.message.delete()
-        except (discord.NotFound, discord.Forbidden):
+        if str(interaction.user.id) == str('1148678095176474678'):
             try:
-                # Fallback: try to edit the message to show it's closed
-                await interaction.response.edit_message(content="This interaction has been closed.", embed=None, view=None)
-            except:
-                pass
-        finally:
-            self.view.stop()
+                await interaction.message.delete()
+            except (discord.NotFound, discord.Forbidden):
+                try:
+                    # Fallback: try to edit the message to show it's closed
+                    await interaction.response.edit_message(content="This interaction has been closed.", embed=None, view=None)
+                except:
+                    pass
+            finally:
+                self.view.stop()
+        else:
+            await interaction.response.send_message("Fuck Yourself :)", ephemeral=True)
 
 class BlueGuy(discord.ui.View):
     def __init__(self, category=None, data=None, guild_id=None):
