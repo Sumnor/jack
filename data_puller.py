@@ -78,7 +78,7 @@ def get_wars_data_sql_by_nation_id(nation_id: str):
         nation_id = str(nation_id)
         wars_attacker = supabase.select('wars', filters={'attacker_id': nation_id}) or []
         wars_defender = supabase.select('wars', filters={'defender_id': nation_id}) or []
-        if wars_attacker and war_defender != None:
+        if wars_attacker and wars_defender != None:
           all_wars = wars_attacker + wars_defender
           return all_wars
         return None
