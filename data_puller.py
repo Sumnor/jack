@@ -10,7 +10,7 @@ class SupabaseClient:
     def __init__(self):
         self.base_url = SUPABASE_URL_DATA.rstrip('/')
         self.headers = {
-            'apikey': SUPABASE_URL_DATA,
+            'apikey': SUPABASE_KEY_DATA,
             'Authorization': f'Bearer {SUPABASE_KEY_DATA}',
             'Content-Type': 'application/json',
             'Prefer': 'return=representation'
