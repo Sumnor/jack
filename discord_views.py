@@ -1298,8 +1298,6 @@ class BackButton(discord.ui.Button):
                 await interaction.response.edit_message(embed=self.original_embed, view=self.parent_view)
             except discord.NotFound:
                 await interaction.response.send_message(embed=self.original_embed, view=self.parent_view, ephemeral=True)
-        else:
-            await interaction.response.send_message("Fuck Yourself :)", ephemeral=True)
 
 
 class CloseButton(discord.ui.Button):
@@ -1312,14 +1310,11 @@ class CloseButton(discord.ui.Button):
                 await interaction.message.delete()
             except (discord.NotFound, discord.Forbidden):
                 try:
-                    # Fallback: try to edit the message to show it's closed
                     await interaction.response.edit_message(content="This interaction has been closed.", embed=None, view=None)
                 except:
                     pass
             finally:
                 self.view.stop()
-        else:
-            await interaction.response.send_message("Fuck Yourself :)", ephemeral=True)
 
 class BlueGuy(discord.ui.View):
     def __init__(self, category=None, data=None, guild_id=None):
