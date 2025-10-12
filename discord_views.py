@@ -7,6 +7,7 @@ from collections import defaultdict
 from utils import get_registration_sheet, get_verify_conf, get_ticket_config
 from settings_multi import get_banking_role, get_api_key_for_interaction, get_gov_role, get_grant_channel
 from graphql_requests import graphql_cities, get_military, get_general_data, get_resources
+from data_puller import get_wars_data_sql_by_nation_id
 
 BUILD_CATEGORIES = {
     "Power Plants": [
@@ -651,7 +652,7 @@ class NationInfoView(discord.ui.View):
 
         await interaction.edit_original_response(embed=embed, view=self)
 
-    @discord.ui.button(label="Show Builds", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Cities", style=discord.ButtonStyle.primary)
     async def builds_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         df = graphql_cities(self.nation_id, interaction)
@@ -698,7 +699,7 @@ class NationInfoView(discord.ui.View):
         except Exception as e:
             await interaction.followup.send(f"❌ Error while formatting builds: {e}", ephemeral=True)
 
-    @discord.ui.button(label="Show Projects", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Projects", style=discord.ButtonStyle.secondary)
     async def projects_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
     
@@ -735,7 +736,7 @@ class NationInfoView(discord.ui.View):
         except Exception as e:
             await interaction.followup.send(f"❌ Error while formatting projects: {e}", ephemeral=True)
                 
-    @discord.ui.button(label="Warchest", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="Resources/Warchest", style=discord.ButtonStyle.success)
     async def audit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         nation_id = self.nation_id
