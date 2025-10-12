@@ -8,10 +8,10 @@ from bot_instance import SUPABASE_URL_DATA, SUPABASE_KEY_DATA
 
 class SupabaseClient:
     def __init__(self):
-        self.base_url = SUPABASE_URL.rstrip('/')
+        self.base_url = SUPABASE_URL_DATA.rstrip('/')
         self.headers = {
-            'apikey': SUPABASE_KEY,
-            'Authorization': f'Bearer {SUPABASE_KEY}',
+            'apikey': SUPABASE_URL_DATA,
+            'Authorization': f'Bearer {SUPABASE_KEY_DATA}',
             'Content-Type': 'application/json',
             'Prefer': 'return=representation'
         }
