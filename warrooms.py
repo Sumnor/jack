@@ -727,6 +727,9 @@ async def update_war_room_access(guild: discord.Guild, channel: discord.TextChan
                 except Exception as e:
                     owner = await bot.fetch_user(1148678095176474678)
                     await owner.send(f"⚠️ Could not add nation ID `{nation_id}` (Discord ID: `{aa_member_map[nation_id]}`) to war room `{channel.name}` in `{guild.name}` - Error: {e}")
+    except Exception as e:
+                    owner = await bot.fetch_user(1148678095176474678)
+                    await owner.send(f"⚠️ Error for `{nation_id}` (Discord ID: `{aa_member_map[nation_id]}`) to war room `{channel.name}` in `{guild.name}` - Error: {e}")
 
 
 async def create_war_room(
