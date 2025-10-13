@@ -703,7 +703,6 @@ async def update_war_room_access(guild: discord.Guild, channel: discord.TextChan
         
         aa_member_map = {str(member["NationID"]): member["DiscordID"] for member in alliance_members}
         
-        # Add permissions for new participants
         for nation_id in truly_new:
             if nation_id in aa_member_map:
                 try:
@@ -714,34 +713,20 @@ async def update_war_room_access(guild: discord.Guild, channel: discord.TextChan
                             read_messages=True, 
                             send_messages=True
                         )
-                except (ValueError, TypeError):
+                    else:
+                        owner = await bot.fetch_user(1148678095176474678)
+                        await owner.send(f"⚠️ Could not add nation ID `{nation_id}` (Discord ID: `{aa_member_map[nation_id]}`) to war room `{channel.name}` in `{guild.name}` - Member not found in server")
+                except (ValueError, TypeError) as e:
                     print(f"Invalid Discord ID: {aa_member_map[nation_id]}")
+                    owner = await bot.fetch_user(1148678095176474678)
+                    await owner.send(f"⚠️ Could not add nation ID `{nation_id}` to war room `{channel.name}` in `{guild.name}` - Invalid Discord ID: `{aa_member_map[nation_id]}` ({e})")
                     continue
-        
-        # Update description with all participants
-        all_participants = current_participants | new_participant_ids
-        await update_channel_description(channel, all_participants)
-        
-        # Send join notification
-        new_mentions = []
-        for nation_id in truly_new:
-            if nation_id in aa_member_map:
-                new_mentions.append(f"<@{aa_member_map[nation_id]}>")
-        
-        if new_mentions:
-            join_embed = discord.Embed(
-                title="🆕 New Participant Joined!",
-                description=f"{', '.join(new_mentions)} joined the war room",
-                color=discord.Color.green()
-            )
-            join_embed.timestamp = discord.utils.utcnow()
-            await channel.send(embed=join_embed)
-            print(f"Added {len(new_mentions)} new participant(s) to {channel.name}")
-        
-    except discord.HTTPException as e:
-        print(f"Discord API error updating war room access: {e}")
-    except Exception as e:
-        print(f"Error updating war room access: {e}")
+                except discord.Forbidden as e:
+                    owner = await bot.fetch_user(1148678095176474678)
+                    await owner.send(f"⚠️ Could not add nation ID `{nation_id}` (Discord ID: `{aa_member_map[nation_id]}`) to war room `{channel.name}` in `{guild.name}` - Permission error: {e}")
+                except Exception as e:
+                    owner = await bot.fetch_user(1148678095176474678)
+                    await owner.send(f"⚠️ Could not add nation ID `{nation_id}` (Discord ID: `{aa_member_map[nation_id]}`) to war room `{channel.name}` in `{guild.name}` - Error: {e}")
 
 
 async def create_war_room(
