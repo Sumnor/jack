@@ -1,13 +1,15 @@
 import requests
 import discord
+import json
 from discord.ui import View, button
 from discord import Button, ButtonStyle
-from datetime import datetime
+from typing import Optional, Dict, List, Any
+from datetime import datetime, date
 from collections import defaultdict
 from utils import get_registration_sheet, get_verify_conf, get_ticket_config
 from settings_multi import get_banking_role, get_api_key_for_interaction, get_gov_role, get_grant_channel
 from graphql_requests import graphql_cities, get_military, get_general_data, get_resources
-from data_puller import get_wars_data_sql_by_nation_id, get_nations_data_sql_by_nation_id, get_trade_data_sql_by_everything
+from data_puller import get_wars_data_sql_by_nation_id, get_trade_data_sql_by_everything, get_bank_data_sql_by_everything, get_cities_data_sql_by_nation_id
 
 BUILD_CATEGORIES = {
     "Power Plants": [
@@ -48,8 +50,6 @@ PROJECT_KEYS = [
     "guiding_satellite", "nuclear_launch_facility", "military_research_center",
     "military_doctrine"
 ]
-
-# participant_view.py
 import discord
 from typing import List
 import aiohttp
@@ -574,6 +574,173 @@ class HelpView(discord.ui.View):
         for item in self.children:
             item.disabled = True
 
+class ShowCitiesDetailButton(discord.ui.Button):
+    def __init__(self, nation_id: int, original_embed: discord.Embed, parent_view: discord.ui.View, user_id: int):
+        super().__init__(label="Detailed Cities", style=discord.ButtonStyle.secondary, row=1)
+        self.nation_id = nation_id
+        self.original_embed = original_embed
+        self.parent_view = parent_view # This is the NationInfoView instance
+        self.user_id = user_id
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("This view isn't meant for you.", ephemeral=True)
+            return
+
+        await interaction.response.defer() 
+        message = interaction.message 
+        
+        try:
+            city_imp_plans = {} 
+
+            # --- 2. Instantiate and Display the CitiesDetail View ---
+            
+            # We pass the parent_view (NationInfoView) so the BackButton in CitiesDetail knows where to return.
+            cities_detail_view = CitiesDetail(
+                nation_id=self.nation_id, 
+                original_embed=self.original_embed, 
+                original_view_instance=self.parent_view,
+                user_id=self.user_id
+            )
+
+            # The CitiesDetail view processes the data and updates the message
+            await cities_detail_view.display_cities(
+                message=message, 
+                city_imp_plans=city_imp_plans
+            )
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error switching to detailed view: {e}", ephemeral=True)
+
+BUILDING_KEY_MAP = {
+    'oil_power': 'imp_oilpower', 'wind_power': 'imp_windpower', 'coal_power': 'imp_coalpower',
+    'nuclear_power': 'imp_nuclearpower', 'coal_mine': 'imp_coalmine', 'oil_well': 'imp_oilwell',
+    'uranium_mine': 'imp_uramine', 'barracks': 'imp_barracks', 'farm': 'imp_farm',
+    'police_station': 'imp_policestation', 'hospital': 'imp_hospital', 'recycling_center': 'imp_recyclingcenter',
+    'subway': 'imp_subway', 'supermarket': 'imp_supermarket', 'bank': 'imp_bank', 
+    'shopping_mall': 'imp_mall', 'stadium': 'imp_stadium', 'lead_mine': 'imp_leadmine', 
+    'iron_mine': 'imp_ironmine', 'bauxite_mine': 'imp_bauxitemine', 'oil_refinery': 'imp_gasrefinery', 
+    'aluminum_refinery': 'imp_aluminumrefinery', 'steel_mill': 'imp_steelmill',
+    'munitions_factory': 'imp_munitionsfactory', 'factory': 'imp_factory', 'hangar': 'imp_hangars', 
+    'drydock': 'imp_drydock',
+}
+
+class CitiesDetail(discord.ui.View):
+    def __init__(self, nation_id: int, original_embed: discord.Embed, original_view_instance: discord.ui.View = None, user_id: Optional[int] = None):
+        super().__init__(timeout=None)
+    
+        self.who = user_id
+        self.nation_id = nation_id
+        self.original_embed = original_embed 
+        self.original_view_instance = original_view_instance 
+        self.pages: List[Dict[str, Any]] = [] 
+        self.current_page = 0
+        self.cities_per_page = 1 
+        self.paginator_title = f"Details Cities for {nation_id}"
+
+
+    def _generate_city_pages(self, city_imp_plans: Dict[int, Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Processes raw city data and improvement plans into page dictionaries."""
+        city_pages = []
+        cities = get_cities_data_sql_by_nation_id(self.nation_id)
+        
+        for city in cities:
+            city_id = city.get('id', 0)
+            date_obj = city.get('date')
+            date_ts = int(date_obj.timestamp()) if isinstance(date_obj, (datetime, date)) else None
+            
+            imp_plan = city_imp_plans.get(city_id, {})
+            
+            city_data_json = {
+                "infra_needed": imp_plan.get("infra_needed", 0),
+                "imp_total": imp_plan.get("imp_total", 0),
+            }
+            
+            for db_key, imp_key in BUILDING_KEY_MAP.items():
+                existing_buildings = city.get(db_key, 0)
+                planned_improvements = imp_plan.get(imp_key, 0)
+                city_data_json[imp_key] = existing_buildings + planned_improvements
+
+            city_pages.append({
+                'city_id': city_id, 'city_name': city.get('name', 'Unnamed City'),
+                'infra': city.get('infrastructure', 0), 'land': city.get('land', 0),
+                'date_ts': date_ts, 'json_block': city_data_json
+            })
+        return city_pages
+
+
+    async def display_cities(self, message: discord.Message, city_imp_plans: Dict[int, Dict[str, Any]]):
+        """Public entry point: Processes data, sets up buttons, and displays the first page."""
+        self.pages = self._generate_city_pages(city_imp_plans)
+        self.current_page = 0
+        
+        if not self.pages:
+             view_to_return_to = self.original_view_instance or None
+             await message.edit(
+                embed=discord.Embed(title="No Cities Found", description="Could not find city data for this nation.", color=discord.Color.red()), 
+                view=view_to_return_to
+            )
+             return
+
+        self.add_navigation_buttons()
+        await self.show_first_page(message)
+
+
+    def add_navigation_buttons(self):
+        self.clear_items()
+        if len(self.pages) > 1:
+            self.add_item(PrevPageButton())
+            self.add_item(NextPageButton())
+            
+        if self.original_view_instance:
+            self.add_item(BackButton(self.original_embed, self.original_view_instance))
+        self.add_item(CloseButton())
+
+
+    async def show_first_page(self, message: discord.Message):
+        embed = self.build_embed_for_page()
+        await message.edit(embed=embed, view=self)
+
+
+    async def show_current_page(self, interaction: discord.Interaction):
+        self.add_navigation_buttons()
+        
+        embed = self.build_embed_for_page()
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    
+    def build_embed_for_page(self):
+        if not self.pages:
+            return discord.Embed(title="No City Data Found", color=discord.Color.red())
+
+        page_data = self.pages[self.current_page]
+        
+        embed = discord.Embed(
+            title=f"{self.paginator_title} (City {self.current_page + 1} of {len(self.pages)})",
+            colour=discord.Colour.blue()
+        )
+        
+        city_id = page_data.get('city_id')
+        city_name = page_data.get('city_name')
+        
+        embed.add_field(name="City", value=f"[{city_name}](https://politicsandwar.com/city/id={city_id})", inline=True)
+        embed.add_field(name="Infra", value=f"{page_data.get('infra', 0):,.0f}", inline=True)
+        embed.add_field(name="Land", value=f"{page_data.get('land', 0):,.0f}", inline=True)
+        
+        date_ts = page_data.get('date_ts')
+        if date_ts:
+            age_value = f"Created: <t:{date_ts}:f> (<t:{date_ts}:R> ago)"
+            embed.add_field(name="Age", value=age_value, inline=False)
+        
+        json_data = page_data.get('json_block', {})
+        json_string = json.dumps(json_data, indent=4)
+        
+        embed.description = f"\n```json\n{json_string}\n```"
+        
+        embed.set_footer(text=f"Page {self.current_page + 1}/{len(self.pages)} | Use arrows to navigate cities.")
+        
+        return embed
+    
 class NationInfoView(discord.ui.View):
     def __init__(self, nation_id, original_embed, user_id=None):
         super().__init__(timeout=None)
@@ -624,6 +791,12 @@ class NationInfoView(discord.ui.View):
         embed.set_footer(text="Data fetched live from Politics & War API")
 
         self.clear_items()
+        self.add_item(ShowCitiesDetailButton(
+            nation_id=self.nation_id, 
+            original_embed=self.original_embed, 
+            parent_view=self, 
+            user_id=interaction.user.id
+        ))
         self.add_item(BackButton(self.original_embed, self))
         self.add_item(CloseButton())
 
@@ -647,6 +820,12 @@ class NationInfoView(discord.ui.View):
             if self.current_page < len(self.pages) - 1:
                 self.add_item(NextPageButton())
 
+        self.add_item(ShowCitiesDetailButton(
+            nation_id=self.nation_id, 
+            original_embed=self.original_embed, 
+            parent_view=self, 
+            user_id=interaction.user.id
+        ))
         self.add_item(BackButton(self.original_embed, self))
         self.add_item(CloseButton())
 
@@ -655,8 +834,6 @@ class NationInfoView(discord.ui.View):
     @discord.ui.button(label="Cities", style=discord.ButtonStyle.primary)
     async def builds_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        
-            
         df = graphql_cities(self.nation_id, interaction)
         if df is None or df.empty:
             await interaction.followup.send("❌ Failed to fetch or parse city data.", ephemeral=True)
@@ -704,8 +881,6 @@ class NationInfoView(discord.ui.View):
     @discord.ui.button(label="Projects", style=discord.ButtonStyle.secondary)
     async def projects_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        
-            
     
         nation_id = self.nation_id
         df = graphql_cities(nation_id, interaction)
@@ -743,8 +918,6 @@ class NationInfoView(discord.ui.View):
     @discord.ui.button(label="Resources/Warchest", style=discord.ButtonStyle.success)
     async def audit_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        
-            
         nation_id = self.nation_id
         who = self.who
         async def is_banker():
@@ -863,8 +1036,6 @@ class NationInfoView(discord.ui.View):
     @discord.ui.button(label="MMR", style=discord.ButtonStyle.primary)
     async def mmr_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        
-            
         nation_id = self.nation_id
     
         try:
@@ -993,8 +1164,6 @@ class NationInfoView(discord.ui.View):
     @discord.ui.button(label="Wars", style=discord.ButtonStyle.red)
     async def wars_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        
-            
         nation_id = self.nation_id
         wars = get_wars_data_sql_by_nation_id(nation_id)
     
@@ -1076,11 +1245,23 @@ class NationInfoView(discord.ui.View):
         await interaction.edit_original_response(embed=embed, view=self)
 
     # Update the trades button in NationInfoView to pass channel and message IDs
-    @discord.ui.button(label="Trade History", style=discord.ButtonStyle.green)
+    @discord.ui.button(label="Trade Records", style=discord.ButtonStyle.green)
     async def trades_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         # Pass channel ID and message ID to the modal
         await interaction.response.send_modal(
             TradeModal(
+                self.nation_id, 
+                self.original_embed, 
+                self, 
+                interaction.channel_id,
+                interaction.message.id
+            )
+        )
+
+    @discord.ui.button(label="Bank Records", style=discord.ButtonStyle.green)
+    async def bank_button(self, interaction: discord.Interaction, button: discord.ui.Button):\
+        await interaction.response.send_modal(
+            BankModal(
                 self.nation_id, 
                 self.original_embed, 
                 self, 
@@ -1241,13 +1422,132 @@ class TradeModal(discord.ui.Modal, title="Nation Name or Link to filter(`/` for 
             if message_format:
                 trade_blocks.append(message_format)
 
-        print(f"DEBUG MODAL: Total trade_blocks created: {len(trade_blocks)}")
-        print(f"DEBUG MODAL: trades_per_page: {trades_per_page}")
-
-        # Now create the view with trade blocks (it will build embeds on demand)
         trade_view = TradeHistoryView(self.nation_id, self.original_embed, trade_blocks, self.original_view_instance, trades_per_page)
         await trade_view.show_first_page(message)
 
+class BankView(discord.ui.View):
+    def __init__(self, nation_id, original_embed, transaction_blocks, original_view_instance, transactions_per_page):
+        super().__init__(timeout=180)
+        self.nation_id = nation_id
+        self.transaction_blocks = transaction_blocks
+        self.transactions_per_page = transactions_per_page
+        self.current_page = 0
+        self.original_embed = original_embed
+        self.original_view_instance = original_view_instance
+        self.pages = [transaction_blocks[i:i + transactions_per_page] for i in range(0, len(transaction_blocks), transactions_per_page)]
+        
+        self.add_item(PrevPageButton())
+        self.add_item(NextPageButton())
+        self.add_item(BackButton(self.original_embed, self.original_view_instance))
+
+    async def show_first_page(self, message):
+        embed = self.build_embed_for_page()
+        await message.edit(embed=embed, view=self)
+
+    async def show_current_page(self, interaction: discord.Interaction):
+        embed = self.build_embed_for_page()
+        await interaction.response.edit_message(embed=embed, view=self)
+    
+    def build_embed_for_page(self):
+        embed = discord.Embed(
+            title=f"TRANSACTIONS FOR {self.nation_id} (Page {self.current_page + 1}/{len(self.pages)})",
+            colour=discord.Colour.dark_grey()
+        )
+        
+        for transaction_str in self.pages[self.current_page]:
+            embed.add_field(
+                name=f"--------------------------------------------------------------------------",
+                value=transaction_str,
+                inline=False
+            )
+        
+        return embed
+
+
+class BankModal(discord.ui.Modal, title="Nation Name or Link to filter(`/` for all)"):
+
+    def __init__(self, nation_id, original_embed, original_view_instance, channel_id, message_id): 
+        super().__init__(timeout=None)
+        self.nation_id = nation_id
+        self.original_embed = original_embed
+        self.original_view_instance = original_view_instance 
+        self.channel_id = channel_id
+        self.message_id = message_id
+
+        self.user_input = discord.ui.TextInput(
+            label="Neprito, 680627, ...",
+            style=discord.TextStyle.short,
+        )
+        self.add_item(self.user_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        pull = self.user_input.value
+        transactions_per_page = 10
+        
+        await interaction.response.send_message(f"🔍 Fetching bank transactions, please be patient...", ephemeral=True)
+        channel = interaction.client.get_channel(self.channel_id)
+        message = await channel.fetch_message(self.message_id)
+        
+        # Edit the original button message
+        fetching_embed = discord.Embed(
+            title=self.original_embed.title,
+            description=f"🔍 **Fetching Bank Transaction History...**\nFilter: **{pull}**",
+            colour=discord.Colour.orange()
+        )
+        await message.edit(embed=fetching_embed, view=None)
+        
+        if pull == '/':
+            transactions = get_bank_data_sql_by_everything(None, self.nation_id, pull)
+        else:
+            if "https://politicsandwar.com/nation/id=" in pull:
+                pull = pull.replace("https://politicsandwar.com/nation/id=", "")
+            transactions = get_bank_data_sql_by_everything(self.user_input.value, self.nation_id, pull)
+
+        if not transactions or len(transactions) == 0:
+            no_transactions_embed = discord.Embed(
+                title=f"TRANSACTIONS FOR {self.nation_id}",
+                description="No transaction history found with the given filter.",
+                colour=discord.Colour.dark_grey()
+            )
+            await message.edit(embed=no_transactions_embed, view=self.original_view_instance)
+            return
+
+        transaction_blocks = []
+        
+        for transaction in transactions:
+            transaction_id = transaction.get('id')
+            money = transaction.get('money')
+            food = transaction.get('food')
+            uranium = transaction.get('uranium')
+            iron = transaction.get('iron')
+            coal = transaction.get('coal')
+            bauxite = transaction.get('bauxite')
+            oil = transaction.get('oil')
+            lead = transaction.get('lead')
+            steel = transaction.get('steel')
+            aluminum = transaction.get('aluminum')
+            munitions = transaction.get('munitions')
+            gasoline = transaction.get('gasoline')
+            accept = transaction.get('accepted')
+
+            sender_id = transaction.get('sender_id')
+            sender_type = transaction.get('sender_type')
+
+            receiver_type = transaction.get('receiver_type')
+            receiver_id = transaction.get('receiver_id')
+
+            message_format = ""
+            if sender_type == 1 and receiver_type == 1:
+                continue
+            elif sender_type == 1 and receiver_type == 2:
+                message_format = f"Transaction: [{transaction_id}](https://politicsandwar.com/alliance/id={receiver_id}&display=bank) | Sender: [{sender_id}](https://politicsandwar.com/nation/id={sender_id}) | Receiver: [{receiver_id}](https://politicsandwar.com/alliance/id={receiver_id})\n```md\nMoney: {money} | Food: {food} | Uranium: {uranium} | Lead: {lead} | Bauxite: {bauxite} | Oil: {oil} | Iron: {iron} | Coal: {coal} | Munitions: {munitions} | Steel: {steel} | Gasoline: {gasoline} | Aluminum: {aluminum}```"
+            elif sender_type == 2 and receiver_type == 1:
+                message_format = f"Transaction: [{transaction_id}](https://politicsandwar.com/alliance/id={sender_id}&display=bank) | Sender: [{sender_id}](https://politicsandwar.com/alliance/id={sender_id}) | Receiver: [{receiver_id}](https://politicsandwar.com/nation/id={receiver_id})\n```md\nMoney: {money} | Food: {food} | Uranium: {uranium} | Lead: {lead} | Bauxite: {bauxite} | Oil: {oil} | Iron: {iron} | Coal: {coal} | Munitions: {munitions} | Steel: {steel} | Gasoline: {gasoline} | Aluminum: {aluminum}```"
+            
+            if message_format:
+                transaction_blocks.append(message_format)
+        transaction_view = BankView(self.nation_id, self.original_embed, transaction_blocks, self.original_view_instance, transactions_per_page)
+        await transaction_view.show_first_page(message)
 
 class PrevPageButton(discord.ui.Button):
     def __init__(self):
@@ -1284,7 +1584,6 @@ class BackButton(discord.ui.Button):
         self.parent_view = parent_view
 
     async def callback(self, interaction: discord.Interaction):
-        
             self.parent_view.clear_items()
             self.parent_view.add_item(self.parent_view.builds_button)
             self.parent_view.add_item(self.parent_view.projects_button)
@@ -1292,6 +1591,7 @@ class BackButton(discord.ui.Button):
             self.parent_view.add_item(self.parent_view.mmr_button)
             self.parent_view.add_item(self.parent_view.wars_button)
             self.parent_view.add_item(self.parent_view.trades_button)
+            self.parent_view.add_item(self.parent_view.bank_button)
             self.parent_view.add_item(CloseButton())
 
             try:
@@ -1305,16 +1605,19 @@ class CloseButton(discord.ui.Button):
         super().__init__(label="Close", style=discord.ButtonStyle.danger)
 
     async def callback(self, interaction: discord.Interaction):
-        
+        if str(interaction.user.id) == str('1148678095176474678'):
             try:
                 await interaction.message.delete()
             except (discord.NotFound, discord.Forbidden):
                 try:
+                    # Fallback: try to edit the message to show it's closed
                     await interaction.response.edit_message(content="This interaction has been closed.", embed=None, view=None)
                 except:
                     pass
             finally:
                 self.view.stop()
+        else:
+            await interaction.response.send_message("Fuck Yourself :)", ephemeral=True)
 
 class BlueGuy(discord.ui.View):
     def __init__(self, category=None, data=None, guild_id=None):
