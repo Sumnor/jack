@@ -99,7 +99,7 @@ def get_cities_data_sql_by_nation_id(nation_id: str):
   try:
       records = supabase.select('cities', filters={'nation_id': str(nation_id)})
       if records and len(records) > 0:
-          return records[0]
+          return records
       return None
   except Exception as e:
       print(f"Error fetching nation data: {e}")
