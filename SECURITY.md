@@ -7,7 +7,7 @@ All users are encouraged to stay up to date with the **latest version** to ensur
 
 | Version | Supported          |
 | -------- | ------------------ |
-| 2.005.110 (latest) | ✅ Yes — actively maintained |
+| 2.006.125 (latest) | ✅ Yes — actively maintained |
 
 Only the most recent version will receive security updates or critical fixes.
 
