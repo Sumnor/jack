@@ -1058,17 +1058,17 @@ async def handle_pnw_events():
                 print(f"❌ Fatal error in stdout handler: {e}")
                 import traceback; traceback.print_exc()
 
-    async def handle_stderr():
-        async for line in stderr_lines:
+    #async def handle_stderr():
+        #async for line in stderr_lines:
             #print(f"NODE STDERR: {line}")
 
-    try:
+    '''try:
         await asyncio.gather(handle_stdout(), handle_stderr())
     finally:
         if process and process.returncode is None:
             print(f"Terminating Node.js process (PID {process.pid})")
             process.terminate()
-            await process.wait()
+            await process.wait()'''
             
 @bot.tree.command(name='disable_or_enable_run', description='Enable or disable automatic war room checks(admin only)')
 async def doe_run(interaction: discord.Interaction):
