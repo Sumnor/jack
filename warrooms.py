@@ -949,16 +949,16 @@ async def handle_pnw_events():
         async for line in stdout_lines:
             try:
                 if not line or not (line.startswith("{") or line.startswith("[")):
-                    print(f"DEBUG: Non-JSON output from listener: {line}")
+                    #print(f"DEBUG: Non-JSON output from listener: {line}")
                     continue
 
                 event = json.loads(line)
                 event_type = event.get("type", "")
                 event_data = event.get("data", {})
-                print(f"📥 Received PnW event: {event_type}")
+                #print(f"📥 Received PnW event: {event_type}")
 
                 if event_type not in ("BULK_WAR_UPDATE", "WAR_CREATE", "BULK_WAR_CREATE", "WAR_UPDATE"):
-                    print(f"DEBUG: Skipping non-war event type: {event_type}")
+                    #print(f"DEBUG: Skipping non-war event type: {event_type}")
                     continue
 
                 wars = event_data if isinstance(event_data, list) else [event_data]
@@ -970,12 +970,12 @@ async def handle_pnw_events():
 
                         api_key = get_api_key_for_guild(guild.id)
                         if not api_key:
-                            print(f"DEBUG: Guild {guild.id} has no API key")
+                            #print(f"DEBUG: Guild {guild.id} has no API key")
                             continue
 
                         alliance_members = await get_alliance_members(guild.id)
                         if not alliance_members:
-                            print(f"DEBUG: Guild {guild.id} has no alliance members")
+                            #print(f"DEBUG: Guild {guild.id} has no alliance members")
                             continue
 
                         aa_member_map = {str(m["NationID"]): m["DiscordID"] for m in alliance_members}
@@ -1043,7 +1043,7 @@ async def handle_pnw_events():
                                     )
                         
                             except Exception as e:
-                                print(f"❌ Error processing war {war.get('id','Unknown')} in guild {guild.id}: {e}")
+                                #print(f"❌ Error processing war {war.get('id','Unknown')} in guild {guild.id}: {e}")
                                 import traceback; traceback.print_exc()
 
                         await check_and_cleanup_war_rooms(guild.id, wars)
@@ -1060,7 +1060,7 @@ async def handle_pnw_events():
 
     async def handle_stderr():
         async for line in stderr_lines:
-            print(f"NODE STDERR: {line}")
+            #print(f"NODE STDERR: {line}")
 
     try:
         await asyncio.gather(handle_stdout(), handle_stderr())
