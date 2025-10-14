@@ -9,6 +9,7 @@ import os
 load_dotenv("cred.env")
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 bot_key = os.getenv("Key")
 YT_Key = os.getenv("YT_Key")
@@ -17,6 +18,7 @@ SUPABASE_URL_DATA = os.getenv("SUPABASE_URL_DATA")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 SUPABASE_KEY_DATA = os.getenv("SUPABASE_KEY_DATA")
 API_KEY = os.getenv("API_KEY")
+BOT_KEY = os.getenv("BOT_KEY")
 commandscalled = {"_global": 0}
 snapshots_file = "snapshots.json"
 money_snapshots = []
@@ -90,33 +92,14 @@ async def resolve_arg(ctx, arg):
     return arg
 
 def wrap_as_prefix_command(app_command_func):
-    # Get the original function's signature
     original_signature = inspect.signature(app_command_func)
-    
-    # We need to check if the function has a parameter for our custom flag.
-    # We also check for **kwargs to see if it can accept arbitrary keyword arguments.
     has_custom_param = '_called_with_prefix' in original_signature.parameters
     can_accept_kwargs = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in original_signature.parameters.values())
 
     async def wrapper(ctx, *args, **kwargs):
-        # We create our custom interaction object
         fake = FakeInteraction(ctx)
-
-        # Check for the prefix usage
         is_prefix = ctx.message.content.strip().startswith("!")
 
-        # Add the disclaimer only if it was a prefix command
-        if is_prefix:
-            disclaimer = (
-                "⚠️ **Note:** You're using the `!` version of this command.\n"
-                "Slash commands (`/`) are **preferred** because they autocomplete arguments.\n\n"
-                "For optional arguments with `!`, you can:\n"
-                "• Use `-<first_letter>` to skip others, e.g. `-f 100k`\n"
-                "• If multiple params share the same letter, use `-f1`, `-f2`, etc."
-            )
-            await ctx.send(disclaimer)
-
-        # The logic to parse args from a prefix command remains the same
         params_to_parse = [p.name for p in original_signature.parameters.values() if p.name != "interaction"]
         parsed_kwargs = {}
         dup_counters = {}
@@ -151,11 +134,9 @@ def wrap_as_prefix_command(app_command_func):
                             parsed_kwargs[key] = "1"
             i += 1
             
-        # The key fix: only add the custom flag if the function's signature supports it.
         if has_custom_param or can_accept_kwargs:
             kwargs['_called_with_prefix'] = is_prefix
         
-        # Merge parsed arguments with existing kwargs
         kwargs.update(parsed_kwargs)
 
         return await app_command_func(fake, **kwargs)
