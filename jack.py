@@ -15,7 +15,6 @@ from graphql_requests import graphql_request, get_general_data, get_resources
 from utils import get_registration_sheet, load_registration_data, save_to_alliance_net, get_prices,  cached_users, load_sheet_data
 from databases import get_all_alerts, fetch_latest_model, fetch_latest_price, MATERIALS, SUPABASE_KEY, SUPABASE_URL
 from regression_models import fetch_material_data, train_model_for_resource
-from warrooms import handle_pnw_events
 
 UNIT_PRICES = {
     "soldiers": 5,
@@ -681,10 +680,6 @@ async def on_message(message: discord.Message):
         await message.channel.send(default_reply)
     await bot.process_commands(message)
 
-async def start_war_listener():
-    await bot.wait_until_ready()
-    bot.loop.create_task(handle_pnw_events())
-
 @bot.event
 async def on_ready():
     bot.add_view(GrantView())  
@@ -729,7 +724,6 @@ async def on_ready():
         weekly_member_updater.start()
     if not price_snapshots.is_running():
         price_snapshots.start()
-    asyncio.create_task(handle_pnw_events())
         
     await bot.tree.sync()
     print(f"✅ Logged in as {bot.user}")
