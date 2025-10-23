@@ -8,13 +8,19 @@ import pandas as pd
 from discord.ext import tasks
 import os
 import re
-from bot_instance import bot_key, bot
-from discord_views import TicketButtonView, GrantView, BlueGuy
-from settings_multi import get_alliance_sheet, get_settings_sheet, get_warn_channel, get_api_key_for_interaction, get_grant_channel
+from settings.bot_instance import bot_key, bot, API_KEY, BOT_KEY, SUPABASE_URL, SUPABASE_KEY
+from tickets.TicketView import TicketButtonView
+from econ.grants.grant_views.InfraGrantView import BlueGuy
+from econ.grants.grant_views.GrantView import GrantView
+from settings.settings_multi import get_warn_channel, get_api_key_for_interaction, get_grant_channel
 from graphql_requests import graphql_request, get_general_data, get_resources
-from utils import get_registration_sheet, load_registration_data, get_sheet_s, save_to_alliance_net, get_prices, get_ticket_sheet,  cached_users, load_sheet_data
-from databases import get_all_alerts, fetch_latest_model, fetch_latest_price, MATERIALS, SUPABASE_KEY, SUPABASE_URL
-from regression_models import fetch_material_data, train_model_for_resource
+from settings.initializer_functions.cached_users_initializer import get_registration_sheet, load_registration_data, cached_users, load_sheet_data
+from settings.initializer_functions.offshore_initializer import start_auto_ebo_checker
+from settings.initializer_functions.resource_prices import get_prices
+from databases.sql.databases import get_all_alerts, fetch_latest_model, fetch_latest_price, MATERIALS, SUPABASE_KEY, SUPABASE_URL
+from econ.prediction_market.regression_models import fetch_material_data, train_model_for_resource
+from wars.warrooms import handle_pnw_events
+from offshore import process_new_deposits
 
 UNIT_PRICES = {
     "soldiers": 5,
@@ -23,7 +29,7 @@ UNIT_PRICES = {
     "ships": 50000,
     "missiles": 150000,
     "nuclear": 1750000
-}
+} 
 
 def parse_amount(amount):
     if isinstance(amount, (int, float)):
@@ -134,9 +140,13 @@ async def on_guild_join(guild):
     except Exception as e:
         print(f"Error DMing owner of {guild.name}: {e}")
 
+
+
+
+from settings.initializer_functions.supabase_initializer import supabase
+
 @tasks.loop(hours=1)
 async def process_auto_requests():
-    from raws_requests import get_auto_requests_sheet
     REASON_FOR_GRANT = "Resources for Production (Auto)"
     
     try:
@@ -161,37 +171,29 @@ async def process_auto_requests():
                 if channel is None:
                     continue
                 
-                sheet = get_auto_requests_sheet(guild.id)
-                if not sheet:
+                
+                guild_id = str(guild.id)
+                records = supabase.select('auto_requests', filters={'guild_id': guild_id})
+                
+                if not records:
                     continue
-                
-                all_rows = await asyncio.to_thread(sheet.get_all_values)
-                if not all_rows or len(all_rows) < 2:
-                    continue
-                
-                header = [h.strip() for h in all_rows[0] if h.strip()]
-                if len(header) != len(set(header)):
-                    raise ValueError(f"Guild {guild.name} sheet header row contains duplicates or blanks: {header}")
-                
-                col_index = {col: idx for idx, col in enumerate(all_rows[0])}
-                rows = all_rows[1:]
                 
                 processed_count = 0
                 
-                for i, row in enumerate(rows, start=2):
+                for record in records:
                     try:
-                        nation_id = row[col_index.get("NationID", -1)] if col_index.get("NationID", -1) != -1 else ""
+                        nation_id = record.get('nation_id', '').strip()
                         if not nation_id:
-                            print(f"Guild {guild.name}, row {i}: Skipping due to empty NationID")
+                            print(f"Guild {guild.name}, record {record.get('id')}: Skipping due to empty NationID")
                             continue
                         
                         nation_info_df = graphql_request(nation_id, None, guild.id)
                         nation_name = nation_info_df.loc[0, "nation_name"] if nation_info_df is not None and not nation_info_df.empty else "Unknown"
                         
-                        discord_id = row[col_index["DiscordID"]]
-                        time_period_days = int(float(row[col_index["TimePeriod"]].strip() or "1"))
+                        discord_id = record.get('discord_id', '')
+                        time_period_days = int(record.get('time_period', 1))
                         
-                        last_requested_str = row[col_index["LastRequested"]].strip()
+                        last_requested_str = record.get('last_requested', '').strip()
                         last_requested = (
                             datetime.datetime.strptime(last_requested_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
                             if last_requested_str else datetime.datetime.min.replace(tzinfo=timezone.utc)
@@ -201,11 +203,10 @@ async def process_auto_requests():
                             continue
                         
                         requested_resources = {}
-                        for res in ["Coal", "Oil", "Bauxite", "Lead", "Iron"]:
-                            val_str = row[col_index[res]].strip()
-                            amount = parse_amount(val_str)
+                        for res in ["coal", "oil", "bauxite", "lead", "iron"]:
+                            amount = record.get(res, 0)
                             if amount > 0:
-                                requested_resources[res] = amount
+                                requested_resources[res.capitalize()] = amount
                         
                         if not requested_resources:
                             continue
@@ -227,13 +228,17 @@ async def process_auto_requests():
                         
                         await channel.send(embed=embed, view=GrantView())
                         
-                        await asyncio.to_thread(sheet.update_cell, i, col_index["LastRequested"] + 1, now.strftime("%Y-%m-%d %H:%M:%S"))
+                        
+                        record_id = record.get('id')
+                        supabase.update('auto_requests', 
+                                       {'last_requested': now.strftime("%Y-%m-%d %H:%M:%S")}, 
+                                       {'id': record_id})
                         processed_count += 1
                         
                         await asyncio.sleep(0.5)
                         
                     except Exception as inner_ex:
-                        print(f"Error processing guild {guild.name}, row {i}: {inner_ex}")
+                        print(f"Error processing guild {guild.name}, record {record.get('id')}: {inner_ex}")
                 
                 print(f"Processed {processed_count} requests from guild: {guild.name}")
                 
@@ -336,160 +341,9 @@ async def price_snapshots():
 async def before_price_snapshots():
     await bot.wait_until_ready()
 
-@tasks.loop(hours=1)
-async def hourly_snapshot():
-    now = datetime.datetime.now(timezone.utc)
-    current_hour = now.replace(minute=0, second=0, microsecond=0)
-
-    guild_ids_to_process = set()
-    for guild in bot.guilds:
-        guild_id = str(guild.id)
-        try:
-            alliance_sheet = get_alliance_sheet(guild_id)
-            rows = alliance_sheet.get_all_records()
-            if rows:
-                last_time_str = rows[-1].get("TimeT", "")
-                try:
-                    last_time = datetime.datetime.fromisoformat(last_time_str)
-                    if last_time.replace(minute=0, second=0, microsecond=0) == current_hour:
-                        print(f"⏭ Already saved snapshot for guild {guild_id}")
-                        continue
-                except ValueError:
-                    print(f"⚠️ Invalid timestamp in sheet for guild {guild_id}: {last_time_str}")
-            guild_ids_to_process.add(guild_id)
-        except Exception as e:
-            print(f"❌ Could not access alliance sheet for guild {guild_id}: {e}")
-
-    if not guild_ids_to_process:
-        print("✅ All guilds already processed this hour.")
-        return
-    try:
-        settings_sheet = get_settings_sheet()
-        settings_rows = settings_sheet.get_all_records()
-    except Exception as e:
-        print(f"❌ Failed to get settings sheet: {e}")
-        return
-
-    guild_settings = {}
-    for row in settings_rows:
-        server_id = str(row.get("server_id")).strip()
-        key = row.get("key", "").strip()
-        value = str(row.get("value", "")).strip()
-        
-        if server_id in guild_ids_to_process and isinstance(value, str) and value:
-            if server_id not in guild_settings:
-                guild_settings[server_id] = {}
-            guild_settings[server_id][key] = value
-    valid_guild_settings = {
-        guild_id: settings for guild_id, settings in guild_settings.items()
-        if "API_KEY" in settings and "AA_NAME" in settings
-    }
-
-    if not valid_guild_settings:
-        print("⚠️ No guilds found with both API_KEY and AA_NAME settings.")
-        return
-    load_sheet_data()
-    for guild_id, settings in valid_guild_settings.items():
-        api_key = settings["API_KEY"]
-        target_aa_name = settings["AA_NAME"]
-        
-        try:
-            all_users = cached_users
-            print(f"👥 Guild {guild_id}: {len(all_users)} total registered users in global sheet")
-
-            if not all_users:
-                print(f"⚠️ Skipping guild {guild_id} (no users in global sheet)")
-                continue
-            filtered_users = {}
-            match_count = 0
-            
-            print(f"🎯 Target AA: '{target_aa_name}'")
-            
-            for user_id, user in all_users.items():
-                user_aa = str(user.get("AA", "")).strip()
-                
-                if user_aa.lower() == target_aa_name.lower():
-                    match_count += 1
-                    filtered_users[user_id] = user
-
-            print(f"🔍 Guild {guild_id}: Found {match_count} users in '{target_aa_name}' alliance")
-
-            if not filtered_users:
-                print(f"⚠️ Skipping guild {guild_id} (no users in target alliance '{target_aa_name}')")
-                continue
-            prices = {}
-            try:
-                res = requests.post(
-                    f"https://api.politicsandwar.com/graphql?api_key={api_key}",
-                    json={"query": "{ top_trade_info { resources { resource average_price } } }"},
-                    headers={"Content-Type": "application/json"}
-                )
-                res.raise_for_status()
-                resources_data = res.json()["data"]["top_trade_info"]["resources"]
-                prices = {r["resource"]: float(r["average_price"]) for r in resources_data}
-            except Exception as e:
-                print(f"⚠️ Failed to fetch prices for guild {guild_id}: {e}")
-
-            totals = {
-                "money": 0, "food": 0, "gasoline": 0, "munitions": 0,
-                "steel": 0, "aluminum": 0, "bauxite": 0, "lead": 0,
-                "iron": 0, "oil": 0, "coal": 0, "uranium": 0, "num_cities": 0
-            }
-            processed, failed = 0, 0
-            seen_ids = set()
-            for user_id, user in filtered_users.items():
-                nation_id = str(user.get("NationID", "")).strip()
-                if not nation_id or nation_id in seen_ids:
-                    failed += 1
-                    continue
-                seen_ids.add(nation_id)
-
-                try:
-                    _, cities, food, money, gasoline, munitions, steel, aluminum, bauxite, lead, iron, oil, coal, uranium = get_resources(nation_id, None, guild_id)
-                    if not money:
-                        raise ValueError("No data returned")
-                    totals["money"] += money
-                    totals["food"] += food
-                    totals["gasoline"] += gasoline
-                    totals["munitions"] += munitions
-                    totals["steel"] += steel
-                    totals["aluminum"] += aluminum
-                    totals["bauxite"] += bauxite
-                    totals["lead"] += lead
-                    totals["iron"] += iron
-                    totals["oil"] += oil
-                    totals["coal"] += coal
-                    totals["uranium"] += uranium
-                    totals["num_cities"] += cities
-                    processed += 1
-                except Exception as e:
-                    failed += 1
-                    print(f"❌ Failed for user {user_id} (guild {guild_id}): {e}")
-                await asyncio.sleep(5)
-            wealth = totals["money"]
-            resource_values = {}
-            for res, amt in totals.items():
-                if res in ["money", "num_cities"]:
-                    continue
-                val = amt * prices.get(res, 0)
-                resource_values[res] = val
-                wealth += val
-
-            save_row = [current_hour.isoformat(), wealth, totals["money"]]
-            for res in [
-                "food", "gasoline", "munitions", "steel", "aluminum",
-                "bauxite", "lead", "iron", "oil", "coal", "uranium"
-            ]:
-                save_row.append(resource_values.get(res, 0))
-
-            try:
-                save_to_alliance_net(save_row, guild_id=guild_id)
-                print(f"✅ Saved snapshot for guild {guild_id} (AA: '{target_aa_name}'): ${wealth:,.0f} ({processed} processed, {failed} failed)")
-            except Exception as e:
-                print(f"❌ Failed to save snapshot for guild {guild_id}: {e}")
-
-        except Exception as e:
-            print(f"❌ General error in guild {guild_id}: {e}")
+@tasks.loop(minutes=15)
+async def deposit_check_loop():
+    await process_new_deposits()
 
 @tasks.loop(hours=2)
 async def check_api_loop():
@@ -515,7 +369,7 @@ async def check_api_loop():
                     f"The PnW API is currently **offline**, so commands which rely on it are unavailable:\n"
                     f"- All `/request_...` commands\n"
                     f"- `/nation_info`\n"
-                    f"You will be notified when the API is back online. Thank you for your understanding. ||<@&1192368632622219305>||"
+                    f"You will be notified when the API is back online. Thank you for your understanding."
                 )
                 await channel.send(message1)
 
@@ -526,7 +380,7 @@ async def check_api_loop():
                         message2 = (
                             f"# ✅ Good News ✅\n"
                             f"The API is back online! 🎉\n"
-                            f"You may now use all bot commands again. Thank you for your patience 🍪 ||<@&1192368632622219305>||"
+                            f"You may now use all bot commands again. Thank you for your patience 🍪"
                         )
                         await channel.send(message2)
                         break
@@ -643,11 +497,6 @@ def get_nation_score(nation_id: str) -> float | None:
         print(f"[ERROR] get_nation_score: {e}")
         return None
 
-@hourly_snapshot.before_loop
-async def before_hourly():
-    print("Waiting for bot to be ready before starting hourly snapshots...")
-    await bot.wait_until_ready()
-
 @tasks.loop(hours=168)
 async def weekly_member_updater():
     print(f"[Updater] Starting weekly member update at {datetime.datetime.utcnow()}")
@@ -692,59 +541,10 @@ async def before_updater():
     print("[Updater] Bot is ready. Waiting for weekly loop to begin.")
 
 @bot.event
-async def on_ready():
-    bot.add_view(GrantView())  
-    load_sheet_data()
-    load_registration_data()
-    bot.add_view(BlueGuy())
-    import discord_views
-    import tickets
-    import settings_multi
-    import request_x
-    import graphql_requests
-    import spying
-    import war
-    import quality_of_life
-    import res_details
-    import raws_requests
-    import base_commands
-    import request_build
-    import databases
-    import market_tools
-    import regression_models
-    try:
-        sheet = get_ticket_sheet()
-        records = sheet.get_all_records()
-        
-        for row in records:
-            message_id = int(row["message_id"])
-            bot.add_view(TicketButtonView(message_id=message_id), message_id=message_id)
-        
-        print(f"✅ Restored {len(records)} persistent ticket views")
-    except Exception as e:
-        print(f"⚠️ Failed to load ticket views: {e}")
-        bot.add_view(TicketButtonView())
-    
-    print("Starting hourly snapshot task...")
-    if not check_alerts.is_running():
-        check_alerts.start()
-    if not hourly_snapshot.is_running():
-        hourly_snapshot.start()
-    if not process_auto_requests.is_running():
-        process_auto_requests.start()
-    if not weekly_member_updater.is_running():
-        weekly_member_updater.start()
-    if not price_snapshots.is_running():
-        price_snapshots.start()
-    '''if not check_api_loop.is_running():
-        check_api_loop.start()'''
-    await bot.tree.sync()
-    print(f"✅ Logged in as {bot.user}")
-
-@bot.event
 async def on_message(message: discord.Message):
     if message.author.bot:
         return
+    
     intel_pattern = re.compile(
         r"You successfully gathered intelligence about (?P<nation>.+?)\. .*?has "
         r"\$(?P<money>[\d,\.]+), (?P<coal>[\d,\.]+) coal, (?P<oil>[\d,\.]+) oil, "
@@ -766,7 +566,6 @@ async def on_message(message: discord.Message):
 
         try:
             prices = get_prices()
-
             resource_prices = {
                 item["resource"]: float(item["average_price"])
                 for item in prices["data"]["top_trade_info"]["resources"]
@@ -783,41 +582,48 @@ async def on_message(message: discord.Message):
             estimated_loot = 0.0
 
         try:
-            sheet = get_sheet_s("Nation WC")
-            all_records = sheet.get_all_records()
-            nation_names = [row["Nation"] for row in all_records if "Nation" in row]
+            
+            timestamp = datetime.datetime.now().strftime('%B %d, %Y at %I:%M %p')
+            
+            data = {
+                'nation_name': nation.lower(),
+                'timestamp': timestamp,
+                'money': resources['money'],
+                'coal': resources['coal'],
+                'oil': resources['oil'],
+                'uranium': resources['uranium'],
+                'lead': resources['lead'],
+                'iron': resources['iron'],
+                'bauxite': resources['bauxite'],
+                'gasoline': resources['gasoline'],
+                'munitions': resources['munitions'],
+                'steel': resources['steel'],
+                'aluminum': resources['aluminum'],
+                'food': resources['food']
+            }
 
-            update_row = [
-                nation,
-                f"{resources['money']:.2f}",
-                f"{resources['coal']:.2f}",
-                f"{resources['oil']:.2f}",
-                f"{resources['uranium']:.2f}",
-                f"{resources['lead']:.2f}",
-                f"{resources['iron']:.2f}",
-                f"{resources['bauxite']:.2f}",
-                f"{resources['gasoline']:.2f}",
-                f"{resources['munitions']:.2f}",
-                f"{resources['steel']:.2f}",
-                f"{resources['aluminum']:.2f}",
-                f"{resources['food']:.2f}",
-                datetime.datetime.now().strftime('%B %d, %Y at %I:%M %p')
-            ]
-
-            if nation in nation_names:
-                row_index = nation_names.index(nation) + 2
-                existing_row = sheet.row_values(row_index)
-                existing_data = existing_row[1:13]
-                new_data = update_row[1:13]
-
-                if all(f"{float(e):.2f}" == f"{float(n):.2f}" for e, n in zip(existing_data, new_data)):
+            
+            existing = supabase.select('nation_reports', filters={'nation_name': nation.lower()})
+            
+            if existing:
+                
+                latest_record = max(existing, key=lambda x: x.get('timestamp', ''))
+                data_changed = any(
+                    float(latest_record.get(key, 0)) != val 
+                    for key, val in resources.items()
+                )
+                
+                if not data_changed:
                     await message.channel.send(f"✅ Intel on **{nation}** already reported and unchanged.")
                     await bot.process_commands(message)
                     return
-
-                sheet.update([update_row], f"A{row_index}:N{row_index}")
+                
+                
+                record_id = latest_record.get('id')
+                supabase.update('nation_reports', data, {'id': record_id})
             else:
-                sheet.append_row(update_row)
+                
+                supabase.insert('nation_reports', data)
 
             embed = discord.Embed(
                 title=f"🕵️ Intel Report: {nation}",
@@ -837,7 +643,9 @@ async def on_message(message: discord.Message):
 
         except Exception as e:
             print(f"Error in intel handler: {e}")
-            await message.channel.send("❌ Failed to process intel report.")
+            await message.channel.send("⚪ Failed to process intel report.")
+
+    
     if message.guild is None:
         default_reply = "Thanks for your message! We'll get back to you soon."
 
@@ -848,15 +656,12 @@ async def on_message(message: discord.Message):
                 break
 
         if last_bot_msg != default_reply:
-                settings_sheet = get_sheet_s("BotServerSettings")
-                all_settings = settings_sheet.get_all_records()
-                logs_channel_ids = None
-                for row in all_settings:
-                    if row["key"] == "LOGS":
-                        logs_channel_ids = row["value"]
-                        break
-
-                if logs_channel_ids:
+            
+            try:
+                logs_setting = supabase.select('server_settings', filters={'key': 'LOGS'})
+                if logs_setting:
+                    logs_channel_ids = logs_setting[0].get('value', '')
+                    
                     if ',' in logs_channel_ids:
                         channel_id_list = [int(id.strip()) for id in logs_channel_ids.split(',')]
                     elif '/' in logs_channel_ids:
@@ -879,9 +684,96 @@ async def on_message(message: discord.Message):
                             await log_channel.send(embed=embed)
                         else:
                             print(f"Warning: Could not find log channel with ID {logs_channel_id}")
+            except Exception as e:
+                print(f"Error handling DM logging: {e}")
 
         await message.channel.send(default_reply)
 
     await bot.process_commands(message)
+
+async def start_war_listener():
+    await bot.wait_until_ready()
+    bot.loop.create_task(handle_pnw_events())
+
+@tasks.loop(minutes=15)
+async def send_dm():
+    user_id = 1167879888892608663 
+    message = "Hey! Just sending you a DM 😄"
+
+    user = await bot.fetch_user(user_id)
+    await user.send(message)
+    print(f"Sent DM to {user.name}")
+
+@bot.event
+async def on_ready():
+    from settings.initializer_functions.cached_users_initializer import load_registration_data, load_sheet_data
+    bot.add_view(GrantView())  
+    load_sheet_data()
+    load_registration_data()
+    bot.add_view(BlueGuy())
+    import tickets.tickets
+    import graphql_requests
+    import econ.grants.grant_commands.request_projects
+    import econ.grants.grant_commands.request_cities
+    import econ.grants.grant_commands.request_infra_upgrade_cost
+    import econ.grants.grant_commands.request_miscellaneous
+    import econ.grants.grant_commands.request_warchest
+    import econ.grants.grant_commands.raws_requests
+    import econ.prediction_market.market_tools
+    import wars.spying
+    import wars.war
+    import wars.warrooms
+    import settings.settings_multi
+    import base_commands.ConvenienceCommands.help
+    import base_commands.ConvenienceCommands.send_dm
+    import base_commands.ConvenienceCommands.send_messages
+    import base_commands.MaintCommands.bot_info
+    import base_commands.MaintCommands.run_check
+    import base_commands.MaintCommands.warn_maint
+    import base_commands.RegisterCommands.register
+    import base_commands.RegisterCommands.register_aa
+    import databases.sql.databases
+    import databases.sql.data_puller
+    import nation_information
+    import offshore
+    import econ.grants.res_details
+    import rework_of_who
+    import audits
+    
+    try:
+        from tickets.tickets import get_all_ticket_configs
+        records = get_all_ticket_configs()
+        
+        for row in records:
+            message_id = int(row["message_id"])
+            bot.add_view(TicketButtonView(message_id=message_id), message_id=message_id)
+        
+        print(f"✅ Restored {len(records)} persistent ticket views")
+    except Exception as e:
+        print(f"⚠️ Failed to load ticket views: {e}")
+        bot.add_view(TicketButtonView())
+    print("Starting tasks...")
+    offshore.initialize(
+        bot_config={'offshore_alliance_id': 14207},
+        supabase_url=SUPABASE_URL,
+        supabase_key=SUPABASE_KEY,
+        api_key=API_KEY,
+        bot_key=BOT_KEY,
+    )
+    if not deposit_check_loop.is_running():
+        deposit_check_loop.start() 
+    if not check_alerts.is_running():
+        check_alerts.start()
+    if not process_auto_requests.is_running():
+        process_auto_requests.start()
+    if not weekly_member_updater.is_running():
+        weekly_member_updater.start()
+    if not price_snapshots.is_running():
+        price_snapshots.start()
+    asyncio.create_task(handle_pnw_events())
+    asyncio.create_task(send_dm())
+        
+    await bot.tree.sync()
+    print(f"✅ Logged in as {bot.user}")
 
 bot.run(bot_key)
