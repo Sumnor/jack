@@ -8,3 +8,4 @@ oauth2client
 matplotlib
 httpx
 scipy
+sklearn
