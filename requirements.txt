@@ -9,4 +9,3 @@ matplotlib
 httpx
 scipy
 scikit-learn
-cogs
