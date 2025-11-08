@@ -37,13 +37,11 @@ async def cleanup_expired_audits():
             nation_id = audit.get("nation_id")
             if not guild_id or not nation_id:
                 continue
-            print(f"[DEBUG] Processing nation={nation_id}, guild={guild_id}")
             quota_days = get_quota_expiery(int(guild_id))
             try:
                 quota_days = int(quota_days)
             except (TypeError, ValueError):
                 quota_days = 7
-            print(f"   [DEBUG] quota_days for guild={guild_id} → {quota_days}")
 
             wc_updated = audit.get("wc_audit_updated_at")
             build_updated = audit.get("build_audit_updated_at")
@@ -51,9 +49,6 @@ async def cleanup_expired_audits():
             wc_audit = audit.get("wc_audit", False)
             build_audit = audit.get("build_audit", False)
             tax_audit = audit.get("tax_audit", False)
-
-            print(f"   [DEBUG] wc_updated={wc_updated}, build_updated={build_updated}, tax_updated={tax_updated}")
-            print(f"   [DEBUG] audit flags: WC={wc_audit}, BUILD={build_audit}, TAX={tax_audit}")
 
             updates = {}
             if wc_audit and wc_updated:
@@ -86,32 +81,25 @@ async def cleanup_expired_audits():
                 if tax_updated.tzinfo is None:
                     tax_updated = tax_updated.replace(tzinfo=datetime.timezone.utc)
                 delta = (now - tax_updated).days
-                print(f"   [DEBUG] Tax delta={delta} days (cutoff={quota_days})")
                 if delta > quota_days:
                     updates["tax_audit"] = False
                     updates["tax_auditor"] = None
-                    print(f"   ❌ Expired Tax audit for nation {nation_id}")
 
             if updates:
-                print(f"   [DEBUG] Updates to apply: {updates}")
                 try:
                     resp = supabase.update(
                         "audits",
                         filters={"guild_id": guild_id, "nation_id": nation_id},
                         data=updates
                     )
-                    print(f"   ✅ Update response: {resp}")
                 except Exception as e:
-                    print(f"   ❌ Failed to update nation {nation_id}: {e}")
                     continue
 
                 remaining_wc = wc_audit if "wc_audit" not in updates else False
                 remaining_build = build_audit if "build_audit" not in updates else False
                 remaining_tax = tax_audit if "tax_audit" not in updates else False
-                print(f"   [DEBUG] Remaining audits → WC={remaining_wc}, BUILD={remaining_build}, TAX={remaining_tax}")
 
                 if not remaining_wc and not remaining_build and not remaining_tax:
-                    print(f"   🧹 Removing auditor assignment for nation {nation_id}...")
                     try:
                         resp2 = supabase.update(
                             "audits",
@@ -122,9 +110,7 @@ async def cleanup_expired_audits():
                                 "tax_auditor": None
                             }
                         )
-                        print(f"   ✅ Cleared auditor fields: {resp2}")
                     except Exception as e:
-                        print(f"   ❌ Failed to clear auditor for nation {nation_id}: {e}")
                         import traceback
                         traceback.print_exc()
     except Exception as e:
