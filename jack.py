@@ -595,7 +595,6 @@ async def on_ready():
         weekly_member_updater.start()
     if not price_snapshots.is_running():
         price_snapshots.start()
-    asyncio.create_task(handle_pnw_events())
         
     await bot.tree.sync()
     print(f"✅ Logged in as {bot.user}")
