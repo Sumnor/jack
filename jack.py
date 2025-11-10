@@ -20,7 +20,6 @@ from settings.initializer_functions.resource_prices import get_prices
 from settings.initializer_functions.supabase_initializer import supabase
 from databases.sql.databases import get_all_alerts, fetch_latest_price, MATERIALS, SUPABASE_KEY, SUPABASE_URL
 from econ.prediction_market.regression_models import fetch_material_data, train_model_for_resource
-from ma.warrooms.warrooms import handle_pnw_events
 from offshore.processes.process_new_deposits import process_new_deposits
 from ia.audit_time_period_controler import quota_check_loop
 
@@ -520,10 +519,6 @@ async def on_message(message: discord.Message):
 
     await bot.process_commands(message)
 
-async def start_war_listener():
-    await bot.wait_until_ready()
-    bot.loop.create_task(handle_pnw_events())
-
 @bot.event
 async def on_ready():
     from settings.initializer_functions.cached_users_initializer import load_registration_data, load_sheet_data
@@ -543,7 +538,6 @@ async def on_ready():
     import ma.spying.see_report
     import ma.spying.list_reports
     import ma.war_losses
-    import ma.warrooms
     import ma.filtering.filter_nations
     import ma.militarization.alliance_militarization
     import ma.militarization.nation_militarization
